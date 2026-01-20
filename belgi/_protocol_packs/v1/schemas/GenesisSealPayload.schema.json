@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "GenesisSealPayload.schema.json",
+  "title": "GenesisSealPayload",
+  "description": "A signed, deterministic genesis root-of-trust payload. Used by Gate R (R4) to enforce Tier-3 genesis requirements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "philosophy",
+    "dedication",
+    "architect",
+    "signature_alg",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "philosophy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dedication": {
+      "type": "string",
+      "minLength": 1
+    },
+    "architect": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature_alg": {
+      "type": "string",
+      "const": "ed25519",
+      "description": "Signature algorithm for GenesisSealPayload.signature."
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+      "description": "Base64 signature over canonical_json(GenesisSealPayload with signature fields removed)."
+    }
+  }
+}

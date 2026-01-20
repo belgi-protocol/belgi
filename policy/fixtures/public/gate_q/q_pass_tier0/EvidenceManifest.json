@@ -1,0 +1,34 @@
+{
+  "artifacts": [
+    {
+      "hash": "185be04a54688378575d1872b38c82bc5abac4f292aa6ed883a72fa5072581a0",
+      "id": "command_log.fixture",
+      "kind": "command_log",
+      "media_type": "application/octet-stream",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
+    },
+    {
+      "hash": "185be04a54688378575d1872b38c82bc5abac4f292aa6ed883a72fa5072581a0",
+      "id": "policy_report.fixture",
+      "kind": "policy_report",
+      "media_type": "application/octet-stream",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
+    },
+    {
+      "hash": "185be04a54688378575d1872b38c82bc5abac4f292aa6ed883a72fa5072581a0",
+      "id": "schema_validation.fixture",
+      "kind": "schema_validation",
+      "media_type": "application/octet-stream",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
+    }
+  ],
+  "commands_executed": [
+    "belgi c1-compile"
+  ],
+  "envelope_attestation": null,
+  "run_id": "q-pass-tier0",
+  "schema_version": "1.0.0"
+}

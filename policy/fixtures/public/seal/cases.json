@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "case_id": "s_fail_tier2_bad_signature",
+      "expected_exit_code": 2,
+      "paths": {
+        "locked_spec": "policy/fixtures/public/seal/s_fail_tier2_bad_signature/LockedSpec.json",
+        "gate_q_verdict": "policy/fixtures/public/seal/s_fail_tier2_bad_signature/GateVerdict.Q.json",
+        "gate_r_verdict": "policy/fixtures/public/seal/s_fail_tier2_bad_signature/GateVerdict.R.json",
+        "evidence_manifest": "policy/fixtures/public/seal/s_fail_tier2_bad_signature/EvidenceManifest.json",
+        "seal_signature_b64": "policy/fixtures/public/seal/s_fail_tier2_bad_signature/seal_signature.b64"
+      },
+      "params": {
+        "final_commit_sha": "0000000000000000000000000000000000000000",
+        "sealed_at": "2000-01-01T00:30:00Z",
+        "signer": "human:fixture"
+      },
+      "_comment": "Tier-2 requires a cryptographic seal signature; this fixture provides an invalid signature and MUST fail deterministically."
+    },
+    {
+      "case_id": "s_pass_tier2",
+      "expected_exit_code": 0,
+      "paths": {
+        "locked_spec": "policy/fixtures/public/seal/s_pass_tier2/LockedSpec.json",
+        "gate_q_verdict": "policy/fixtures/public/seal/s_pass_tier2/GateVerdict.Q.json",
+        "gate_r_verdict": "policy/fixtures/public/seal/s_pass_tier2/GateVerdict.R.json",
+        "evidence_manifest": "policy/fixtures/public/seal/s_pass_tier2/EvidenceManifest.json",
+        "seal_signature_b64": "policy/fixtures/public/seal/s_pass_tier2/seal_signature.b64"
+      },
+      "params": {
+        "final_commit_sha": "0000000000000000000000000000000000000000",
+        "sealed_at": "2000-01-01T00:30:00Z",
+        "signer": "human:fixture"
+      },
+      "_comment": "PASS using a precomputed (user-provided) signature via --seal-signature-file."
+    },
+    {
+      "case_id": "s_pass_tier2_commit_sha_changed",
+      "expected_exit_code": 0,
+      "paths": {
+        "locked_spec": "policy/fixtures/public/seal/s_pass_tier2_commit_sha_changed/LockedSpec.json",
+        "gate_q_verdict": "policy/fixtures/public/seal/s_pass_tier2_commit_sha_changed/GateVerdict.Q.json",
+        "gate_r_verdict": "policy/fixtures/public/seal/s_pass_tier2_commit_sha_changed/GateVerdict.R.json",
+        "evidence_manifest": "policy/fixtures/public/seal/s_pass_tier2_commit_sha_changed/EvidenceManifest.json",
+        "seal_signature_b64": "policy/fixtures/public/seal/s_pass_tier2_commit_sha_changed/seal_signature.b64"
+      },
+      "params": {
+        "final_commit_sha": "ffffffffffffffffffffffffffffffffffffffff",
+        "sealed_at": "2000-01-01T00:30:00Z",
+        "signer": "human:fixture"
+      },
+      "_comment": "Signature verification excludes final_commit_sha (informational), so changing it does not invalidate the signature."
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "GateVerdict.schema.json",
+  "title": "GateVerdict",
+  "description": "Deterministic verdict output from a gate (e.g., Q or R), including structured failures and a machine-parseable remediation instruction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "gate_id",
+    "verdict",
+    "failure_category",
+    "failures",
+    "evidence_manifest_ref",
+    "evaluated_at",
+    "evaluator"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run identifier shared across all run artifacts."
+    },
+    "gate_id": {
+      "type": "string",
+      "enum": ["Q", "R", "S"],
+      "description": "Canonical gate identifier."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["GO", "NO-GO"],
+      "description": "Deterministic gate outcome."
+    },
+    "failure_category": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "description": "Machine-parseable failure category token (null when verdict is GO)."
+    },
+    "failures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Failure" },
+      "description": "Structured failure records. Empty only when verdict is GO."
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["next_instruction"],
+      "properties": {
+        "next_instruction": {
+          "type": "string",
+          "pattern": "^Do .+ then re-run (Q|R|S)\\.$",
+          "description": "Fixed remediation instruction format: \"Do <ACTION> then re-run <GATE_ID>.\""
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Optional remediation constraints (category-level)."
+        }
+      },
+      "description": "Remediation directive for progressing after a NO-GO."
+    },
+    "evidence_manifest_ref": { "$ref": "#/$defs/ObjectRef" },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "evaluator": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identity of the evaluator (human|system|agent id string)."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "verdict": { "const": "GO" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "failure_category": { "const": null },
+          "failures": { "maxItems": 0 }
+        },
+        "not": { "required": ["remediation"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "verdict": { "const": "NO-GO" } },
+        "required": ["verdict"]
+      },
+      "then": {
+        "required": ["remediation"],
+        "properties": {
+          "failure_category": { "type": "string" },
+          "failures": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 hex digest."
+    },
+    "ObjectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hash", "storage_ref"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hash": { "$ref": "#/$defs/Sha256Hex" },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+          "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+        }
+      },
+      "description": "Stable reference to an external object (id + hash + storage reference)."
+    },
+    "Failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "rule_id", "message", "evidence_refs"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "category": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "Failure category token (machine-parseable)."
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Rule identifier (or reference) for the failing check."
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ObjectRef" },
+          "description": "References to supporting evidence artifacts."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [ org ]
+  pull_request:
+    branches: [ org ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+      TZ: "UTC"
+      PYTHONPATH: ${{ github.workspace }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/belgi-python-setup
+        with:
+          python-version: "3.11"
+          editable: "true"
+          install-pytest: "true"
+
+      - name: Byte Guard (normalize / CRLF drift check)
+        run: python -m tools.normalize --repo . --check --tracked-only
+
+      - name: Protocol Pack Drift Guard
+        run: python -m tools.check_drift
+
+      - name: Syntax check
+        run: python -m compileall -q belgi chain tools wrapper
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Verify builtin protocol pack (repo)
+        run: python -m belgi.cli pack verify --in belgi/_protocol_packs/v1
+
+      - name: Consistency sweep
+        run: |
+          set -euo pipefail
+          mkdir -p policy
+          python -m tools.sweep consistency --repo . 2>&1 | tee policy/consistency_sweep.log
+
+      - name: Consistency sweep summary
+        if: always()
+        run: |
+          if [ -f "policy/consistency_sweep.summary.md" ]; then
+            cat policy/consistency_sweep.summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ \`policy/consistency_sweep.summary.md\` not found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload consistency sweep artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consistency-sweep
+          if-no-files-found: error
+          path: |
+            policy/consistency_sweep.json
+            policy/consistency_sweep.log
+            policy/consistency_sweep.summary.md
+
+      - name: Fixture sweeps
+        run: |
+          python -m tools.sweep fixtures-qr --repo .
+          python -m tools.sweep fixtures-s --repo .
+          python -m tools.sweep fixtures-seal --repo .
+
+      - name: Verify no tracked file changes
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "Tracked files changed during verifier run:" >&2
+            git status --porcelain --untracked-files=no >&2
+            exit 1
+          fi
+
+  wheel-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
+    env:
+      PYTHONUTF8: "1"
+      TZ: "UTC"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/belgi-python-setup
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel
+
+      - name: Setup smoke venv (outside repo)
+        run: echo "SMOKE_VENV=${RUNNER_TEMP}/belgi-smoke-venv-${{ matrix.python-version }}" >> "$GITHUB_ENV"
+
+      - name: Install wheel in smoke venv
+        run: |
+          python -m venv "${SMOKE_VENV}"
+          "${SMOKE_VENV}/bin/pip" install --upgrade pip
+          "${SMOKE_VENV}/bin/pip" install dist/*.whl
+
+      - name: Verify builtin pack (no shadowing)
+        env:
+          PYTHONPATH: ""
+        run: |
+          TMPDIR="$(mktemp -d)"
+          cd "$TMPDIR"
+          "${SMOKE_VENV}/bin/python" -m belgi.ci_smoke_verify
+
+      - name: Test belgi CLI entrypoint
+        run: |
+          TMPDIR="$(mktemp -d)"
+          cd "$TMPDIR"
+          "${SMOKE_VENV}/bin/belgi" about
+          "${SMOKE_VENV}/bin/belgi" pack verify --builtin
+
+      - name: Run packaging smoke tests
+        env:
+          BELGI_ENFORCE_NO_SHADOWING: "1"
+          PYTHONPATH: ""
+        run: |
+          "${SMOKE_VENV}/bin/pip" install pytest
+          TMPDIR="$(mktemp -d)"
+          cp tests/test_packaging_smoke.py "$TMPDIR/"
+          cd "$TMPDIR"
+          "${SMOKE_VENV}/bin/python" -m pytest -v -m "not repo_local" test_packaging_smoke.py

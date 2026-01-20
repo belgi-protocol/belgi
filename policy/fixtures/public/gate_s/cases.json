@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "case_id": "s_pass_tier1_unsigned",
+      "expected_exit_code": 0,
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_s/s_pass_tier1_unsigned/EvidenceManifest.json",
+        "locked_spec": "policy/fixtures/public/gate_s/s_pass_tier1_unsigned/LockedSpec.json",
+        "seal_manifest": "policy/fixtures/public/gate_s/s_pass_tier1_unsigned/SealManifest.json"
+      }
+    },
+    {
+      "case_id": "s_fail_tier1_bad_signature_len",
+      "expected_exit_code": 2,
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/EvidenceManifest.json",
+        "locked_spec": "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/LockedSpec.json",
+        "seal_manifest": "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/SealManifest.json"
+      }
+    },
+    {
+      "case_id": "s_fail_replay_instructions_invalid_json",
+      "expected_exit_code": 2,
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/EvidenceManifest.json",
+        "locked_spec": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/LockedSpec.json",
+        "seal_manifest": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/SealManifest.json"
+      }
+    }
+  ]
+}

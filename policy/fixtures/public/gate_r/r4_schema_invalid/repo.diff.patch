@@ -1,0 +1,6 @@
+diff --git a/policy/fixtures/gate_r/r4_schema_invalid/changed.txt b/policy/fixtures/gate_r/r4_schema_invalid/changed.txt
+--- a/policy/fixtures/gate_r/r4_schema_invalid/changed.txt
++++ b/policy/fixtures/gate_r/r4_schema_invalid/changed.txt
+@@ -1 +1 @@
+-old
++new

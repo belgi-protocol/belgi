@@ -1,0 +1,239 @@
+{
+  "$schema": "../schemas/TierPacks.schema.json",
+  "format_version": 1,
+  "source_md_sha256": "84ed539cbf6d578dbcd6e234ba9353be5736775c664fac00ad3b1d94c2dbf3ec",
+  "_migration_note": "This JSON is the canonical SSOT for tier packs. The file tiers/tier-packs.md is now a generated view. Regenerate with: python -m tools.render tier-packs --repo .",
+  "tier_ids": ["tier-0", "tier-1", "tier-2", "tier-3"],
+  "parameter_definitions": {
+    "required_evidence_kinds": {
+      "description": "List of evidence artifact kinds required for Gate R evidence sufficiency.",
+      "allowed_values_ref": "../schemas/EvidenceManifest.schema.json",
+      "note": "`docs_compilation_log` is produced by C3 (post-R). Gate R MUST NOT require it."
+    },
+    "required_evidence_kinds_q": {
+      "description": "List of evidence artifact kinds required for Gate Q minimum evidence sufficiency.",
+      "operational_meaning": "These are the minimum evidence kinds Gate Q requires to be present in `EvidenceManifest.artifacts[]`.",
+      "must_include": ["command_log", "policy_report", "schema_validation"],
+      "allowed_values_ref": "../schemas/EvidenceManifest.schema.json"
+    },
+    "test_policy": {
+      "description": "Category-level rules (no bypass-friendly details):",
+      "fields": {
+        "required": "whether Gate R requires test evidence",
+        "allowed_skips": "whether skips may be present without NO-GO",
+        "flaky_handling": "category-level rule for unstable evidence"
+      }
+    },
+    "scope_budgets": {
+      "description": "Conservative defaults used by Gate R (R2) when `LockedSpec.constraints.max_*` are absent.",
+      "fields": {
+        "max_touched_files": "integer or null",
+        "max_loc_delta": "integer or null",
+        "forbidden_paths_enforcement": "`strict` or `relaxed` (still enforced)"
+      },
+      "operational_meaning": {
+        "strict": "forbidden-path violations are NOT waivable",
+        "relaxed": "forbidden-path violations may be waived only with an explicit active waiver scoped to the violating path"
+      }
+    },
+    "waiver_policy": {
+      "description": "Waiver controls per tier.",
+      "fields": {
+        "allowed": "yes/no",
+        "max_active_waivers": "integer",
+        "requires_HOTL": "yes/no"
+      },
+      "v1_enforcement_note": "Gate Q/R treat `Waiver` as the sole waiver authorization artifact. For tiers where `requires_HOTL == yes`, Gate Q/R still enforce only waiver validity and a v1 human-authorship heuristic (see Gate Q Q6); no additional HOTL artifact is required by schemas."
+    },
+    "command_log_mode": {
+      "description": "Controls the required shape of `EvidenceManifest.commands_executed`.",
+      "values": {
+        "strings": "`commands_executed` may be a list of strings.",
+        "structured": "`commands_executed` MUST be a list of structured command records (`argv`, `exit_code`, `started_at`, `finished_at`)."
+      },
+      "enforcement": "Gate R deterministic evidence obligation"
+    },
+    "envelope_policy": {
+      "description": "Environment envelope requirements.",
+      "fields": {
+        "requires_attestation": "yes/no",
+        "attestation_signature_required": "yes/no",
+        "pinned_toolchain_refs_required": "yes/no"
+      },
+      "note": "LockedSpec.environment_envelope.pinned_toolchain_refs is schema-required (array present) but may be empty at schema level; the Q5 semantic check enforces non-empty when pinned_toolchain_refs_required: yes."
+    },
+    "doc_impact_required": {
+      "description": "Boolean controlling whether the LockedSpec MUST include the doc_impact object.",
+      "operational_meaning": {
+        "true": "LockedSpec.doc_impact MUST be present (not that required_paths must be non-empty)",
+        "false": "LockedSpec.doc_impact MAY be omitted"
+      }
+    }
+  },
+  "doc_impact_policy_map": {
+    "_note": "Operator-facing summary of how doc_impact is treated per tier.",
+    "schema_notes": [
+      "IntentSpec.doc_impact is always present (schema-required by ../schemas/IntentSpec.schema.json and validated by Gate Q).",
+      "LockedSpec.doc_impact presence is tier-controlled via doc_impact_required and validated by Gate Q Q-DOC-002."
+    ],
+    "tiers": [
+      {
+        "tier_id": "tier-0",
+        "doc_impact_required": false,
+        "required_paths_may_be_empty": true,
+        "note_on_empty_required_when_empty": "yes (schema-level, if doc_impact is present with empty [])",
+        "enforcing_gates": ["Gate Q: `Q-INTENT-002` (IntentSpec schema).", "Gate Q: `Q-INTENT-003` (mapping if LockedSpec.doc_impact present)."]
+      },
+      {
+        "tier_id": "tier-1",
+        "doc_impact_required": false,
+        "required_paths_may_be_empty": true,
+        "note_on_empty_required_when_empty": "yes (schema-level, if doc_impact is present with empty [])",
+        "enforcing_gates": ["Gate Q: `Q-INTENT-002` (IntentSpec schema).", "Gate Q: `Q-INTENT-003` (mapping if LockedSpec.doc_impact present)."]
+      },
+      {
+        "tier_id": "tier-2",
+        "doc_impact_required": true,
+        "required_paths_may_be_empty": true,
+        "note_on_empty_required_when_empty": "yes (mandatory for tier when empty [])",
+        "enforcing_gates": ["Gate Q: `Q-DOC-002` (presence + note_on_empty).", "Gate R: `R-DOC-001` (if required_paths non-empty, diff must touch at least one declared required path; if empty, note_on_empty must be present)."]
+      },
+      {
+        "tier_id": "tier-3",
+        "doc_impact_required": true,
+        "required_paths_may_be_empty": true,
+        "note_on_empty_required_when_empty": "yes (mandatory for tier when empty [])",
+        "enforcing_gates": ["Gate Q: `Q-DOC-002` (presence + note_on_empty).", "Gate R: `R-DOC-001` (if required_paths non-empty, diff must touch at least one declared required path; if empty, note_on_empty must be present)."]
+      }
+    ]
+  },
+  "tiers": {
+    "tier-0": {
+      "required_evidence_kinds": ["diff", "command_log", "schema_validation", "policy_report"],
+      "required_evidence_kinds_q": ["command_log", "policy_report", "schema_validation"],
+      "command_log_mode": "strings",
+      "doc_impact_required": false,
+      "test_policy": {
+        "required": false,
+        "allowed_skips": true,
+        "flaky_handling": "treat as insufficient evidence only if it changes outcomes across reruns within envelope"
+      },
+      "scope_budgets": {
+        "max_touched_files": 50,
+        "max_loc_delta": 5000,
+        "forbidden_paths_enforcement": "relaxed"
+      },
+      "waiver_policy": {
+        "allowed": true,
+        "max_active_waivers": 3,
+        "requires_HOTL": false
+      },
+      "envelope_policy": {
+        "requires_attestation": false,
+        "attestation_signature_required": false,
+        "pinned_toolchain_refs_required": true
+      }
+    },
+    "tier-1": {
+      "required_evidence_kinds": ["diff", "command_log", "schema_validation", "policy_report", "test_report", "env_attestation"],
+      "required_evidence_kinds_q": ["command_log", "policy_report", "schema_validation"],
+      "command_log_mode": "structured",
+      "doc_impact_required": false,
+      "test_policy": {
+        "required": true,
+        "allowed_skips": true,
+        "allowed_skips_note": "skips permitted only when they do not hide failing coverage; category-level",
+        "flaky_handling": "unstable tests are insufficient evidence unless HOTL explicitly approves proceeding"
+      },
+      "scope_budgets": {
+        "max_touched_files": 25,
+        "max_loc_delta": 2500,
+        "forbidden_paths_enforcement": "strict"
+      },
+      "waiver_policy": {
+        "allowed": true,
+        "max_active_waivers": 2,
+        "requires_HOTL": true
+      },
+      "envelope_policy": {
+        "requires_attestation": true,
+        "attestation_signature_required": false,
+        "pinned_toolchain_refs_required": true
+      }
+    },
+    "tier-2": {
+      "required_evidence_kinds": ["diff", "command_log", "schema_validation", "policy_report", "test_report", "env_attestation"],
+      "required_evidence_kinds_q": ["command_log", "policy_report", "schema_validation"],
+      "command_log_mode": "structured",
+      "doc_impact_required": true,
+      "test_policy": {
+        "required": true,
+        "allowed_skips": false,
+        "allowed_skips_note": "skips are forbidden (not waivable in v1)",
+        "flaky_handling": "flaky/unstable evidence is NO-GO (not waivable in v1)"
+      },
+      "scope_budgets": {
+        "max_touched_files": 15,
+        "max_loc_delta": 1500,
+        "forbidden_paths_enforcement": "strict"
+      },
+      "waiver_policy": {
+        "allowed": true,
+        "max_active_waivers": 1,
+        "requires_HOTL": true
+      },
+      "envelope_policy": {
+        "requires_attestation": true,
+        "attestation_signature_required": true,
+        "pinned_toolchain_refs_required": true
+      }
+    },
+    "tier-3": {
+      "required_evidence_kinds": ["diff", "command_log", "schema_validation", "policy_report", "test_report", "env_attestation", "genesis_seal"],
+      "required_evidence_kinds_q": ["command_log", "policy_report", "schema_validation"],
+      "command_log_mode": "structured",
+      "doc_impact_required": true,
+      "test_policy": {
+        "required": true,
+        "allowed_skips": false,
+        "flaky_handling": "any unstable evidence is NO-GO"
+      },
+      "scope_budgets": {
+        "max_touched_files": 10,
+        "max_loc_delta": 800,
+        "forbidden_paths_enforcement": "strict"
+      },
+      "waiver_policy": {
+        "allowed": false,
+        "max_active_waivers": 0,
+        "requires_HOTL": true
+      },
+      "envelope_policy": {
+        "requires_attestation": true,
+        "attestation_signature_required": true,
+        "pinned_toolchain_refs_required": true
+      }
+    }
+  },
+  "gate_parameter_map": [
+    {"gate_check_id": "Q1", "tier_params_read": []},
+    {"gate_check_id": "Q2", "tier_params_read": []},
+    {"gate_check_id": "Q3", "tier_params_read": []},
+    {"gate_check_id": "Q4", "tier_params_read": []},
+    {"gate_check_id": "Q5", "tier_params_read": ["envelope_policy.pinned_toolchain_refs_required"]},
+    {"gate_check_id": "Q6", "tier_params_read": ["waiver_policy.allowed", "waiver_policy.max_active_waivers", "waiver_policy.requires_HOTL"]},
+    {"gate_check_id": "Q7", "tier_params_read": []},
+    {"gate_check_id": "Q-EVIDENCE-002", "tier_params_read": ["required_evidence_kinds_q"]},
+    {"gate_check_id": "Q-DOC-001", "tier_params_read": []},
+    {"gate_check_id": "Q-DOC-002", "tier_params_read": ["doc_impact_required"]},
+    {"gate_check_id": "R1", "tier_params_read": ["command_log_mode"]},
+    {"gate_check_id": "R2", "tier_params_read": ["scope_budgets.max_touched_files", "scope_budgets.max_loc_delta"]},
+    {"gate_check_id": "R3", "tier_params_read": ["scope_budgets.forbidden_paths_enforcement"]},
+    {"gate_check_id": "R4", "tier_params_read": ["command_log_mode"]},
+    {"gate_check_id": "R5", "tier_params_read": ["test_policy.required", "test_policy.allowed_skips", "test_policy.flaky_handling", "command_log_mode"]},
+    {"gate_check_id": "R6", "tier_params_read": ["envelope_policy.requires_attestation", "envelope_policy.attestation_signature_required", "command_log_mode"]},
+    {"gate_check_id": "R7", "tier_params_read": ["envelope_policy.pinned_toolchain_refs_required", "command_log_mode"]},
+    {"gate_check_id": "R8", "tier_params_read": ["waiver_policy.allowed", "command_log_mode"]},
+    {"gate_check_id": "R-DOC-001", "tier_params_read": ["doc_impact_required"]}
+  ]
+}

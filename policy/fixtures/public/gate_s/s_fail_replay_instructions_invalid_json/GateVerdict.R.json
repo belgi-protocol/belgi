@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-s_pass_tier1_unsigned",
+  "gate_id": "R",
+  "verdict": "GO",
+  "failure_category": null,
+  "failures": [],
+  "evidence_manifest_ref": {
+    "id": "evidence-manifest-run-s_pass_tier1_unsigned",
+    "hash": "28016353f778859089649044dd0458ec8ec084430e9ddde83b390ce57dd20c6b",
+    "storage_ref": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/EvidenceManifest.json"
+  },
+  "evaluated_at": "1970-01-01T00:00:00Z",
+  "evaluator": "fixture"
+}

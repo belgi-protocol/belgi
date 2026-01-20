@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ReplayInstructionsPayload.schema.json",
+  "title": "ReplayInstructionsPayload",
+  "description": "Replay instructions payload referenced by SealManifest.replay_instructions_ref.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["source_archive_ref"],
+  "properties": {
+    "source_archive_ref": {
+      "$ref": "#/$defs/ObjectRef",
+      "description": "ObjectRef to the source archive bytes used for replay."
+    }
+  },
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 hex digest."
+    },
+    "ObjectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hash", "storage_ref"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hash": { "$ref": "#/$defs/Sha256Hex" },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+          "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+        }
+      },
+      "description": "Stable reference to an external object (id + hash + storage reference)."
+    }
+  }
+}

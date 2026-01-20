@@ -1,0 +1,15 @@
+{
+  "evidence_manifest_ref": {
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "evidence",
+    "storage_ref": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/EvidenceManifest.json"
+  },
+  "evaluated_at": "1970-01-01T00:00:00Z",
+  "evaluator": "fixture",
+  "failures": [],
+  "failure_category": null,
+  "gate_id": "Q",
+  "run_id": "fixture",
+  "schema_version": "1.0.0",
+  "verdict": "GO"
+}

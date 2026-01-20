@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "belgi"
+dynamic = ["version"]
+description = "BELGI Protocol: Deterministic gates and evidence sealing for LLM-assisted development workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Batuhan Turgay" },
+  { email = "belgiprotocol@outlook.com" }
+]
+maintainers = [
+    { name = "BELGI Protocol Maintainers"},
+    { email = "belgiprotocol@outlook.com"}
+]
+
+keywords = ["deterministic", "verification", "governance", "protocol"]
+dependencies = []
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
+[project.optional-dependencies]
+crypto = ["cryptography>=41"]
+
+[project.urls]
+Homepage = "https://github.com/belgi-protocol/belgi"
+Repository = "https://github.com/belgi-protocol/belgi"
+Issues = "https://github.com/belgi-protocol/belgi/issues"
+Documentation = "https://github.com/belgi-protocol/belgi/blob/main/README.md"
+
+[project.scripts]
+# Primary CLI entrypoint (installable, publish-safe)
+belgi = "belgi.cli:main"
+
+# Note: Development/operator tools (sweep, rehash, normalize, report, etc.)
+# are NOT exposed as console_scripts because they depend on repo-local modules
+# (chain/, wrapper/, tools/) which are development dependencies.
+# Use `python -m tools.sweep`, `python -m tools.rehash`, etc. from the repo.
+
+# Gate/compiler entrypoints are also repo-local development tools.
+# For production use, import from belgi.* or use the belgi CLI.
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { file = ["VERSION"] }
+
+[tool.setuptools.packages.find]
+where = ["."]
+# Only include the belgi package in the published wheel.
+# chain/, tools/, wrapper/ are development/operator modules that remain repo-local.
+include = ["belgi*"]
+exclude = ["tests*", "temp*", "demo*"]
+
+[tool.setuptools.package-data]
+belgi = ["**/*.md", "**/*.json"]
+
+[tool.belgi]
+philosophy = "Hayatta en hakiki mürşit ilimdir. — M.K. Atatürk"
+dedication = "Bilge (8)"

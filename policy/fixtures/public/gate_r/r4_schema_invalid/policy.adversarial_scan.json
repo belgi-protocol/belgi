@@ -1,0 +1,17 @@
+{
+  "checks": [
+    {
+      "check_id": "policy.adversarial_scan",
+      "message": "fixture",
+      "passed": true
+    }
+  ],
+  "generated_at": "1970-01-01T00:00:00Z",
+  "run_id": "r4-schema-invalid",
+  "schema_version": "1.0.0",
+  "summary": {
+    "failed": 0,
+    "passed": 1,
+    "total_checks": 1
+  }
+}

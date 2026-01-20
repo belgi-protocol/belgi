@@ -1,0 +1,90 @@
+{
+  "artifacts": [
+    {
+      "hash": "efa5fd64d7567cc0ac2943739aab3f74f2baf8da3c5f0a89e645cf82d8bba73d",
+      "id": "repo.diff",
+      "kind": "diff",
+      "media_type": "text/x-diff",
+      "produced_by": "C2",
+      "storage_ref": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/repo.diff.patch"
+    },
+    {
+      "hash": "d4f0b05f4de0b98404079b5b7730526ae9abbb31e71bab3988433f54b4fbfa8a",
+      "id": "tests.report",
+      "kind": "test_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/tests.report.json"
+    },
+    {
+      "hash": "ff44f4810497a598b21a6833d9aa957ff25ff5302616c8a1bb3d26fc5ee04917",
+      "id": "command.log",
+      "kind": "command_log",
+      "media_type": "text/plain",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/command.log.txt"
+    },
+    {
+      "hash": "e70bf663e7e445f34f1de4a191ec8488defe21b675377703bbc0c3bfb50fc01a",
+      "id": "env.attestation",
+      "kind": "env_attestation",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/env_attestation.json"
+    }
+  ],
+  "commands_executed": [
+    {
+      "argv": [
+        "belgi",
+        "invariant-eval"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "run-tests"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "verify-attestation"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "supplychain-scan"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "adversarial-scan"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    }
+  ],
+  "envelope_attestation": {
+    "hash": "e70bf663e7e445f34f1de4a191ec8488defe21b675377703bbc0c3bfb50fc01a",
+    "id": "env.attestation",
+    "storage_ref": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/env_attestation.json"
+  },
+  "run_id": "r0-evidence-sufficiency-fail",
+  "schema_version": "1.0.0"
+}

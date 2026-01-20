@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "r0-evidence-sufficiency-fail",
+  "attestation_id": "env.attestation",
+  "generated_at": "1970-01-01T00:00:00Z",
+  "command_log_sha256": "ff44f4810497a598b21a6833d9aa957ff25ff5302616c8a1bb3d26fc5ee04917"
+}

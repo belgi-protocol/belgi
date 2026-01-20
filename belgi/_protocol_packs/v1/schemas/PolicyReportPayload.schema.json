@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "PolicyReportPayload.schema.json",
+  "title": "PolicyReportPayload",
+  "description": "Minimum viable policy report payload schema used by Gate R to prevent hollow policy evidence. Allows additional fields for policy-specific extensions.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "run_id", "generated_at", "summary", "checks"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "run_id": { "type": "string", "minLength": 1 },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["total_checks", "passed", "failed"],
+      "properties": {
+        "total_checks": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["check_id", "passed"],
+        "properties": {
+          "check_id": { "type": "string", "minLength": 1 },
+          "passed": { "type": "boolean" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}

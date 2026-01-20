@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Waiver.schema.json",
+  "title": "Waiver",
+  "description": "A Waiver is an explicit, human-authored artifact that temporarily permits a scoped exception to a specific rule/check for a specific run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "waiver_id",
+    "gate_id",
+    "rule_id",
+    "scope",
+    "justification",
+    "approver",
+    "created_at",
+    "expires_at",
+    "audit_trail_ref",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "waiver_id": { "type": "string", "minLength": 1 },
+    "gate_id": {
+      "type": "string",
+      "enum": ["Q", "R"],
+      "description": "Gate identifier where the waiver applies."
+    },
+    "rule_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact rule identifier (or reference) being waived."
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Scope description for the waiver. Use 'path:<prefix>' for path-based scopes with deterministic prefix matching."
+    },
+    "justification": { "type": "string", "minLength": 1 },
+    "approver": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Approver identity. For tier >= 1 (audit-grade), MUST use 'human:<identity>' format (e.g., 'human:jane.doe@example.com'). For tier-0, any non-LLM/agent string is accepted."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$",
+      "description": "RFC3339 datetime when the waiver was created."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$",
+      "description": "RFC3339 datetime when the waiver expires (expiry is required)."
+    },
+    "audit_trail_ref": { "$ref": "#/$defs/AuditTrailRef" },
+    "status": {
+      "type": "string",
+      "enum": ["active", "expired", "revoked"],
+      "description": "Current waiver status."
+    }
+  },
+  "$defs": {
+    "AuditTrailRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "storage_ref"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+          "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+        }
+      },
+      "description": "Reference to an audit trail record (id + storage reference)."
+    }
+  }
+}

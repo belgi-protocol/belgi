@@ -1,0 +1,76 @@
+{
+  "belgi_version": "0.2.0",
+  "compilation": {
+    "compiled_at": "2000-01-01T00:00:00Z",
+    "compiler_id": "C1",
+    "compiler_version": "1.0",
+    "source_hashes": [
+      "0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "constraints": {
+    "allowed_paths": [
+      "policy/fixtures/public/seal/"
+    ],
+    "forbidden_paths": []
+  },
+  "environment_envelope": {
+    "description": "fixture",
+    "expected_runner": "ci:windows-latest",
+    "id": "env-001",
+    "pinned_toolchain_refs": [
+      {
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "id": "tool",
+        "storage_ref": "policy/fixtures/public/seal/s_pass_tier2/toolchain.json"
+      }
+    ],
+    "seal_pubkey_ref": {
+      "hash": "ffc6c7162848b54987031468862a57f71e4673faa0f0f73ff0bad48c70182d0b",
+      "id": "seal-pub",
+      "storage_ref": "policy/fixtures/public/seal/s_pass_tier2_commit_sha_changed/seal_pubkey.hex"
+    }
+  },
+  "intent": {
+    "intent_id": "i",
+    "narrative": "n",
+    "scope": "s",
+    "success_criteria": "ok",
+    "title": "t"
+  },
+  "invariants": [
+    {
+      "description": "d",
+      "id": "inv",
+      "severity": "policy"
+    }
+  ],
+  "prompt_bundle_ref": {
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "p",
+    "storage_ref": "policy/fixtures/public/seal/s_pass_tier2/prompt.json"
+  },
+  "protocol_pack": {
+    "manifest_sha256": "1f203bdf5bb11019c525f3872c7cae1dacc972b80c7eaf4ddc414a5957a095ba",
+    "pack_id": "8f1b23c0e7844a47d135489d7559cf9c5ec83be2e8a5a06e8983bde10694dd7b",
+    "pack_name": "belgi-protocol-pack-v1",
+    "source": "builtin"
+  },
+  "run_id": "run-seal-fixture-001",
+  "schema_version": "1.0.0",
+  "tier": {
+    "tier_id": "tier-2",
+    "tier_name": "Tier 2",
+    "tolerances_ref": {
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "id": "t",
+      "storage_ref": "policy/fixtures/public/seal/s_pass_tier2/tolerances.json"
+    }
+  },
+  "upstream_state": {
+    "commit_sha": "0000000000000000000000000000000000000000",
+    "dirty_flag": false,
+    "repo_ref": "repo"
+  },
+  "waivers_applied": []
+}

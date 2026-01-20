@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "SealManifest.schema.json",
+  "title": "SealManifest",
+  "description": "Sealed, auditable manifest binding LockedSpec, gate verdicts, evidence references, and waivers to a final repository state. Cryptographic anchor (Tier 2–3) is provided by an Ed25519 detached signature over the content-hash binding fields; final_commit_sha is informational and is not part of the anchor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "belgi_version",
+    "run_id",
+    "locked_spec_ref",
+    "gate_q_verdict_ref",
+    "gate_r_verdict_ref",
+    "evidence_manifest_ref",
+    "waivers",
+    "final_commit_sha",
+    "sealed_at",
+    "seal_hash",
+    "signer"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "belgi_version": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "locked_spec_ref": { "$ref": "#/$defs/ObjectRef" },
+    "gate_q_verdict_ref": { "$ref": "#/$defs/ObjectRef" },
+    "gate_r_verdict_ref": { "$ref": "#/$defs/ObjectRef" },
+    "evidence_manifest_ref": { "$ref": "#/$defs/ObjectRef" },
+    "waivers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ObjectRef" },
+      "description": "References to waiver artifacts (may be empty)."
+    },
+    "final_commit_sha": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{40}([A-Fa-f0-9]{24})?$",
+      "description": "Final repository commit SHA for operator reference (SHA-1: 40 hex, or SHA-256: 64 hex). This value is informational and is not part of the cryptographic anchor."
+    },
+    "sealed_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "seal_hash": { "$ref": "#/$defs/Sha256Hex" },
+    "signature_alg": {
+      "type": "string",
+      "const": "ed25519",
+      "description": "Detached signature algorithm identifier for the cryptographic anchor."
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+      "description": "Base64-encoded Ed25519 signature over the canonical JSON of the anchor object (see operations/evidence-bundles.md)."
+    },
+    "signer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Signing identity (human/system identity string)."
+    },
+    "replay_instructions_ref": {
+      "$ref": "#/$defs/ObjectRef",
+      "description": "Optional reference to replay instructions/pointers for reproduction."
+    }
+  },
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 hex digest."
+    },
+    "ObjectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hash", "storage_ref"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hash": { "$ref": "#/$defs/Sha256Hex" },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+          "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+        }
+      },
+      "description": "Stable reference to an external object (id + hash + storage reference)."
+    }
+  }
+}

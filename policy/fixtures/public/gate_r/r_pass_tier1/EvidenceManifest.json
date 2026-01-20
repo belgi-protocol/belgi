@@ -1,0 +1,130 @@
+{
+  "artifacts": [
+    {
+      "hash": "ad0a39034a613555f3a63def2c82897cdb9296065cfdcad4ac9e5c170128c3fd",
+      "id": "repo.diff",
+      "kind": "diff",
+      "media_type": "text/x-diff",
+      "produced_by": "C2",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/repo.diff.patch"
+    },
+    {
+      "hash": "3ff286e7d3513d128bd1020da4398f466ddb3b018415920b4eec3ba136127a0e",
+      "id": "policy.invariant_eval",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/policy.invariant_eval.json"
+    },
+    {
+      "hash": "971c8f15da1cdae149dfb9a15cac9f5562e633450d6531dbaffea8f4f0874ac5",
+      "id": "policy.supplychain",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/policy.supplychain.json"
+    },
+    {
+      "hash": "7ef121c9cfb667b1a310d3d04c121f88ec37aa018e66658694f43a679dbb48ae",
+      "id": "policy.adversarial_scan",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/policy.adversarial_scan.json"
+    },
+    {
+      "hash": "e56d05ca7d7bc775eeef824c359c1418161aa13e0c6722678930643b7794d6d2",
+      "id": "policy.consistency_sweep",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/consistency_sweep.json"
+    },
+    {
+      "hash": "636ac002439769d803a85f3d031b0cf2c3fd2436c619a022e9c311e66147091c",
+      "id": "tests.report",
+      "kind": "test_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/tests.report.json"
+    },
+    {
+      "hash": "ff44f4810497a598b21a6833d9aa957ff25ff5302616c8a1bb3d26fc5ee04917",
+      "id": "command.log",
+      "kind": "command_log",
+      "media_type": "text/plain",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/command.log.txt"
+    },
+    {
+      "hash": "5c1273fe6d7f68c24dee5056ae850180f806fe5872fe464af1622f201bb4125f",
+      "id": "schema.validation",
+      "kind": "schema_validation",
+      "media_type": "application/json",
+      "produced_by": "R",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/schema.validation.json"
+    },
+    {
+      "hash": "5602cbf9a9286100dade382fd0ef3eb50663165dd571a3edd615794b6269cc8d",
+      "id": "env.attestation",
+      "kind": "env_attestation",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/env_attestation.json"
+    }
+  ],
+  "commands_executed": [
+    {
+      "argv": [
+        "belgi",
+        "invariant-eval"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "run-tests"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "verify-attestation"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "supplychain-scan"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "adversarial-scan"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    }
+  ],
+  "envelope_attestation": {
+    "hash": "5602cbf9a9286100dade382fd0ef3eb50663165dd571a3edd615794b6269cc8d",
+    "id": "env.attestation",
+    "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/env_attestation.json"
+  },
+  "run_id": "r-pass-tier1",
+  "schema_version": "1.0.0"
+}

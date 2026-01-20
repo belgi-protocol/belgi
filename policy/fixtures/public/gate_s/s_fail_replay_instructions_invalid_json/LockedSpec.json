@@ -1,0 +1,71 @@
+{
+  "belgi_version": "0.2.0",
+  "compilation": {
+    "compiled_at": "2000-01-01T00:00:00Z",
+    "compiler_id": "C1",
+    "compiler_version": "fixture",
+    "source_hashes": [
+      "0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "constraints": {
+    "allowed_paths": [
+      "policy/fixtures/public/gate_s/"
+    ],
+    "forbidden_paths": []
+  },
+  "environment_envelope": {
+    "description": "fixture",
+    "expected_runner": "ci:fixture",
+    "id": "env-fixture",
+    "pinned_toolchain_refs": [
+      {
+        "hash": "a20318ac0cb4f70c753deac88d2da168b85059aebf211d5bf6315adbc1c360d9",
+        "id": "toolchain",
+        "storage_ref": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/toolchain.json"
+      }
+    ]
+  },
+  "intent": {
+    "intent_id": "fixture",
+    "narrative": "fixture",
+    "scope": "fixture",
+    "success_criteria": "fixture",
+    "title": "fixture"
+  },
+  "invariants": [
+    {
+      "description": "fixture",
+      "id": "inv",
+      "severity": "policy"
+    }
+  ],
+  "prompt_bundle_ref": {
+    "hash": "be6c703119a676c99a125af587b43d6da35083391c1ac28157e8e3cfa4bbec86",
+    "id": "prompt",
+    "storage_ref": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/prompt.json"
+  },
+  "protocol_pack": {
+    "manifest_sha256": "1f203bdf5bb11019c525f3872c7cae1dacc972b80c7eaf4ddc414a5957a095ba",
+    "pack_id": "8f1b23c0e7844a47d135489d7559cf9c5ec83be2e8a5a06e8983bde10694dd7b",
+    "pack_name": "belgi-protocol-pack-v1",
+    "source": "builtin"
+  },
+  "run_id": "run-s_pass_tier1_unsigned",
+  "schema_version": "1.0.0",
+  "tier": {
+    "tier_id": "tier-1",
+    "tier_name": "Tier 1",
+    "tolerances_ref": {
+      "hash": "f58ea9e8addce9ded93683073fa85af67a4606bdf060909f0ac550793b42ca96",
+      "id": "tolerances",
+      "storage_ref": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/tolerances.json"
+    }
+  },
+  "upstream_state": {
+    "commit_sha": "0000000000000000000000000000000000000000",
+    "dirty_flag": false,
+    "repo_ref": "fixture"
+  },
+  "waivers_applied": []
+}

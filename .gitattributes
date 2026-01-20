@@ -1,0 +1,36 @@
+# BELGI: line-ending + bytes-hash determinism
+# Goals:
+# - Normalize normal text to LF for cross-platform diffs.
+# - Treat evidence artifacts as byte-addressed blobs: Git must NOT rewrite bytes.
+#   Use -text (NOT binary) so JSON/log evidence remains diffable.
+
+# Default: normalize text files to LF
+* text=auto eol=lf
+
+# --- Code / docs / configs (LF) ---
+*.py    text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.toml  text eol=lf
+*.ini   text eol=lf
+*.txt   text eol=lf
+*.ps1   text eol=lf
+*.sh    text eol=lf
+*.json  text eol=lf
+
+# --- Evidence bytes (NO normalization; keep bytes stable; still diffable) ---
+policy/fixtures/**          -text
+policy/closure_packs/**     -text
+policy/consistency_sweep.json -text
+examples/fintech-os-demo/** -text
+
+# --- True binaries (keep as binary) ---
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary

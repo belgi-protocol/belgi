@@ -1,0 +1,37 @@
+name: "BELGI Python Setup"
+description: "Setup Python environment for BELGI CI"
+
+inputs:
+  python-version:
+    description: "Python version"
+    required: true
+    default: "3.11"
+  editable:
+    description: "Install belgi in editable mode"
+    required: false
+    default: "false"
+  install-pytest:
+    description: "Install pytest"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: "pip"
+        cache-dependency-path: pyproject.toml
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        if [ "${{ inputs.editable }}" = "true" ]; then
+          python -m pip install -e .
+        fi
+        if [ "${{ inputs.install-pytest }}" = "true" ]; then
+          python -m pip install "pytest==8.3.4" "cryptography>=41"
+        fi

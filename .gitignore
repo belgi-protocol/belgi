@@ -1,0 +1,53 @@
+## BELGI (.gitignore)
+## Keep this file minimal + repo-relevant.
+
+# Secrets / local env
+.env
+.env.*
+
+# Python caches / tooling
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+# Local scratch
+scratch/
+temp/
+tmp/
+
+# Housekeeping is disposable (gitignored by policy)
+housekeeping/
+
+# Notes / private workbench
+launch/

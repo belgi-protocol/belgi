@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "LockedSpec.schema.json",
+  "title": "LockedSpec",
+  "description": "LockedSpec is the locked, immutable snapshot of a run’s controlling inputs (Intent, Tier Pack, Environment Envelope, and applicable waivers) used by deterministic gates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "belgi_version",
+    "run_id",
+    "intent",
+    "tier",
+    "environment_envelope",
+    "invariants",
+    "constraints",
+    "compilation",
+    "prompt_bundle_ref",
+    "upstream_state",
+    "protocol_pack"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "belgi_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "BELGI protocol spec version string used for this run."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run identifier shared across all run artifacts."
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent_id", "title", "narrative", "scope", "success_criteria"],
+      "properties": {
+        "intent_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "narrative": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "success_criteria": { "type": "string", "minLength": 1 }
+      },
+      "description": "Structured representation of the human-authored intent (P)."
+    },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier_id", "tier_name", "tolerances_ref"],
+      "properties": {
+        "tier_id": { "type": "string", "minLength": 1 },
+        "tier_name": { "type": "string", "minLength": 1 },
+        "tolerances_ref": { "$ref": "#/$defs/ObjectRef" }
+      },
+      "description": "Selected Tier Pack identifier and tolerances reference."
+    },
+    "environment_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "expected_runner", "pinned_toolchain_refs"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "expected_runner": { "type": "string", "minLength": 1 },
+        "pinned_toolchain_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ObjectRef" }
+        },
+        "attestation_pubkey_ref": {
+          "$ref": "#/$defs/ObjectRef",
+          "description": "Pinned Ed25519 public key reference used to verify EnvAttestationPayload signatures (when required by tier policy)."
+        },
+        "seal_pubkey_ref": {
+          "$ref": "#/$defs/ObjectRef",
+          "description": "Pinned Ed25519 public key reference used to verify SealManifest cryptographic anchor (tier-2/3 audit-grade)."
+        }
+      },
+      "description": "Declared, lockable Environment Envelope summary for deterministic verification."
+    },
+    "invariants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "severity"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "severity": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Severity token (category-level; taxonomy is defined elsewhere)."
+          }
+        }
+      },
+      "description": "Compiled invariants derived from intent and policy contracts."
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_paths", "forbidden_paths"],
+      "properties": {
+        "allowed_paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/RepoRelPathPrefix" }
+        },
+        "forbidden_paths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RepoRelPathPrefix" }
+        },
+        "max_touched_files": { "type": "integer", "minimum": 0 },
+        "max_loc_delta": { "type": "integer", "minimum": 0 },
+        "forbidden_primitives": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Category token only (no bypass-oriented heuristics)."
+          },
+          "description": "Forbidden primitive categories; category level only."
+        }
+      },
+      "description": "Blast Radius and policy constraints applicable to the run."
+    },
+    "compilation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["compiler_id", "compiler_version", "compiled_at", "source_hashes"],
+      "properties": {
+        "compiler_id": { "type": "string", "minLength": 1 },
+        "compiler_version": { "type": "string", "minLength": 1 },
+        "compiled_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "source_hashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Sha256Hex" }
+        }
+      },
+      "description": "Deterministic compilation metadata for producing this LockedSpec."
+    },
+    "prompt_bundle_ref": {
+      "$ref": "#/$defs/ObjectRef",
+      "description": "Reference to the prompt bundle used to drive proposing; reference only (do not embed prompts)."
+    },
+    "upstream_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo_ref", "commit_sha", "dirty_flag"],
+      "properties": {
+        "repo_ref": { "type": "string", "minLength": 1 },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{40}([A-Fa-f0-9]{24})?$",
+          "description": "Git commit SHA (SHA-1: 40 hex chars, or SHA-256: 64 hex chars)."
+        },
+        "dirty_flag": {
+          "type": "boolean",
+          "const": false,
+          "default": false,
+          "description": "Must be false for a locked run contract."
+        }
+      },
+      "description": "Pinned upstream repository state for reproducibility."
+    },
+    "protocol_pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_id", "manifest_sha256", "pack_name", "source"],
+      "properties": {
+        "pack_id": {
+          "$ref": "#/$defs/Sha256Hex",
+          "description": "Deterministic protocol pack identity hash (sha256 over pack contents, excluding manifest)."
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/Sha256Hex",
+          "description": "SHA-256 of ProtocolPackManifest.json bytes."
+        },
+        "pack_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable protocol pack name."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["builtin", "override", "dev-override"],
+          "description": "Protocol pack source: 'builtin' (shipped with belgi package), 'override' (explicit --protocol-pack), or 'dev-override' (dev-only override requiring BELGI_DEV=1)."
+        }
+      },
+      "description": "Protocol pack identity binding. Gates verify active protocol matches this declaration."
+    },
+    "waivers_applied": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Optional list of waiver document storage_ref strings (repo/bundle-relative paths) applied to this run. Gate Q Q6 resolves each entry to read and validate the waiver document."
+    },
+    "allowed_repo_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+        "description": "Repository reference in owner/repo format (e.g., 'anthropic/belgi')."
+      },
+      "description": "Optional allowlist of repository references permitted for prompt bundle sourcing. When present, prompt_bundle_ref must reference content from one of these repos. Prevents prompt injection from untrusted sources."
+    },
+    "publication_intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publish", "profile"],
+      "properties": {
+        "publish": {
+          "type": "boolean",
+          "description": "Explicit signal that this run intends to produce publishable (public-safe) artifacts."
+        },
+        "profile": {
+          "type": "string",
+          "enum": ["public", "internal"],
+          "description": "Docs compiler profile selection (C3)."
+        }
+      },
+      "description": "Publication intent and docs compiler profile declaration (explicit; no project_extension escape hatch)."
+    },
+    "doc_impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_paths"],
+      "properties": {
+        "required_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoRelPathPrefix"
+          },
+          "description": "Repo-relative paths that MUST be updated by the validated change set. Empty list [] explicitly indicates no doc updates required."
+        },
+        "note_on_empty": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Operator justification for doc impact decisions. REQUIRED when required_paths is empty []."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "required_paths": { "maxItems": 0 }
+            },
+            "required": ["required_paths"]
+          },
+          "then": {
+            "required": ["note_on_empty"],
+            "properties": {
+              "note_on_empty": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": ".*\\S.*"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Doc impact declaration for the run. Tier 2–3 require this object to be present; required_paths MAY be empty [] only with an explicit non-empty note_on_empty."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tier": {
+            "properties": {
+              "tier_id": { "enum": ["tier-2", "tier-3"] }
+            },
+            "required": ["tier_id"]
+          }
+        },
+        "required": ["tier"]
+      },
+      "then": {
+        "required": ["doc_impact", "publication_intent"],
+        "properties": {
+          "environment_envelope": {
+            "required": ["attestation_pubkey_ref", "seal_pubkey_ref"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 hex digest."
+    },
+    "RepoRelPathPrefix": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!\\./)(?!\\.\\.?(/|$))(?!.*(^|/)\\.(?:/|$))(?!.*(^|/)\\.\\.(/|$))(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+      "description": "Repo-relative directory/prefix using '/' separators. MUST NOT contain wildcards ('*', '?'), backslashes, '//' segments, '/./' segments, or '..' segments."
+    },
+    "ObjectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hash", "storage_ref"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hash": { "$ref": "#/$defs/Sha256Hex" },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+          "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+        }
+      },
+      "description": "Stable reference to an external object (id + hash + storage reference)."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "run-s_fail_tier1_bad_signature_len",
+  "gate_id": "R",
+  "verdict": "GO",
+  "failure_category": null,
+  "failures": [],
+  "evidence_manifest_ref": {
+    "id": "evidence-manifest-run-s_fail_tier1_bad_signature_len",
+    "hash": "980856505d9f98d8a693ff12430d8bf5cca12bf72c637c0e8aaba10a7d1b45df",
+    "storage_ref": "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/EvidenceManifest.json"
+  },
+  "evaluated_at": "1970-01-01T00:00:00Z",
+  "evaluator": "fixture"
+}

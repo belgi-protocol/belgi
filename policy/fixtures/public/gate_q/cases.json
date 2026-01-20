@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "case_id": "q_intent_001_missing_file",
+      "expected_exit_code": 2,
+      "expected_primary": "Q-INTENT-001",
+      "allow_missing_paths": ["intent_spec"],
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_q/q_intent_001_missing_file/EvidenceManifest.json",
+        "intent_spec": "policy/fixtures/public/gate_q/q_intent_001_missing_file/IntentSpec.core.md",
+        "locked_spec": "policy/fixtures/public/gate_q/q_intent_001_missing_file/LockedSpec.json"
+      }
+    },
+    {
+      "case_id": "q_intent_001_no_yaml_block",
+      "expected_exit_code": 2,
+      "expected_primary": "Q-INTENT-001",
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/EvidenceManifest.json",
+        "intent_spec": "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/IntentSpec.core.md",
+        "locked_spec": "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json"
+      }
+    },
+    {
+      "case_id": "q_intent_002_schema_invalid",
+      "expected_exit_code": 2,
+      "expected_primary": "Q-INTENT-002",
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_q/q_intent_002_schema_invalid/EvidenceManifest.json",
+        "intent_spec": "policy/fixtures/public/gate_q/q_intent_002_schema_invalid/IntentSpec.core.md",
+        "locked_spec": "policy/fixtures/public/gate_q/q_intent_002_schema_invalid/LockedSpec.json"
+      }
+    },
+    {
+      "case_id": "q_pass_tier0",
+      "expected_exit_code": 0,
+      "expected_primary": null,
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_q/q_pass_tier0/EvidenceManifest.json",
+        "intent_spec": "policy/fixtures/public/gate_q/q_pass_tier0/IntentSpec.core.md",
+        "locked_spec": "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
+      }
+    }
+  ]
+}

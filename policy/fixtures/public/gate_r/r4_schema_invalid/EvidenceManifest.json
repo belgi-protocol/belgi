@@ -1,0 +1,121 @@
+{
+  "artifacts": [
+    {
+      "hash": "34e132d18793bb81ffd5b72bd1c4ec376a28113aec8ff569663ddcc5bab592a4",
+      "kind": "diff",
+      "media_type": "text/x-diff",
+      "produced_by": "C2",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/repo.diff.patch"
+    },
+    {
+      "hash": "83b0ef0e6e4667076f8ddd8a4fc878d56112320a48d8dc1fd6a30fcf8e323b47",
+      "id": "policy.invariant_eval",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/policy.invariant_eval.json"
+    },
+    {
+      "hash": "6fd7c6102be100e4ca1650249bb292e62076cbac0e9800b6027ef198b5442df3",
+      "id": "policy.supplychain",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/policy.supplychain.json"
+    },
+    {
+      "hash": "c661a17f63105a97dc372a8efd015993402ed57525def11c3a1dfdb544ace545",
+      "id": "policy.adversarial_scan",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/policy.adversarial_scan.json"
+    },
+    {
+      "hash": "5f1529ad83fdab2efd9b3792afe3b06b97932cfe71bfd5127c1c4d249651468a",
+      "id": "tests.report",
+      "kind": "test_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/tests.report.json"
+    },
+    {
+      "hash": "ff44f4810497a598b21a6833d9aa957ff25ff5302616c8a1bb3d26fc5ee04917",
+      "id": "command.log",
+      "kind": "command_log",
+      "media_type": "text/plain",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/command.log.txt"
+    },
+    {
+      "hash": "65097600168b659f830acc7cc5f3cde74151699a46a016caffa4d1cc15f80285",
+      "id": "schema.validation",
+      "kind": "schema_validation",
+      "media_type": "application/json",
+      "produced_by": "R",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/schema.validation.json"
+    },
+    {
+      "hash": "46896fa10a843969c16da9cca175721d9f97c8d1ebaa0140fabe86cecb8e6bbc",
+      "id": "env.attestation",
+      "kind": "env_attestation",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/env_attestation.json"
+    }
+  ],
+  "commands_executed": [
+    {
+      "argv": [
+        "belgi",
+        "invariant-eval"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "run-tests"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "verify-attestation"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "supplychain-scan"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    },
+    {
+      "argv": [
+        "belgi",
+        "adversarial-scan"
+      ],
+      "exit_code": 0,
+      "finished_at": "1970-01-01T00:00:00Z",
+      "started_at": "1970-01-01T00:00:00Z"
+    }
+  ],
+  "envelope_attestation": {
+    "hash": "46896fa10a843969c16da9cca175721d9f97c8d1ebaa0140fabe86cecb8e6bbc",
+    "id": "env.attestation",
+    "storage_ref": "policy/fixtures/public/gate_r/r4_schema_invalid/env_attestation.json"
+  },
+  "run_id": "r4-schema-invalid",
+  "schema_version": "1.0.0"
+}

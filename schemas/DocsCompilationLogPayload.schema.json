@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "DocsCompilationLogPayload.schema.json",
+  "title": "DocsCompilationLogPayload",
+  "description": "Payload schema for the docs_compilation_log evidence artifact produced by C3 (Docs Compiler). Public-safe by design: does not embed internal/secret prompt bytes; only metadata + hashes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at",
+    "profile",
+    "compiler_id",
+    "compiler_version",
+    "prompt_blocks"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this payload (semver-like)."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Run identifier; must bind to LockedSpec.run_id."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$",
+      "description": "RFC3339 timestamp recorded as evidence (deterministic runs should supply a fixed value)."
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["public", "internal"],
+      "description": "Docs compiler profile."
+    },
+    "compiler_id": { "type": "string", "minLength": 1 },
+    "compiler_version": { "type": "string", "minLength": 1 },
+    "prompt_blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["block_id", "sensitivity", "content_sha256", "published_form"],
+        "properties": {
+          "block_id": { "type": "string", "minLength": 1 },
+          "sensitivity": { "type": "string", "enum": ["public", "internal", "secret"] },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[A-Fa-f0-9]{64}$",
+            "description": "SHA-256 hash of the block content bytes (content bytes are not embedded here)."
+          },
+          "published_form": {
+            "type": "string",
+            "enum": ["hash_only", "bytes"],
+            "description": "How block content is represented in publishable artifacts: hash_only or bytes."
+          }
+        }
+      },
+      "description": "Public-safe disclosure surface for prompt blocks: IDs, sensitivity labels, and hashes."
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "source_sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "source_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+        }
+      },
+      "description": "Optional input file list (source bytes hashes), for determinism/audit."
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundle_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "docs_bundle_manifest_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "bundle_root_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "docs_markdown": { "$ref": "#/$defs/PathHash" },
+        "bundle_manifest": { "$ref": "#/$defs/PathHash" },
+        "bundle_toc": { "$ref": "#/$defs/PathHash" },
+        "bundle_root_sha_file": { "$ref": "#/$defs/PathHash" },
+        "bundle_dir": { "type": "string", "minLength": 1 }
+      },
+      "description": "Optional output bundle hashes."
+    }
+  }
+  ,
+  "$defs": {
+    "PathHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+      }
+    }
+  }
+}

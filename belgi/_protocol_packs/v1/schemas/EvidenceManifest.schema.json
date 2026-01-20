@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "EvidenceManifest.schema.json",
+  "title": "EvidenceManifest",
+  "description": "Index of evidence artifacts and execution records used to justify deterministic gate decisions within a declared Environment Envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "artifacts",
+    "commands_executed",
+    "envelope_attestation"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Schema version for this document (semver-like)."
+    },
+    "run_id": { "type": "string", "minLength": 1 },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "id", "hash", "media_type", "storage_ref", "produced_by"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "diff",
+              "test_report",
+              "command_log",
+              "env_attestation",
+              "policy_report",
+              "schema_validation",
+              "docs_compilation_log",
+              "hotl_approval",
+              "seal_manifest",
+              "genesis_seal"
+            ],
+            "description": "Evidence artifact kind (declared categories only)."
+          },
+          "id": { "type": "string", "minLength": 1 },
+          "hash": { "$ref": "#/$defs/Sha256Hex" },
+          "media_type": { "type": "string", "minLength": 1 },
+          "storage_ref": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+            "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+          },
+          "produced_by": {
+            "type": "string",
+            "enum": ["C1", "C2", "R", "C3", "S"],
+            "description": "Canonical pipeline step that produced the artifact."
+          }
+        }
+      },
+      "description": "Declared evidence artifacts for the run."
+    },
+    "commands_executed": {
+      "description": "Commands executed to produce evidence: either a list of strings or structured command records.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/CommandRecord" }
+        }
+      ]
+    },
+    "envelope_attestation": {
+      "type": ["object", "null"],
+      "description": "Reference to an envelope attestation object. Required at Tier >= 1; null is permitted only when Tier == 0 (cannot be enforced here).",
+      "oneOf": [
+        { "$ref": "#/$defs/ObjectRef" },
+        { "type": "null" }
+      ]
+    },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 hex digest."
+    },
+    "ObjectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "hash", "storage_ref"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hash": { "$ref": "#/$defs/Sha256Hex" },
+        "storage_ref": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!\\./)(?!.*\\.\\.)(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*://)(?!.*:)(?!.*//).+$",
+          "description": "Local, repo/bundle-relative POSIX path only. MUST NOT start with '/'. MUST NOT contain '..', '*', '?', '\\\\', '://', ':', '//', or './'."
+        }
+      },
+      "description": "Stable reference to an external object (id + hash + storage reference)."
+    },
+    "CommandRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["argv", "exit_code", "started_at", "finished_at"],
+      "properties": {
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Executable and arguments (argv-style)."
+        },
+        "exit_code": { "type": "integer" },
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "finished_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+        }
+      }
+    }
+  }
+}

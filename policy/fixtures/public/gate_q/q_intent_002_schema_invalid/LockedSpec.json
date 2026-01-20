@@ -1,0 +1,71 @@
+{
+  "belgi_version": "fixture",
+  "compilation": {
+    "compiled_at": "1970-01-01T00:00:00Z",
+    "compiler_id": "fixture",
+    "compiler_version": "fixture",
+    "source_hashes": [
+      "0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  },
+  "constraints": {
+    "allowed_paths": [
+      "policy/",
+      "tools/"
+    ],
+    "forbidden_paths": []
+  },
+  "environment_envelope": {
+    "description": "fixture",
+    "expected_runner": "fixture",
+    "id": "fixture-envelope",
+    "pinned_toolchain_refs": [
+      {
+        "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "id": "fixture-toolchain",
+        "storage_ref": "toolchain.txt"
+      }
+    ]
+  },
+  "intent": {
+    "intent_id": "intent-q-intent-002",
+    "narrative": "Fixture goal",
+    "scope": "allowed_dirs: [policy/, tools/]; forbidden_dirs: []; max_touched_files: null; max_loc_delta: null",
+    "success_criteria": "- Criteria 1",
+    "title": "Fixture intent"
+  },
+  "invariants": [
+    {
+      "description": "fixture invariant",
+      "id": "INV-001",
+      "severity": "fixture"
+    }
+  ],
+  "prompt_bundle_ref": {
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "fixture-prompt-bundle",
+    "storage_ref": "prompt_bundle.txt"
+  },
+  "protocol_pack": {
+    "manifest_sha256": "1f203bdf5bb11019c525f3872c7cae1dacc972b80c7eaf4ddc414a5957a095ba",
+    "pack_id": "8f1b23c0e7844a47d135489d7559cf9c5ec83be2e8a5a06e8983bde10694dd7b",
+    "pack_name": "belgi-protocol-pack-v1",
+    "source": "builtin"
+  },
+  "run_id": "q-intent-002",
+  "schema_version": "1.0.0",
+  "tier": {
+    "tier_id": "tier-0",
+    "tier_name": "Tier 0",
+    "tolerances_ref": {
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "id": "fixture-tolerances",
+      "storage_ref": "tolerances.json"
+    }
+  },
+  "upstream_state": {
+    "commit_sha": "0000000000000000000000000000000000000000",
+    "dirty_flag": false,
+    "repo_ref": "fixture"
+  }
+}

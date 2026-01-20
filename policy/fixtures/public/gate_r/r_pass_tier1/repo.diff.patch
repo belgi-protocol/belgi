@@ -1,0 +1,6 @@
+diff --git a/policy/fixtures/gate_r/r_pass_tier1/changed.txt b/policy/fixtures/gate_r/r_pass_tier1/changed.txt
+--- a/policy/fixtures/gate_r/r_pass_tier1/changed.txt
++++ b/policy/fixtures/gate_r/r_pass_tier1/changed.txt
+@@ -1 +1 @@
+-old
++new

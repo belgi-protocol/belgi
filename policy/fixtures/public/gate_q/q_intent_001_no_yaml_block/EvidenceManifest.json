@@ -1,0 +1,34 @@
+{
+  "artifacts": [
+    {
+      "hash": "79a4cd0c011f5d55e92ce24ea4ed473159cde2ee3c10aa228aa22f921847c001",
+      "id": "command_log.fixture",
+      "kind": "command_log",
+      "media_type": "application/octet-stream",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json"
+    },
+    {
+      "hash": "79a4cd0c011f5d55e92ce24ea4ed473159cde2ee3c10aa228aa22f921847c001",
+      "id": "policy_report.fixture",
+      "kind": "policy_report",
+      "media_type": "application/octet-stream",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json"
+    },
+    {
+      "hash": "79a4cd0c011f5d55e92ce24ea4ed473159cde2ee3c10aa228aa22f921847c001",
+      "id": "schema_validation.fixture",
+      "kind": "schema_validation",
+      "media_type": "application/octet-stream",
+      "produced_by": "C1",
+      "storage_ref": "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json"
+    }
+  ],
+  "commands_executed": [
+    "belgi c1-compile"
+  ],
+  "envelope_attestation": null,
+  "run_id": "q-intent-001-no-yaml",
+  "schema_version": "1.0.0"
+}

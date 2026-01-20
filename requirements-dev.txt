@@ -1,0 +1,6 @@
+# Development / test tooling for BELGI.
+# Install runtime deps first (currently none), then these.
+
+pytest
+ruff
+build

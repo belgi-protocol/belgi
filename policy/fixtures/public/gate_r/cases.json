@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "case_id": "r0_evidence_sufficiency_fail",
+      "expected_exit_code": 2,
+      "expected_primary": "R0.evidence_sufficiency",
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/EvidenceManifest.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/GateVerdict.Q.json",
+        "locked_spec": "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/LockedSpec.json"
+      }
+    },
+    {
+      "case_id": "r0_tier_parse_fail",
+      "expected_exit_code": 2,
+      "expected_primary": "R0.tier_parse",
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_r/r0_tier_parse_fail/EvidenceManifest.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r0_tier_parse_fail/GateVerdict.Q.json",
+        "locked_spec": "policy/fixtures/public/gate_r/r0_tier_parse_fail/LockedSpec.json"
+      }
+    },
+    {
+      "case_id": "r4_schema_invalid",
+      "expected_exit_code": 2,
+      "expected_primary": "R4",
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_r/r4_schema_invalid/EvidenceManifest.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r4_schema_invalid/GateVerdict.Q.json",
+        "locked_spec": "policy/fixtures/public/gate_r/r4_schema_invalid/LockedSpec.json"
+      }
+    },
+    {
+      "case_id": "r_pass_tier1",
+      "expected_exit_code": 0,
+      "expected_primary": null,
+      "paths": {
+        "evidence_manifest": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
+        "locked_spec": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json"
+      }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "hash": "d5a1e0e1cb3cd5f1a73b8ae3a29397f818c2c7ff52e5dc086ef47419bca08f69",
+      "id": "policy.consistency_sweep",
+      "kind": "policy_report",
+      "media_type": "application/json",
+      "produced_by": "C1",
+      "storage_ref": "policy/consistency_sweep.json"
+    }
+  ],
+  "commands_executed": [],
+  "envelope_attestation": null,
+  "notes": "fixture",
+  "run_id": "run-seal-fixture-001",
+  "schema_version": "1.0.0",
+  "test_summary": {
+    "duration_seconds": 0,
+    "failed": 0,
+    "passed": 0,
+    "skipped": 0,
+    "total": 0
+  }
+}

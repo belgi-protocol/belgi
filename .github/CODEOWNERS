@@ -1,0 +1,40 @@
+# BELGI Core - Critical Path Protection
+# These files define the "Law". Agents MUST NOT edit them silently.
+
+# 1. The Constitution (Gates & Schemas)
+gates/GATE_Q.md                 @sovsparrow
+gates/GATE_R.md                 @sovsparrow
+gates/failure-taxonomy.md       @sovsparrow
+schemas/*.json                  @sovsparrow
+
+# Tier pack policy knobs
+tiers/tier-packs.md             @sovsparrow
+
+# 2. The Verification Kernel (The Police)
+tools/gate_r_verify.py          @sovsparrow
+tools/checks/*.py               @sovsparrow
+tools/seal_bundle.py            @sovsparrow
+tools/gate_q_verify.py          @sovsparrow
+tools/gate_r_verify.py          @sovsparrow
+
+# CI is part of the enforcement surface
+.github/workflows/ci.yml        @sovsparrow
+
+# 3. The Test Oracle (The "Bar")
+# CRITICAL: This prevents the "Lazy Agent" cheat you just saw.
+policy/fixtures/repros/cases.json @sovsparrow
+policy/fixtures/repros/** @sovsparrow
+tools/enforce_repros.py           @sovsparrow
+tools/guard_repros.py             @sovsparrow
+
+# 4. The Inventory (Drift Guard)
+tools/sweep.py                  @sovsparrow
+
+# Hash maintenance tools (these can rewrite fixtures)
+tools/rehash.py                   @sovsparrow
+
+# Bonus
+.github/CODEOWNERS              @sovsparrow
+schemas/SealManifest.schema.json @sovsparrow
+policy/fixtures/gate_r/cases.json @sovsparrow
+policy/fixtures/gate_q/cases.json @sovsparrow

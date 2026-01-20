@@ -1,0 +1,7 @@
+# Internal (private vault) fixture set
+#
+# Public posture: only this .gitignore and HALLOFFAME.md are tracked.
+# Everything else under this folder MUST NOT be published.
+*
+!.gitignore
+!HALLOFFAME.md

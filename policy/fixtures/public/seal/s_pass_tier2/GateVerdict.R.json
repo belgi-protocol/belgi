@@ -1,0 +1,15 @@
+{
+  "evaluated_at": "2000-01-01T00:00:00Z",
+  "evaluator": "system:gate-r",
+  "evidence_manifest_ref": {
+    "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "em",
+    "storage_ref": "x"
+  },
+  "failure_category": null,
+  "failures": [],
+  "gate_id": "R",
+  "run_id": "run-seal-fixture-001",
+  "schema_version": "1.0.0",
+  "verdict": "GO"
+}
