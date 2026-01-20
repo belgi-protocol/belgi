@@ -7,7 +7,7 @@
 
 <div align="center">
   <a href="https://github.com/belgi-protocol/belgi/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/ci.yml?branch=main&label=Gate%20R%20Verifier&style=flat-square&logo=github" alt="CI" />
+    <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/ci.yml?branch=main&style=flat-square&logo=github" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square&logo=apache" alt="License" />
