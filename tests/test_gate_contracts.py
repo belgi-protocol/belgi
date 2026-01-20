@@ -882,6 +882,137 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     assert gv.get("failure_category") == "FR-INVARIANT-FAILED"
 
 
+def test_gate_r_fixture_allows_opaque_revision_without_git(tmp_path: Path) -> None:
+    """Gate R fixtures must be runnable without git history (.git absent).
+
+    In fixture context, a 40-hex evaluated revision may be treated as an opaque id,
+    and git-dependent checks must use fallbacks instead of raising tool errors.
+    """
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    fixture_dir = "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail"
+    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+
+    # Fixture EvidenceManifests may reference shared policy artifacts.
+    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
+
+    locked_rel = f"{fixture_dir}/LockedSpec.json"
+    evidence_rel = f"{fixture_dir}/EvidenceManifest.json"
+    gate_q_rel = f"{fixture_dir}/GateVerdict.Q.json"
+
+    locked_doc = _read_json(tmp_path / locked_rel)
+    commit_sha = str(locked_doc.get("upstream_state", {}).get("commit_sha", ""))
+    assert len(commit_sha) == 40
+
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            locked_rel,
+            "--gate-q-verdict",
+            gate_q_rel,
+            "--evidence-manifest",
+            evidence_rel,
+            "--r-snapshot-manifest-out",
+            "out/EvidenceManifest.r_snapshot.json",
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            "out/verify_report.json",
+            "--gate-verdict-out",
+            "out/GateVerdict.json",
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+    gv = _read_json(tmp_path / "out" / "GateVerdict.json")
+    failures = gv.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R0.evidence_sufficiency"
+
+
+def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path) -> None:
+    """Outside fixture context, Gate R must remain strict about git commit resolution."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    (tmp_path / "inputs").mkdir(parents=True, exist_ok=True)
+
+    (tmp_path / "inputs" / "LockedSpec.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "run_id": "test-non-fixture",
+                "tier": {"tier_id": "tier-1"},
+                "upstream_state": {"commit_sha": "a" * 40, "dirty_flag": False, "repo_ref": "fixture"},
+                "protocol_pack": {
+                    "pack_id": "0" * 64,
+                    "manifest_sha256": "0" * 64,
+                    "pack_name": "fixture",
+                    "source": "builtin",
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    (tmp_path / "inputs" / "EvidenceManifest.json").write_text(
+        json.dumps({"schema_version": "1.0.0", "run_id": "test-non-fixture", "artifacts": []}, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
+        json.dumps({"schema_version": "1.0.0", "run_id": "test-non-fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            "inputs/LockedSpec.json",
+            "--gate-q-verdict",
+            "inputs/GateVerdict.Q.json",
+            "--evidence-manifest",
+            "inputs/EvidenceManifest.json",
+            "--evaluated-revision",
+            "b" * 40,
+            "--out",
+            "out/verify_report.json",
+            "--gate-verdict-out",
+            "out/GateVerdict.json",
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 3, (cp.returncode, cp.stdout, cp.stderr)
+    assert "rev-parse" in (cp.stderr or "")
+
+
 # =============================================================================
 # Protocol identity mismatch tests (use tmp_path for isolation)
 # =============================================================================

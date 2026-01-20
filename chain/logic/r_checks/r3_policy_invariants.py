@@ -254,48 +254,78 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         ]
 
     # Canonical semantics: compute changed paths from repo diff (upstream base -> evaluated revision).
-    try:
-        changed_paths = git_changed_paths(ctx.repo_root, ctx.upstream_commit_sha, ctx.evaluated_revision)
-    except Exception as e:
-        if is_fixture_context(ctx.repo_root, ctx.locked_spec_path, ctx.evidence_manifest_path):
-            try:
-                if diff_bytes.strip() == b"":
-                    changed_paths = []
-                else:
-                    changed_paths = parse_unified_diff_paths(diff_bytes)
-                    if not changed_paths:
-                        return [
-                            CheckResult(
-                                check_id="R3",
-                                status="FAIL",
-                                category="FR-SCHEMA-ARTIFACT-INVALID",
-                                message="diff artifact is non-empty but contains no parseable file paths (malformed unified diff)",
-                                pointers=[storage_ref],
-                                remediation_next_instruction="Do provide a valid unified diff in the diff artifact (or make it empty for no changes), then re-run R.",
-                            )
-                        ]
-            except Exception as e2:
-                return [
-                    CheckResult(
-                        check_id="R3",
-                        status="FAIL",
-                        category="FR-POLICY-FORBIDDEN-PATH",
-                        message=f"Cannot compute changed paths from diff artifact bytes (fixture fallback): {e2}",
-                        pointers=[storage_ref],
-                        remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
-                    )
-                ]
-        else:
+    fixture_ctx = bool(ctx.fixture_context)
+    if fixture_ctx and not ctx.evaluated_revision_is_commit:
+        try:
+            if diff_bytes.strip() == b"":
+                changed_paths = []
+            else:
+                changed_paths = parse_unified_diff_paths(diff_bytes)
+                if not changed_paths:
+                    return [
+                        CheckResult(
+                            check_id="R3",
+                            status="FAIL",
+                            category="FR-SCHEMA-ARTIFACT-INVALID",
+                            message="diff artifact is non-empty but contains no parseable file paths (malformed unified diff)",
+                            pointers=[storage_ref],
+                            remediation_next_instruction="Do provide a valid unified diff in the diff artifact (or make it empty for no changes), then re-run R.",
+                        )
+                    ]
+        except Exception as e2:
             return [
                 CheckResult(
                     check_id="R3",
                     status="FAIL",
                     category="FR-POLICY-FORBIDDEN-PATH",
-                    message=f"Cannot compute changed paths from git diff {ctx.upstream_commit_sha}..{ctx.evaluated_revision}: {e}",
+                    message=f"Cannot compute changed paths from diff artifact bytes (fixture fallback): {e2}",
                     pointers=[storage_ref],
                     remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
                 )
             ]
+    else:
+        try:
+            changed_paths = git_changed_paths(ctx.repo_root, ctx.upstream_commit_sha, ctx.evaluated_revision)
+        except Exception as e:
+            if fixture_ctx:
+                try:
+                    if diff_bytes.strip() == b"":
+                        changed_paths = []
+                    else:
+                        changed_paths = parse_unified_diff_paths(diff_bytes)
+                        if not changed_paths:
+                            return [
+                                CheckResult(
+                                    check_id="R3",
+                                    status="FAIL",
+                                    category="FR-SCHEMA-ARTIFACT-INVALID",
+                                    message="diff artifact is non-empty but contains no parseable file paths (malformed unified diff)",
+                                    pointers=[storage_ref],
+                                    remediation_next_instruction="Do provide a valid unified diff in the diff artifact (or make it empty for no changes), then re-run R.",
+                                )
+                            ]
+                except Exception as e2:
+                    return [
+                        CheckResult(
+                            check_id="R3",
+                            status="FAIL",
+                            category="FR-POLICY-FORBIDDEN-PATH",
+                            message=f"Cannot compute changed paths from diff artifact bytes (fixture fallback): {e2}",
+                            pointers=[storage_ref],
+                            remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                        )
+                    ]
+            else:
+                return [
+                    CheckResult(
+                        check_id="R3",
+                        status="FAIL",
+                        category="FR-POLICY-FORBIDDEN-PATH",
+                        message=f"Cannot compute changed paths from git diff {ctx.upstream_commit_sha}..{ctx.evaluated_revision}: {e}",
+                        pointers=[storage_ref],
+                        remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                    )
+                ]
 
     for p in changed_paths:
         try:

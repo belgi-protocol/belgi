@@ -19,7 +19,10 @@ class RCheckContext:
     gate_verdict: dict[str, Any] | None
     tier_params: dict[str, Any]
 
+    fixture_context: bool
+
     evaluated_revision: str
+    evaluated_revision_is_commit: bool
     upstream_commit_sha: str
 
     policy_payload_schema: dict[str, Any]

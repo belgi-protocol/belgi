@@ -8,7 +8,7 @@ from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, find_artifacts_by_kind
 
 from .context import RCheckContext
-from .git_ops import git_changed_paths
+from .git_ops import git_changed_paths, parse_unified_diff_paths
 
 
 def _get_doc_impact_required(ctx: RCheckContext) -> bool | None:
@@ -182,19 +182,71 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         ]
 
     # Canonical semantics: match required_paths against repo diff (upstream base -> evaluated revision).
-    try:
-        changed_files = set(git_changed_paths(ctx.repo_root, ctx.upstream_commit_sha, ctx.evaluated_revision))
-    except Exception as e:
-        return [
-            CheckResult(
-                check_id="R-DOC-001",
-                status="FAIL",
-                category="FR-INVARIANT-FAILED",
-                message=f"Cannot compute changed files from git diff {ctx.upstream_commit_sha}..{ctx.evaluated_revision}: {e}",
-                pointers=[storage_ref],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
-            )
-        ]
+    # Fixture mode may run without git history; in that case use deterministic diff-bytes parsing.
+    if ctx.fixture_context and not ctx.evaluated_revision_is_commit:
+        if diff_bytes.strip() == b"":
+            changed_files = set()
+        else:
+            paths = parse_unified_diff_paths(diff_bytes)
+            if not paths:
+                return [
+                    CheckResult(
+                        check_id="R-DOC-001",
+                        status="FAIL",
+                        category="FR-SCHEMA-ARTIFACT-INVALID",
+                        message="diff artifact is non-empty but contains no parseable file paths (malformed unified diff)",
+                        pointers=[storage_ref],
+                        remediation_next_instruction="Do provide a valid unified diff in the diff artifact (or make it empty for no changes), then re-run R.",
+                    )
+                ]
+            changed_files = set(paths)
+    else:
+        try:
+            changed_files = set(git_changed_paths(ctx.repo_root, ctx.upstream_commit_sha, ctx.evaluated_revision))
+        except Exception as e:
+            if ctx.fixture_context:
+                try:
+                    if diff_bytes.strip() == b"":
+                        changed_files = set()
+                    else:
+                        changed_files = set(parse_unified_diff_paths(diff_bytes))
+                        paths = parse_unified_diff_paths(diff_bytes)
+                        if not paths:
+                            return [
+                                CheckResult(
+                                    check_id="R-DOC-001",
+                                    status="FAIL",
+                                    category="FR-SCHEMA-ARTIFACT-INVALID",
+                                    message="diff artifact is non-empty but contains no parseable file paths (malformed unified diff)",
+                                    pointers=[storage_ref],
+                                    remediation_next_instruction="Do provide a valid unified diff in the diff artifact (or make it empty for no changes), then re-run R.",
+                                )
+                            ]
+                        changed_files = set(paths)
+                except Exception as e2:
+                    return [
+                        CheckResult(
+                            check_id="R-DOC-001",
+                            status="FAIL",
+                            category="FR-INVARIANT-FAILED",
+                            message=f"Cannot compute changed files from diff artifact bytes (fixture fallback): {e2}",
+                            pointers=[storage_ref],
+                            remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                        )
+                    ]
+            else:
+                return [
+                    CheckResult(
+                        check_id="R-DOC-001",
+                        status="FAIL",
+                        category="FR-INVARIANT-FAILED",
+                        message=(
+                            f"Cannot compute changed files from git diff {ctx.upstream_commit_sha}..{ctx.evaluated_revision}: {e}"
+                        ),
+                        pointers=[storage_ref],
+                        remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                    )
+                ]
 
     req = [x for x in required_paths if isinstance(x, str) and x]
     matched = [p for p in req if p in changed_files]
