@@ -183,7 +183,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
 
     # Canonical semantics: match required_paths against repo diff (upstream base -> evaluated revision).
     # Fixture mode may run without git history; in that case use deterministic diff-bytes parsing.
-    if ctx.fixture_context and not ctx.evaluated_revision_is_commit:
+    fixture_ctx = bool(getattr(ctx, "fixture_context", False))
+    evaluated_is_commit = bool(getattr(ctx, "evaluated_revision_is_commit", True))
+
+    if fixture_ctx and not evaluated_is_commit:
         if diff_bytes.strip() == b"":
             changed_files = set()
         else:
@@ -204,12 +207,11 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         try:
             changed_files = set(git_changed_paths(ctx.repo_root, ctx.upstream_commit_sha, ctx.evaluated_revision))
         except Exception as e:
-            if ctx.fixture_context:
+            if fixture_ctx:
                 try:
                     if diff_bytes.strip() == b"":
                         changed_files = set()
                     else:
-                        changed_files = set(parse_unified_diff_paths(diff_bytes))
                         paths = parse_unified_diff_paths(diff_bytes)
                         if not paths:
                             return [

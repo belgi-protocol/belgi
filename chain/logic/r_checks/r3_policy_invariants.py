@@ -254,8 +254,9 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         ]
 
     # Canonical semantics: compute changed paths from repo diff (upstream base -> evaluated revision).
-    fixture_ctx = bool(ctx.fixture_context)
-    if fixture_ctx and not ctx.evaluated_revision_is_commit:
+    fixture_ctx = bool(getattr(ctx, "fixture_context", False))
+    evaluated_is_commit = bool(getattr(ctx, "evaluated_revision_is_commit", True))
+    if fixture_ctx and not evaluated_is_commit:
         try:
             if diff_bytes.strip() == b"":
                 changed_paths = []

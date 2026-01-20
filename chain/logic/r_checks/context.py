@@ -19,10 +19,7 @@ class RCheckContext:
     gate_verdict: dict[str, Any] | None
     tier_params: dict[str, Any]
 
-    fixture_context: bool
-
     evaluated_revision: str
-    evaluated_revision_is_commit: bool
     upstream_commit_sha: str
 
     policy_payload_schema: dict[str, Any]
@@ -30,3 +27,7 @@ class RCheckContext:
 
     required_policy_report_ids: list[str]
     required_test_report_id: str
+
+    # Optional fields added for fixture safety; defaults preserve legacy positional constructors.
+    fixture_context: bool = False
+    evaluated_revision_is_commit: bool = True
