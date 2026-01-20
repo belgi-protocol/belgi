@@ -6,9 +6,15 @@
 </p>
 
 <div align="center">
+<<<<<<< HEAD
+  <a href="https://github.com/belgi-protocol/belgi/actions/workflows/ci.yml">
+  <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/ci.yml?branch=main&label=Gate%20R%20Verifier&style=flat-square&logo=github" alt="CI" />
+</a>
+=======
   <a href="https://github.com/belgi-protocol/belgi/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/ci.yml?branch=main&label=Gate%20R%20Verifier&style=flat-square&logo=github" alt="CI" />
+    <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/ci.yml?branch=main&style=flat-square&logo=github" />
   </a>
+>>>>>>> 92cd35d4ea8cbb3a3b287cb7d542fd35f5693451
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square&logo=apache" alt="License" />
   </a>
