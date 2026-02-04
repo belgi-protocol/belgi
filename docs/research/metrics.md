@@ -191,7 +191,7 @@ This metric quantifies how outcome distributions shift between two groups (e.g.,
   - Higher values indicate the two groups fail (or succeed) in systematically different ways.
   - Lower values indicates more similar outcome distributions.
 - **Failure modes:**
-  - If either group has fewer than N=20 trials → report JSD with a low-sample warning.
+  - If either group has fewer than N=20 trials → JSD MUST be labeled exploratory and MUST NOT be used as a primary conclusion.
   - If outcome tokens are missing for many trials → compute on remaining defined trials and report censoring rate.
 
 ## 4. B3) Entropy metrics (explicit random variables)
@@ -199,6 +199,9 @@ Entropy metrics are used to quantify variability of outcomes, diff structure, an
 
 ### 4.1 General entropy computation
 - Use Shannon entropy: $H(X) = -\sum_x p(x) \log_2 p(x)$.
+- Minimum-N rule:
+  - If N < 20, entropy estimates MUST be labeled exploratory (high variance).
+  - Primary conclusions SHOULD rely on N ≥ 20 per configuration group.
 - When estimating $p(x)$ empirically from N samples, use:
   - `p_hat(x) = count(x) / N`.
   - If zero-probability bins must be represented (e.g., for divergence), apply a documented smoothing rule (e.g., add-ε) and report ε.
