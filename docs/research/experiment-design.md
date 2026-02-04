@@ -24,7 +24,24 @@ Any correctness or security-relevant signals are treated only as evidence obliga
 
 ## 2. C1) Baselines
 Each baseline is evaluated on the same set of experimental units as the treatment.
+### 2.0 Common: Evaluation Check Suite (objective completion criteria)
+To avoid subjective "done" judgments and make baselines comparable, experiments MUST define a fixed
+**Evaluation Check Suite** before any trials are run.
 
+Definition:
+- A deterministic check set used ONLY to judge trial completion and compute outcome metrics.
+- The Evaluation Check Suite MUST be the same across Baseline 0, Baseline 1, and Treatment for a given
+  configuration group (repo + harness + tooling version).
+
+Minimum contents (recommended):
+- The fixed CI-only check set used in Baseline 1 (tests/lint/etc), plus
+- Any unit-specific acceptance checks explicitly declared in the unit spec (human-authored; no LLM inference).
+
+Rules:
+- Baselines MAY run arbitrary ad hoc commands during iteration, but completion is determined ONLY by the
+  Evaluation Check Suite passing.
+- The harness MUST record pass/fail + logs for the Evaluation Check Suite per attempt (or at minimum, at
+  final attempt if per-attempt is infeasible).
 ### 2.1 Baseline 0: “LLM dev + ad hoc CI”
 Definition:
 - No LockedSpec locking step.
@@ -34,7 +51,8 @@ Definition:
 
 Operational procedure:
 - Use the same LLM and temperature regime as the treatment.
-- Allow the developer/agent to iterate using ad hoc CI/test commands until it appears “done” or until stopping rules apply.
+- Allow the developer/agent to iterate using ad hoc CI/test commands.
+- Trial completion is achieved ONLY when the Evaluation Check Suite passes (Section 2.0), or when stopping rules apply.
 
 Artifacts to retain (baseline instrumentation, not BELGI artifacts):
 - starting commit SHA and final commit SHA
@@ -53,7 +71,8 @@ Definition:
 Operational procedure:
 - Same as Baseline 0 except:
   - CI job definitions are fixed before experiments begin,
-  - only those fixed CI checks are run and used as acceptance signals.
+  - After each attempt, run the Evaluation Check Suite (Section 2.0), which includes the fixed CI-only check set as the standard component.
+- Trial completion is achieved ONLY when the Evaluation Check Suite passes (Section 2.0), or when stopping rules apply.
 
 Artifacts to retain (baseline instrumentation):
 - same as Baseline 0, plus:
@@ -91,6 +110,10 @@ Envelope control rule:
 - For the BELGI treatment, the Environment Envelope is declared and locked in LockedSpec.
 - For baselines (which lack an envelope artifact), the experiment harness MUST still attempt to run in the same environment as the treatment to reduce confounding, and must record environment metadata externally.
 
+Mandatory per-trial records (all procedures):
+- Model regime record (model identifier + version + sampling parameters + max tokens + any harness seed).
+- Environment attestation record (OS + toolchain + dependency lock fingerprint + harness version/commit SHA).
+
 ### 3.3 Randomization strategy
 Randomization is optional but recommended.
 
@@ -115,16 +138,16 @@ For each unit, perform the following in each procedure group.
 1) Start from the unit’s starting commit.
 2) Allow LLM-driven iteration with ad hoc CI/test runs.
 3) Stop when either:
-   - the developer declares completion, or
+   - the Evaluation Check Suite passes, or
    - stopping rules trigger.
 4) Record baseline artifacts (diff, command logs, test results) for each attempt.
 
 #### Baseline 1 trial steps
 1) Start from the unit’s starting commit.
 2) Allow LLM-driven iteration.
-3) After each attempt, run the fixed CI-only check set.
+3) After each attempt, run the Evaluation Check Suite (Section 2.0).
 4) Stop when:
-   - CI-only checks pass and the developer declares completion, or
+   - the Evaluation Check Suite passes, or
    - stopping rules trigger.
 5) Record baseline artifacts.
 
@@ -154,6 +177,7 @@ Tier budget breach handling:
 
 Censoring rule:
 - If a trial stops without reaching a Gate R GO (treatment) or without reaching baseline completion criteria, the trial outcome is recorded as censored with the stop reason.
+  - Baseline completion criteria is: Evaluation Check Suite passes (Section 2.0).
 
 ## 5. Artifact requirements (reproducibility; mandatory)
 For the BELGI treatment, each trial MUST produce and retain a complete, schema-valid artifact set enabling third-party replay within the declared envelope.
@@ -199,6 +223,9 @@ Baselines do not produce BELGI artifacts. However, to enable fair measurement, e
 - diff bytes
 - command logs
 - test reports where applicable
+- Evaluation Check Suite logs (pass/fail + stdout/stderr)
+- Model regime record (model/version/sampling/seed)
+- Environment attestation record (OS/toolchain/deps fingerprint/harness version)
 
 Baseline data MUST NOT be mislabeled as schema-valid BELGI artifacts.
 
@@ -210,6 +237,11 @@ Produce a table where each row is a trial and columns include:
 - `unit_id`
 - `procedure ∈ {baseline0, baseline1, belgi}`
 - `trial_id`
+- `model_id`
+- `model_version`
+- `sampling_regime` (temperature/top_p/etc)
+- `harness_seed` (if any)
+- `env_attestation_fingerprint` (hash/token)
 - `run_id` (treatment only; null for baselines)
 - `tier_id` (treatment only)
 - `starting_commit_sha`
@@ -219,6 +251,7 @@ Produce a table where each row is a trial and columns include:
 - `Q_loops` (treatment only)
 - `R_loops` (treatment only)
 - `time_to_goal_seconds` (goal defined per procedure)
+  - goal: Treatment = first R:GO; Baselines = first Evaluation Check Suite pass
 - `touched_files_count`
 - `loc_delta`
 - `evidence_completeness` (treatment only)
