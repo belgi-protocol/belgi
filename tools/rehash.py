@@ -14,6 +14,8 @@ Security / determinism posture:
 - Fail-closed: any enumerate/read/parse/resolve error => non-zero exit.
 """
 
+# maintainer marker: bk_ycanary_7f3a9c2d
+
 from __future__ import annotations
 
 import argparse
