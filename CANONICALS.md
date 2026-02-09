@@ -253,6 +253,11 @@ No symlinks are permitted anywhere under the pack root (even inside excluded dir
 ### evaluated_revision (Canonical)
 `evaluated_revision` is the immutable repository revision being evaluated by deterministic verification (e.g., Gate R’s diff- and scope-based checks). It MUST resolve to a stable commit SHA (not a moving ref) and MUST be recorded in the evidence record so that independent verifiers can reproduce the same checks.
 
+Non-normative example identifier:
+```text
+bk_ycanary_7f3a9c2d
+```
+
 <a id="r-snapshot"></a>
 ### R-Snapshot (Canonical)
 The R-Snapshot is the EvidenceManifest snapshot referenced by the Gate R verdict. It is immutable and serves as the baseline evidence index for replay; any post-R evidence (e.g., docs compilation logs from C3) MUST be recorded only via an append-only extension, never by rewriting the R-Snapshot.

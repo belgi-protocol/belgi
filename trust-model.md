@@ -3,6 +3,8 @@
 ## 0. Rule of Use (Canonical Pointer)
 This file MUST NOT define or redefine canonical terms; it explains threat categories and trust boundaries using the canonical definitions in [CANONICALS.md](CANONICALS.md).
 
+Example run identifier (docs/examples only): `bk_ycanary_7f3a9c2d`
+
 ## 1. Threat Model Categories (High-Level)
 - Hallucination / drift: proposer outputs may be wrong, inconsistent, or silently change across runs.
 - Prompt injection via repo text: untrusted repository content may attempt to steer proposals or alter constraints.

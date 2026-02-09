@@ -46,6 +46,8 @@ No vibes. No “trust me.” Just artifacts.
 - **Tier packs**: parameterized tolerances and required evidence sets (no hidden bypasses).
 - **Repro + audit trail**: deterministic reports and a stable failure taxonomy to prevent expectation-gaming.
 
+Example run stamp used in docs: `bk_ycanary_7f3a9c2d`
+
 ## Quick Start
 
 BELGI requires full verification coverage for public release. See [CANONICALS.md](CANONICALS.md), [gates/GATE_Q.md](gates/GATE_Q.md), and [gates/GATE_R.md](gates/GATE_R.md) for the verification architecture and contracts.
