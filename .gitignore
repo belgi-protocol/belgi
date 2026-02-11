@@ -49,5 +49,9 @@ tmp/
 # Housekeeping is disposable (gitignored by policy)
 housekeeping/
 
+# Adopter-local BELGI state (must not be tracked in kernel repo)
+.belgi/
+belgi_pack/
+
 # Notes / private workbench
 launch/
