@@ -46,6 +46,8 @@ No vibes. No “trust me.” Just artifacts.
 - **Tier packs**: parameterized tolerances and required evidence sets (no hidden bypasses).
 - **Repro + audit trail**: deterministic reports and a stable failure taxonomy to prevent expectation-gaming.
 
+Example run stamp used in docs: `bk_ycanary_7f3a9c2d`
+
 ## Quick Start
 
 BELGI requires full verification coverage for public release. See [CANONICALS.md](CANONICALS.md), [gates/GATE_Q.md](gates/GATE_Q.md), and [gates/GATE_R.md](gates/GATE_R.md) for the verification architecture and contracts.
@@ -63,6 +65,9 @@ pip install belgi
 ```bash
 # Package info
 belgi about
+
+# Initialize adopter-local BELGI workspace defaults (idempotent)
+belgi init --repo .
 
 # Verify builtin protocol pack (installed package)
 belgi pack verify --builtin
@@ -117,6 +122,8 @@ Example (what this looks like in practice):
 If CI fails on sweep/fixtures, run the local fixer and commit the resulting changes. CI only verifies what’s in the repo; it must not mutate artifacts during verification.
 
 Canonical chain runbook (exact `chain/*` commands + when-to-run-what): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
+
+Adopter dev-tier runbook (`belgi init`, run-local workspace, Gate R overlay mode): [docs/operations/runbook_dev_tier.md](docs/operations/runbook_dev_tier.md)
 
 From the repo workspace:
 

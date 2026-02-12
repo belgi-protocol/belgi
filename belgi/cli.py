@@ -4,6 +4,7 @@
 This is the installable CLI entrypoint (console_scripts).
 
 Subcommands:
+- belgi init           → Initialize adopter overlay defaults in a repo
 - belgi pack build     → Build/update protocol pack manifest deterministically
 - belgi pack verify    → Verify protocol pack manifest matches file tree
 - belgi bundle check   → Check an evidence bundle (demo-grade checker, --demo required)
@@ -22,6 +23,7 @@ import hashlib
 import json
 import sys
 from importlib.metadata import PackageNotFoundError, metadata, version
+from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -137,6 +139,262 @@ def cmd_about(_: argparse.Namespace) -> int:
     print(f"Philosophy: {ABOUT_PHILOSOPHY}")
     print(f"Dedication: {ABOUT_DEDICATION}")
     print(f"Repo: {ABOUT_REPO_URL}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# init subcommand
+# ---------------------------------------------------------------------------
+
+def _write_text_if_missing(path: Path, text: str) -> bool:
+    """Write a text file only when missing. Returns True if file was created."""
+    if path.exists():
+        if path.is_symlink():
+            raise ValueError(f"symlink not allowed: {path}")
+        if not path.is_file():
+            raise ValueError(f"expected file path but found non-file: {path}")
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", errors="strict", newline="\n")
+    return True
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", errors="strict", newline="\n")
+
+
+def _read_builtin_intent_template_text() -> str:
+    node = files("belgi").joinpath("templates", "IntentSpec.core.template.md")
+    with as_file(node) as p:
+        return Path(p).read_text(encoding="utf-8", errors="strict")
+
+
+def _parse_quoted_toml_string(raw: str, *, label: str) -> str:
+    s = raw.strip()
+    if len(s) < 2 or not (s.startswith('"') and s.endswith('"')):
+        raise ValueError(f"{label} must be a quoted TOML string")
+    # Minimal parser for init-owned fields; escape decoding is intentionally strict.
+    inner = s[1:-1]
+    if '"' in inner:
+        raise ValueError(f"{label} contains invalid quote content")
+    return inner
+
+
+def _parse_protocol_pin_from_adopter_toml(text: str) -> dict[str, str]:
+    in_pin = False
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_pin = line == "[protocol_pack_pin]"
+            continue
+        if not in_pin or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key not in ("pack_name", "pack_id", "manifest_sha256"):
+            continue
+        values[key] = _parse_quoted_toml_string(value, label=f"protocol_pack_pin.{key}")
+
+    missing = [k for k in ("pack_name", "pack_id", "manifest_sha256") if k not in values]
+    if missing:
+        raise ValueError(f"adopter.toml protocol_pack_pin missing keys: {', '.join(missing)}")
+    return values
+
+
+def _render_adopter_toml(*, pack_name: str, pack_id: str, manifest_sha256: str) -> str:
+    return (
+        "# BELGI adopter defaults (one-time initialization)\n"
+        "# This file is NOT per-run state. Do not mutate it during runs.\n"
+        "format_version = 1\n"
+        "run_workspace_root = \".belgi/runs\"\n"
+        "intent_template = \".belgi/templates/IntentSpec.core.template.md\"\n"
+        "default_tier_id = \"tier-0\"\n"
+        "\n"
+        "[protocol_pack_pin]\n"
+        f"pack_name = \"{pack_name}\"\n"
+        f"pack_id = \"{pack_id}\"\n"
+        f"manifest_sha256 = \"{manifest_sha256}\"\n"
+        "\n"
+        "[overlay]\n"
+        "manifest = \"belgi_pack/DomainPackManifest.json\"\n"
+    )
+
+
+def _render_adopter_readme() -> str:
+    return (
+        "# BELGI Local Layout\n\n"
+        "- `.belgi/adopter.toml`: one-time defaults for this repository (not per-run state)\n"
+        "- `.belgi/templates/IntentSpec.core.template.md`: local template copied from BELGI package at init time\n"
+        "- `.belgi/runs/<run_id>/`: run-local workspace (authoritative per-run files)\n"
+        "- `belgi_pack/DomainPackManifest.json`: adopter-owned overlay checks for optional strict verification\n\n"
+        "Rules:\n"
+        "- Do not copy BELGI canonicals (`schemas/`, `gates/`, `tiers/`) into this repository.\n"
+        "- Keep per-run files under `.belgi/runs/<run_id>/` and freeze them into LockedSpec/evidence artifacts.\n"
+    )
+
+
+def _render_domain_pack_manifest_stub(*, pack_name: str, pack_id: str, manifest_sha256: str) -> str:
+    obj = {
+        "format_version": 1,
+        "pack_name": "adopter-overlay",
+        "pack_semver": "0.1.0",
+        "belgi_protocol_pack_pin": {
+            "pack_name": pack_name,
+            "pack_id": pack_id,
+            "manifest_sha256": manifest_sha256,
+        },
+        "required_policy_check_ids": [],
+    }
+    return json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Initialize BELGI adopter defaults (idempotent, no canonical copies)."""
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    repo_root = Path(str(args.repo)).resolve()
+    if not repo_root.exists():
+        print(f"[belgi init] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
+        return 3
+    if not repo_root.is_dir():
+        print(f"[belgi init] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
+        return 3
+    if repo_root.is_symlink():
+        print(f"[belgi init] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
+        return 3
+
+    try:
+        protocol = get_builtin_protocol_context()
+    except Exception as e:
+        print(f"[belgi init] ERROR: cannot load builtin protocol pack identity: {e}", file=sys.stderr)
+        return 3
+
+    adopter_dir = repo_root / ".belgi"
+    runs_dir = adopter_dir / "runs"
+    overlay_dir = repo_root / "belgi_pack"
+    templates_dir = adopter_dir / "templates"
+    adopter_toml_path = adopter_dir / "adopter.toml"
+    adopter_readme_path = adopter_dir / "README.md"
+    overlay_manifest_path = overlay_dir / "DomainPackManifest.json"
+    intent_template_path = templates_dir / "IntentSpec.core.template.md"
+
+    # Guard against symlink directories and conflicting file paths.
+    for d in (adopter_dir, runs_dir, overlay_dir, templates_dir):
+        if d.exists() and not d.is_dir():
+            print(f"[belgi init] ERROR: expected directory path but found non-directory: {d}", file=sys.stderr)
+            return 3
+        if d.exists() and d.is_symlink():
+            print(f"[belgi init] ERROR: symlink directory not allowed: {d}", file=sys.stderr)
+            return 3
+
+    adopter_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    overlay_dir.mkdir(parents=True, exist_ok=True)
+
+    created: list[Path] = []
+    updated: list[Path] = []
+    current_pin = {
+        "pack_name": protocol.pack_name,
+        "pack_id": protocol.pack_id,
+        "manifest_sha256": protocol.manifest_sha256,
+    }
+
+    try:
+        # Template provisioning for adopter repos (repo-local path).
+        if _write_text_if_missing(intent_template_path, _read_builtin_intent_template_text()):
+            created.append(intent_template_path)
+
+        if adopter_toml_path.exists():
+            if adopter_toml_path.is_symlink() or not adopter_toml_path.is_file():
+                raise ValueError(f"invalid adopter.toml path: {adopter_toml_path}")
+            existing_pin = _parse_protocol_pin_from_adopter_toml(
+                adopter_toml_path.read_text(encoding="utf-8", errors="strict")
+            )
+            drift = existing_pin != current_pin
+            if drift and not bool(getattr(args, "refresh_pin", False)):
+                print("[belgi init] WARNING: adopter.toml protocol_pack_pin differs from active builtin pack.", file=sys.stderr)
+                print(
+                    "[belgi init] ERROR: re-run with --refresh-pin to update pins explicitly (fail-closed).",
+                    file=sys.stderr,
+                )
+                return 1
+            if drift and bool(getattr(args, "refresh_pin", False)):
+                _write_text(
+                    adopter_toml_path,
+                    _render_adopter_toml(
+                        pack_name=protocol.pack_name,
+                        pack_id=protocol.pack_id,
+                        manifest_sha256=protocol.manifest_sha256,
+                    ),
+                )
+                updated.append(adopter_toml_path)
+        elif _write_text_if_missing(
+            adopter_toml_path,
+            _render_adopter_toml(
+                pack_name=protocol.pack_name,
+                pack_id=protocol.pack_id,
+                manifest_sha256=protocol.manifest_sha256,
+            ),
+        ):
+            created.append(adopter_toml_path)
+
+        if _write_text_if_missing(adopter_readme_path, _render_adopter_readme()):
+            created.append(adopter_readme_path)
+
+        if overlay_manifest_path.exists():
+            if overlay_manifest_path.is_symlink() or not overlay_manifest_path.is_file():
+                raise ValueError(f"invalid overlay manifest path: {overlay_manifest_path}")
+            if bool(getattr(args, "refresh_pin", False)):
+                try:
+                    overlay_obj = json.loads(overlay_manifest_path.read_text(encoding="utf-8", errors="strict"))
+                except Exception as e:
+                    raise ValueError(f"overlay manifest is not valid UTF-8 JSON: {e}") from e
+                if not isinstance(overlay_obj, dict):
+                    raise ValueError("overlay manifest must be a JSON object")
+                pin = overlay_obj.get("belgi_protocol_pack_pin")
+                if not isinstance(pin, dict):
+                    raise ValueError("overlay manifest missing belgi_protocol_pack_pin")
+                pin["pack_name"] = protocol.pack_name
+                pin["pack_id"] = protocol.pack_id
+                pin["manifest_sha256"] = protocol.manifest_sha256
+                _write_text(
+                    overlay_manifest_path,
+                    json.dumps(overlay_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                )
+                updated.append(overlay_manifest_path)
+        elif _write_text_if_missing(
+            overlay_manifest_path,
+            _render_domain_pack_manifest_stub(
+                pack_name=protocol.pack_name,
+                pack_id=protocol.pack_id,
+                manifest_sha256=protocol.manifest_sha256,
+            ),
+        ):
+            created.append(overlay_manifest_path)
+    except Exception as e:
+        print(f"[belgi init] ERROR: {e}", file=sys.stderr)
+        return 3
+
+    print(f"[belgi init] repo: {repo_root}", file=sys.stderr)
+    print(
+        f"[belgi init] protocol_pack: {protocol.pack_name} "
+        f"(pack_id={protocol.pack_id}, manifest_sha256={protocol.manifest_sha256})",
+        file=sys.stderr,
+    )
+    if created:
+        for p in created:
+            print(f"[belgi init] created: {p.relative_to(repo_root).as_posix()}", file=sys.stderr)
+    if updated:
+        for p in updated:
+            print(f"[belgi init] updated: {p.relative_to(repo_root).as_posix()}", file=sys.stderr)
+    if not created and not updated:
+        print("[belgi init] no changes (already initialized)", file=sys.stderr)
     return 0
 
 
@@ -706,6 +964,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # about
     subparsers.add_parser("about", help="Print package identity info")
+
+    # init
+    p_init = subparsers.add_parser("init", help="Initialize BELGI adopter defaults in a repository")
+    p_init.add_argument("--repo", default=".", help="Repo root (default: .)")
+    p_init.add_argument(
+        "--refresh-pin",
+        action="store_true",
+        help="Explicitly refresh protocol pack pins in adopter.toml (and overlay manifest if present)",
+    )
     
     # pack (subparser group)
     p_pack = subparsers.add_parser("pack", help="Protocol pack management commands")
@@ -780,6 +1047,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             p_pack.print_help()
             return 3
+    elif args.command == "init":
+        return cmd_init(args)
     elif args.command == "bundle":
         if args.bundle_command == "check":
             return cmd_bundle_check(args)

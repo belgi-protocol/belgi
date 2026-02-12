@@ -15,6 +15,7 @@ You MUST stop (ask 1 targeted question) or fail-closed if your change would crea
 2) **Scope escape**: any authoritative input/output path can resolve outside repo root (incl. symlinks).
 3) **Schema/evidence drift**: changing required fields, artifact formats, or acceptance rules without updating the canonical schema/docs that define them.
 4) **Non-determinism**: timestamps, randomness, locale/timezone, unstable ordering, network calls in gates/sweeps/verifiers.
+5) **Public CI regression**: any change that could make `.github/workflows/ci.yml` go red after pushing.
 
 If none of these apply, **do not block**.
 
@@ -45,7 +46,7 @@ If none of these apply, **do not block**.
   - If a workflow expects updating a gitignored artifact, generate a **tracked alternative** under repo (e.g., `temp/` or `reports/`) and mention it.
 
 ### RED (never touch unless explicitly asked)
-- `usefulcmds.txt/` (read or write -- this is users notes not important for you)
+- `temp/usefılcmds.txt` (read or write -- user notes; never touch)
 - any explicitly private/pro vault paths (if present)
 
 ## 5) Ambiguity rule (the correct version)
@@ -63,6 +64,7 @@ If something is ambiguous:
 Example:
 ```python
 # Bind attestation payload to (run_id, command_log_sha256) to prevent replay/substitution.
+```
 
 
 ## 7) Tooling hygiene (keep repo neat)
@@ -91,3 +93,40 @@ Hard rule: **Do not create new tracked files** (including extra `README.md` file
 
 Preference:
 - Keep explanations centralized in existing canonical docs (e.g. `policy/fixtures/README.md`) instead of adding per-folder READMEs.
+
+## 9) Mandatory per-dev workflow (public-green)
+
+This repo is public-facing. **Do not push, merge, tag, or fast-forward `main` unless the full workflow is green locally**.
+
+### A) Before running CI (local convergence)
+- If your changes touch any of: `policy/**`, `schemas/**`, `belgi/_protocol_packs/**`, `chain/**`, `tools/**` or anything that can affect fixtures/sweeps, you MUST run the local convergence flow described in `docs/operations/*` (dev-sync).
+- If convergence generates tracked diffs (e.g. fixtures pins, sweep reports), commit them on your feature branch before CI.
+
+### A0) Best practice: single converge commit
+
+Goal: avoid “calibration commit spam” while staying deterministic.
+
+- Phase 1 (human edits): do all code/doc/version/changelog changes first.
+- Phase 2 (converge once, at the end): run the required convergence steps (dev-sync / `--fix-fixtures`) exactly once, then commit *all* resulting governed diffs together.
+- Do NOT run `act` (or any CI gate) between Phase 1 edits and Phase 2 convergence.
+
+Notes:
+- Consistency sweep fixture pins (e.g., CS-EV-006) can legitimately change when you touch apparently unrelated tracked content (docs, `VERSION`, `CHANGELOG.md`, policy files). Treat that as normal: converge once at the end.
+- If you have not pushed your branch yet, prefer folding the convergence diff into your last “human edits” commit via `git commit --amend` to keep history clean. If the branch is already pushed, do NOT rewrite history; add one final convergence commit.
+
+### B) Local preflight checks (must be clean)
+Run these from repo root and ensure they pass with **no tracked changes** afterwards:
+- `python -m tools.normalize --repo . --check --tracked-only`
+- `python -m tools.check_drift`
+
+### C) Full CI workflow locally (must be green)
+Run the actual GitHub Actions workflow locally via `act` (includes `health` + `wheel-smoke`):
+- `act -W .github/workflows/ci.yml -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:full-latest --container-architecture linux/amd64 --rm --artifact-server-path /tmp/act-artifacts-belgi`
+
+Notes:
+- The `--artifact-server-path` flag is mandatory so `actions/upload-artifact` doesn’t fail locally (no `ACTIONS_RUNTIME_TOKEN`).
+- If any job fails locally, treat it as a blocker (Section 2.5). Fix before pushing.
+
+### D) Push/merge discipline (never invert order)
+- Do NOT fast-forward or merge into `main` until (B) and (C) are green on the feature branch.
+- Do NOT tag a release until the exact commit to be tagged has a green (C) run.

@@ -142,6 +142,8 @@ Waivers MUST NOT be created by an LLM.
 ## 8. Publication Posture (Canonical)
 BELGI SHOULD publish the protocol and interfaces needed for independent verification (e.g., stage contracts, evidence categories, and deterministic gate behaviors) but MUST keep bypass-oriented rule details private (MUST NOT publish exploit signatures, evasion thresholds, or other bypass-friendly specifics; only categories of checks may be described).
 
+Adopter overlays (e.g., `DomainPackManifest.json`) are non-canonical, adopter-owned inputs. They MAY add fail-closed verification requirements only when explicitly supplied to verification entrypoints; they MUST NOT modify canonical schema/gate/tier semantics.
+
 <a id="propagation-consistency-sweep"></a>
 <a id="propagation-sweep"></a>
 ## 9. Propagation / Consistency Sweep (Canonical)
@@ -252,6 +254,11 @@ No symlinks are permitted anywhere under the pack root (even inside excluded dir
 <a id="evaluated-revision"></a>
 ### evaluated_revision (Canonical)
 `evaluated_revision` is the immutable repository revision being evaluated by deterministic verification (e.g., Gate R’s diff- and scope-based checks). It MUST resolve to a stable commit SHA (not a moving ref) and MUST be recorded in the evidence record so that independent verifiers can reproduce the same checks.
+
+Non-normative example identifier:
+```text
+bk_ycanary_7f3a9c2d
+```
 
 <a id="r-snapshot"></a>
 ### R-Snapshot (Canonical)

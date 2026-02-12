@@ -12,6 +12,8 @@ Commands:
 - fixtures-seal: run Seal producer fixtures
 """
 
+# maintainer marker: bk_ycanary_7f3a9c2d
+
 from __future__ import annotations
 
 import argparse

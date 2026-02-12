@@ -31,6 +31,7 @@ from belgi.core.hash import sha256_bytes
 from belgi.core.jail import safe_relpath
 from belgi.core.jail import normalize_repo_rel_path
 from belgi.core.schema import validate_schema
+from belgi.adopter_overlay import DOMAIN_PACK_MANIFEST_FILENAME, evaluate_overlay_requirements
 from chain.logic.base import CheckResult, load_json, verify_protocol_identity
 from chain.logic.r_checks.context import RCheckContext
 from chain.logic.r_checks.git_ops import git_resolve_commit, is_fixture_context
@@ -183,6 +184,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help=(
             "DEV ONLY: repo-relative path to tiers/tier-packs.json (canonical; default: from active protocol pack). "
             "For legacy debugging you may also point to tiers/tier-packs.md."
+        ),
+    )
+    ap.add_argument(
+        "--overlay",
+        default=None,
+        help=(
+            "Optional repo-relative path to overlay manifest file or directory containing "
+            "DomainPackManifest.json. When provided, Gate R enforces overlay pin/check requirements fail-closed."
         ),
     )
 
@@ -436,6 +445,20 @@ def main(argv: list[str] | None = None) -> int:
             r_snapshot_manifest_path = evidence_manifest_path
         out_path = _resolve_repo_rel_path(repo_root, str(args.out), must_exist=False)
 
+        overlay_manifest_path: Path | None = None
+        if isinstance(args.overlay, str) and args.overlay.strip():
+            overlay_arg = str(args.overlay).strip()
+            overlay_path = _resolve_repo_rel_path(repo_root, overlay_arg, must_exist=True, must_be_file=None)
+            if overlay_path.is_dir():
+                overlay_manifest_path = _resolve_repo_rel_path(
+                    repo_root,
+                    safe_relpath(repo_root, overlay_path / DOMAIN_PACK_MANIFEST_FILENAME),
+                    must_exist=True,
+                    must_be_file=True,
+                )
+            else:
+                overlay_manifest_path = _resolve_repo_rel_path(repo_root, overlay_arg, must_exist=True, must_be_file=True)
+
         tiers_text: str
         if isinstance(args.tiers, str) and args.tiers:
             _require_dev_mode("--tiers")
@@ -528,6 +551,43 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("PolicyReportPayload schema must be a JSON object")
         if not isinstance(test_payload_schema, dict):
             raise ValueError("TestReportPayload schema must be a JSON object")
+
+        if overlay_manifest_path is not None:
+            overlay_failure = evaluate_overlay_requirements(
+                overlay_manifest_path=overlay_manifest_path,
+                repo_root=repo_root,
+                active_pack_name=protocol.pack_name,
+                active_pack_id=protocol.pack_id,
+                active_manifest_sha256=protocol.manifest_sha256,
+                evidence_manifest=evidence,
+                policy_payload_schema=policy_payload_schema,
+            )
+            if overlay_failure is not None:
+                category = "FR-SCHEMA-ARTIFACT-INVALID"
+                remediation = "Do fix overlay manifest/policy report schema violations then re-run R."
+                if overlay_failure.reason == "pin_mismatch":
+                    category = "FR-PROTOCOL-IDENTITY-MISMATCH"
+                    remediation = (
+                        "Do ensure overlay belgi_protocol_pack_pin matches the active protocol pack identity then re-run R."
+                    )
+                elif overlay_failure.reason == "missing_required_check":
+                    category = "FR-INVARIANT-FAILED"
+                    remediation = (
+                        "Do produce schema-valid policy_report evidence where required overlay checks pass then re-run R."
+                    )
+                preflight_fails.append(
+                    CheckResult(
+                        check_id="R-OVERLAY-001",
+                        status="FAIL",
+                        category=category,
+                        message=overlay_failure.message,
+                        pointers=[
+                            safe_relpath(repo_root, overlay_manifest_path),
+                            safe_relpath(repo_root, evidence_manifest_path),
+                        ],
+                        remediation_next_instruction=remediation,
+                    )
+                )
 
         gate_verdict_obj = load_json(gate_verdict_path) if gate_verdict_path else None
         if gate_verdict_obj is not None and not isinstance(gate_verdict_obj, dict):

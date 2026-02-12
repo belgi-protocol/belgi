@@ -2,7 +2,16 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
-## Unreleased
+## 1.0.1 — 2026-02-09
+
+### Documentation
+- Refresh example identifiers used in docs.
+
+### Tooling
+- Add maintainer marker comments (non-functional).
+
+### Policy
+- Sync sweep fixtures (calibration) .
 
 ## 1.0.0 — 2026-01-20
 
