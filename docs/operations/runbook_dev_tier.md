@@ -107,6 +107,24 @@ Outputs:
 
 Cadence: run R at checkpoints, not on every tiny edit.
 
+Overlay-only preflight helper (installed CLI, no `chain/` dependency):
+
+```bash
+belgi policy check-overlay \
+  --repo . \
+  --evidence-manifest .belgi/runs/${RUN_ID}/EvidenceManifest.json \
+  --overlay belgi_pack
+```
+
+Generate deterministic adopter overlay policy report:
+
+```bash
+belgi policy stub \
+  --out .belgi/runs/${RUN_ID}/artifacts/policy.overlay.json \
+  --run-id ${RUN_ID} \
+  --check-id PFY-OVERLAY-001
+```
+
 ## 4) Optional dev extras
 
 Optional C3:

@@ -5,6 +5,7 @@ This is the installable CLI entrypoint (console_scripts).
 
 Subcommands:
 - belgi init           → Initialize adopter overlay defaults in a repo
+- belgi policy stub    → Generate deterministic PolicyReportPayload stubs
 - belgi pack build     → Build/update protocol pack manifest deterministically
 - belgi pack verify    → Verify protocol pack manifest matches file tree
 - belgi bundle check   → Check an evidence bundle (demo-grade checker, --demo required)
@@ -110,6 +111,137 @@ def cmd_adversarial_scan(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"[belgi adversarial-scan] ERROR: {e}", file=sys.stderr)
         print("[belgi adversarial-scan] Remediation: Do ensure the repo is readable and Python sources can be parsed, then re-run adversarial-scan.", file=sys.stderr)
+        return 3
+
+
+# ---------------------------------------------------------------------------
+# policy subcommands
+# ---------------------------------------------------------------------------
+
+def cmd_policy_stub(args: argparse.Namespace) -> int:
+    from belgi.commands.policy_stub import DEFAULT_GENERATED_AT, write_policy_stub
+    from belgi.core.hash import sha256_bytes
+
+    try:
+        out_path = Path(str(args.out))
+        check_ids = [str(x) for x in (args.check_id or [])]
+        data = write_policy_stub(
+            out_path=out_path,
+            run_id=str(args.run_id),
+            check_ids=check_ids,
+            generated_at=str(getattr(args, "generated_at", DEFAULT_GENERATED_AT)),
+        )
+    except Exception as e:
+        print(f"[belgi policy stub] ERROR: {e}", file=sys.stderr)
+        return 3
+
+    print(f"[belgi policy stub] wrote: {out_path}", file=sys.stderr)
+    print(f"[belgi policy stub] sha256: {sha256_bytes(data)}", file=sys.stderr)
+    return 0
+
+
+def cmd_policy_check_overlay(args: argparse.Namespace) -> int:
+    from belgi.adopter_overlay import DOMAIN_PACK_MANIFEST_FILENAME, evaluate_overlay_requirements
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    try:
+        repo_root = Path(str(args.repo)).resolve()
+        if not repo_root.exists() or not repo_root.is_dir():
+            print(f"[belgi policy check-overlay] ERROR: invalid repo root: {repo_root}", file=sys.stderr)
+            return 3
+        if repo_root.is_symlink():
+            print(f"[belgi policy check-overlay] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
+            return 3
+
+        evidence_path = resolve_repo_rel_path(
+            repo_root,
+            str(args.evidence_manifest),
+            must_exist=True,
+            must_be_file=True,
+            allow_backslashes=False,
+            forbid_symlinks=True,
+        )
+        evidence_obj = json.loads(evidence_path.read_text(encoding="utf-8", errors="strict"))
+        if not isinstance(evidence_obj, dict):
+            raise ValueError("evidence manifest must be a JSON object")
+
+        overlay_arg = str(args.overlay)
+        overlay_manifest_path: Path
+        try:
+            overlay_dir = resolve_repo_rel_path(
+                repo_root,
+                overlay_arg,
+                must_exist=True,
+                must_be_file=False,
+                allow_backslashes=False,
+                forbid_symlinks=True,
+            )
+            if overlay_dir.is_dir():
+                overlay_manifest_path = resolve_repo_rel_path(
+                    repo_root,
+                    (Path(overlay_arg) / DOMAIN_PACK_MANIFEST_FILENAME).as_posix(),
+                    must_exist=True,
+                    must_be_file=True,
+                    allow_backslashes=False,
+                    forbid_symlinks=True,
+                )
+            else:
+                overlay_manifest_path = resolve_repo_rel_path(
+                    repo_root,
+                    overlay_arg,
+                    must_exist=True,
+                    must_be_file=True,
+                    allow_backslashes=False,
+                    forbid_symlinks=True,
+                )
+        except Exception:
+            overlay_manifest_path = resolve_repo_rel_path(
+                repo_root,
+                overlay_arg,
+                must_exist=True,
+                must_be_file=True,
+                allow_backslashes=False,
+                forbid_symlinks=True,
+            )
+
+        protocol = get_builtin_protocol_context()
+        policy_schema = protocol.read_json("schemas/PolicyReportPayload.schema.json")
+        if not isinstance(policy_schema, dict):
+            raise ValueError("PolicyReportPayload schema must be a JSON object")
+
+        failure = evaluate_overlay_requirements(
+            overlay_manifest_path=overlay_manifest_path,
+            repo_root=repo_root,
+            active_pack_name=protocol.pack_name,
+            active_pack_id=protocol.pack_id,
+            active_manifest_sha256=protocol.manifest_sha256,
+            evidence_manifest=evidence_obj,
+            policy_payload_schema=policy_schema,
+        )
+        if failure is not None:
+            print(
+                f"[belgi policy check-overlay] NO-GO: {failure.reason}: {failure.message}",
+                file=sys.stderr,
+            )
+            print(
+                "[belgi policy check-overlay] pointers: "
+                f"{safe_relpath(repo_root, overlay_manifest_path)}, "
+                f"{safe_relpath(repo_root, evidence_path)}",
+                file=sys.stderr,
+            )
+            return 2
+
+        print("[belgi policy check-overlay] GO: overlay requirements satisfied", file=sys.stderr)
+        print(
+            "[belgi policy check-overlay] pointers: "
+            f"{safe_relpath(repo_root, overlay_manifest_path)}, "
+            f"{safe_relpath(repo_root, evidence_path)}",
+            file=sys.stderr,
+        )
+        return 0
+    except Exception as e:
+        print(f"[belgi policy check-overlay] ERROR: {e}", file=sys.stderr)
         return 3
 
 # ---------------------------------------------------------------------------
@@ -973,6 +1105,45 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Explicitly refresh protocol pack pins in adopter.toml (and overlay manifest if present)",
     )
+
+    # policy (subparser group)
+    p_policy = subparsers.add_parser("policy", help="Policy helper commands")
+    policy_subs = p_policy.add_subparsers(dest="policy_command", help="Policy subcommand")
+
+    # policy stub
+    p_policy_stub = policy_subs.add_parser("stub", help="Generate deterministic PolicyReportPayload stub JSON")
+    p_policy_stub.add_argument("--out", required=True, help="Output JSON path")
+    p_policy_stub.add_argument("--run-id", required=True, help="Run ID for PolicyReportPayload")
+    p_policy_stub.add_argument(
+        "--check-id",
+        action="append",
+        default=[],
+        help="Check ID to mark as passed (repeatable; at least one required)",
+    )
+    p_policy_stub.add_argument(
+        "--generated-at",
+        default="1970-01-01T00:00:00Z",
+        help="RFC3339 generated_at value (default: 1970-01-01T00:00:00Z)",
+    )
+    p_policy_stub.set_defaults(func=cmd_policy_stub)
+
+    # policy check-overlay
+    p_policy_check_overlay = policy_subs.add_parser(
+        "check-overlay",
+        help="Evaluate adopter overlay requirements against an EvidenceManifest (overlay-only preflight)",
+    )
+    p_policy_check_overlay.add_argument("--repo", default=".", help="Repo root")
+    p_policy_check_overlay.add_argument(
+        "--evidence-manifest",
+        required=True,
+        help="Repo-relative path to EvidenceManifest.json",
+    )
+    p_policy_check_overlay.add_argument(
+        "--overlay",
+        required=True,
+        help="Repo-relative path to overlay dir or DomainPackManifest.json",
+    )
+    p_policy_check_overlay.set_defaults(func=cmd_policy_check_overlay)
     
     # pack (subparser group)
     p_pack = subparsers.add_parser("pack", help="Protocol pack management commands")
@@ -1049,6 +1220,11 @@ def main(argv: list[str] | None = None) -> int:
             return 3
     elif args.command == "init":
         return cmd_init(args)
+    elif args.command == "policy":
+        if args.policy_command in ("stub", "check-overlay"):
+            return int(args.func(args))
+        p_policy.print_help()
+        return 3
     elif args.command == "bundle":
         if args.bundle_command == "check":
             return cmd_bundle_check(args)
