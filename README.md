@@ -69,8 +69,14 @@ belgi about
 # Initialize adopter-local BELGI workspace defaults (idempotent)
 belgi init --repo .
 
+# Create a deterministic run workspace
+belgi run new --repo . --run-id run-demo-001
+
 # Generate deterministic PolicyReportPayload stub (adopter overlay checks)
 belgi policy stub --out .belgi/runs/run-demo-001/artifacts/policy.overlay.json --run-id run-demo-001 --check-id PFY-OVERLAY-001
+
+# Add/update artifact in EvidenceManifest deterministically
+belgi manifest add --repo . --manifest .belgi/runs/run-demo-001/EvidenceManifest.json --artifact .belgi/runs/run-demo-001/artifacts/policy.overlay.json --kind policy_report --id policy.overlay --media-type application/json --produced-by R
 
 # Evaluate overlay requirements only (installed BELGI, no repo-local chain modules)
 belgi policy check-overlay --repo . --evidence-manifest .belgi/runs/run-demo-001/EvidenceManifest.json --overlay belgi_pack
@@ -94,7 +100,7 @@ Canonical definitions:
 Published wheel (`pip install belgi`) includes:
 - `belgi/_protocol_packs/v1/**` (builtin protocol pack mirror + `ProtocolPackManifest.json`)
 - `belgi/templates/**` (publish-safe templates)
-- `belgi` CLI entrypoint (`belgi about`, `belgi init`, `belgi policy stub`, `belgi policy check-overlay`, `belgi pack verify`, `belgi bundle check --demo`)
+- `belgi` CLI entrypoint (`belgi about`, `belgi init`, `belgi run new`, `belgi manifest add`, `belgi policy stub`, `belgi policy check-overlay`, `belgi pack verify`, `belgi bundle check --demo`)
 
 Repo-local only (not shipped in the wheel by design):
 - `chain/` (reference deterministic gate implementations)

@@ -29,8 +29,7 @@ Pick a run ID and create a deterministic run folder:
 
 ```bash
 export RUN_ID=run-dev-001
-mkdir -p .belgi/runs/${RUN_ID}
-cp .belgi/templates/IntentSpec.core.template.md .belgi/runs/${RUN_ID}/IntentSpec.core.md
+belgi run new --repo . --run-id ${RUN_ID}
 ```
 
 Outputs:
@@ -63,6 +62,19 @@ python -m tools.belgi manifest-init \
   --repo . \
   --out .belgi/runs/${RUN_ID}/EvidenceManifest.json \
   --locked-spec .belgi/runs/${RUN_ID}/LockedSpec.json
+```
+
+Add/update evidence artifacts deterministically with installed CLI:
+
+```bash
+belgi manifest add \
+  --repo . \
+  --manifest .belgi/runs/${RUN_ID}/EvidenceManifest.json \
+  --artifact .belgi/runs/${RUN_ID}/artifacts/policy.overlay.json \
+  --kind policy_report \
+  --id policy.overlay \
+  --media-type application/json \
+  --produced-by R
 ```
 
 Run Gate Q:
