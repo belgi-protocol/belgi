@@ -562,6 +562,19 @@ def _write_json_placeholder(path: Path, *, force: bool) -> str | None:
     return "created"
 
 
+def _write_json_object(path: Path, obj: object, *, force: bool) -> str | None:
+    payload = json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"invalid path in run workspace: {path}")
+        if not force:
+            return None
+        _write_text(path, payload)
+        return "updated"
+    _write_text(path, payload)
+    return "created"
+
+
 def cmd_run_new(args: argparse.Namespace) -> int:
     from belgi.core.jail import safe_relpath
 
@@ -597,6 +610,14 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             run_dir / "tolerances.json",
             run_dir / "toolchain.json",
         ]
+        evidence_manifest_path = run_dir / "EvidenceManifest.json"
+        evidence_manifest_obj = {
+            "schema_version": "1.0.0",
+            "run_id": run_id,
+            "artifacts": [],
+            "commands_executed": [],
+            "envelope_attestation": None,
+        }
 
         created: list[Path] = []
         updated: list[Path] = []
@@ -618,6 +639,16 @@ def cmd_run_new(args: argparse.Namespace) -> int:
                 created.append(path)
             elif state == "updated":
                 updated.append(path)
+
+        manifest_state = _write_json_object(
+            evidence_manifest_path,
+            evidence_manifest_obj,
+            force=force,
+        )
+        if manifest_state == "created":
+            created.append(evidence_manifest_path)
+        elif manifest_state == "updated":
+            updated.append(evidence_manifest_path)
 
     except Exception as e:
         print(f"[belgi run new] ERROR: {e}", file=sys.stderr)
@@ -642,7 +673,7 @@ def cmd_run_new(args: argparse.Namespace) -> int:
 
 def cmd_manifest_add(args: argparse.Namespace) -> int:
     from belgi.core.hash import sha256_bytes
-    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+    from belgi.core.jail import normalize_repo_rel, resolve_repo_rel_path, safe_relpath
     from belgi.core.schema import validate_schema
     from belgi.protocol.pack import get_builtin_protocol_context
 
@@ -712,7 +743,8 @@ def cmd_manifest_add(args: argparse.Namespace) -> int:
 
         artifact_bytes = artifact_path.read_bytes()
         artifact_hash = sha256_bytes(artifact_bytes)
-        storage_ref = safe_relpath(repo_root, artifact_path)
+        storage_ref_raw = safe_relpath(repo_root, artifact_path)
+        storage_ref = normalize_repo_rel(storage_ref_raw, allow_backslashes=False)
         new_artifact = {
             "kind": kind,
             "id": artifact_id,

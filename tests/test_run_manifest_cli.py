@@ -50,32 +50,45 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     intent_path = run_dir / "IntentSpec.core.md"
     tolerances_path = run_dir / "tolerances.json"
     toolchain_path = run_dir / "toolchain.json"
+    evidence_manifest_path = run_dir / "EvidenceManifest.json"
 
     rc1 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
     assert rc1 == 0
     assert intent_path.exists()
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
     assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
+    assert evidence_manifest_path.exists()
+    assert json.loads(evidence_manifest_path.read_text(encoding="utf-8", errors="strict")) == {
+        "schema_version": "1.0.0",
+        "run_id": run_id,
+        "artifacts": [],
+        "commands_executed": [],
+        "envelope_attestation": None,
+    }
 
     baseline = {
         "intent": intent_path.read_bytes(),
         "tolerances": tolerances_path.read_bytes(),
         "toolchain": toolchain_path.read_bytes(),
+        "evidence_manifest": evidence_manifest_path.read_bytes(),
     }
 
     intent_path.write_text("custom-intent\n", encoding="utf-8", errors="strict", newline="\n")
     tolerances_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
+    evidence_manifest_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
 
     rc2 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
     assert rc2 == 0
     assert intent_path.read_text(encoding="utf-8", errors="strict") == "custom-intent\n"
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
+    assert evidence_manifest_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
 
     rc3 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id, "--force"])
     assert rc3 == 0
     assert intent_path.read_bytes() == baseline["intent"]
     assert tolerances_path.read_bytes() == baseline["tolerances"]
     assert toolchain_path.read_bytes() == baseline["toolchain"]
+    assert evidence_manifest_path.read_bytes() == baseline["evidence_manifest"]
 
 
 def test_manifest_add_deterministic_and_hash_correct(tmp_path: Path) -> None:
@@ -149,6 +162,66 @@ def test_manifest_add_rejects_path_traversal(tmp_path: Path) -> None:
             ".belgi/runs/run-demo-001/EvidenceManifest.json",
             "--artifact",
             "../outside.json",
+            "--kind",
+            "policy_report",
+            "--id",
+            "policy.overlay",
+            "--media-type",
+            "application/json",
+            "--produced-by",
+            "R",
+        ]
+    )
+    assert rc != 0
+
+
+def test_manifest_add_rejects_noncanonical_relpath(tmp_path: Path) -> None:
+    run_id = "run-demo-001"
+    manifest_path = tmp_path / ".belgi" / "runs" / run_id / "EvidenceManifest.json"
+    _seed_min_manifest(manifest_path, run_id=run_id)
+    artifact_path = tmp_path / ".belgi" / "runs" / run_id / "artifacts" / "policy.overlay.json"
+    _write_json(artifact_path, {"x": 1})
+
+    rc = belgi_main(
+        [
+            "manifest",
+            "add",
+            "--repo",
+            str(tmp_path),
+            "--manifest",
+            "./.belgi/runs/run-demo-001/EvidenceManifest.json",
+            "--artifact",
+            ".belgi/runs/run-demo-001/artifacts/policy.overlay.json",
+            "--kind",
+            "policy_report",
+            "--id",
+            "policy.overlay",
+            "--media-type",
+            "application/json",
+            "--produced-by",
+            "R",
+        ]
+    )
+    assert rc != 0
+
+
+def test_manifest_add_rejects_absolute_path(tmp_path: Path) -> None:
+    run_id = "run-demo-001"
+    manifest_path = tmp_path / ".belgi" / "runs" / run_id / "EvidenceManifest.json"
+    _seed_min_manifest(manifest_path, run_id=run_id)
+    artifact_path = tmp_path / ".belgi" / "runs" / run_id / "artifacts" / "policy.overlay.json"
+    _write_json(artifact_path, {"x": 1})
+
+    rc = belgi_main(
+        [
+            "manifest",
+            "add",
+            "--repo",
+            str(tmp_path),
+            "--manifest",
+            ".belgi/runs/run-demo-001/EvidenceManifest.json",
+            "--artifact",
+            str(artifact_path),
             "--kind",
             "policy_report",
             "--id",
