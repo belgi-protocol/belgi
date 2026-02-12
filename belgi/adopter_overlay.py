@@ -139,13 +139,16 @@ def _collect_passed_policy_check_ids(
         if sha256_bytes(data) != declared_hash:
             return set(), f"policy_report[{i}] sha256(bytes) mismatch"
 
+        # Overlay scans must tolerate non-PolicyReportPayload policy_report artifacts
+        # (for example policy.consistency_sweep). Such artifacts are ignored rather than
+        # hard-failing, while hash/jail/symlink safety remains fail-closed above.
         try:
             payload = json.loads(data.decode("utf-8", errors="strict"))
-        except Exception as e:
-            return set(), f"policy_report[{i}] payload is not valid UTF-8 JSON: {e}"
+        except Exception:
+            continue
 
         if not isinstance(payload, dict):
-            return set(), f"policy_report[{i}] payload must be a JSON object"
+            continue
 
         errs = validate_schema(
             payload,
@@ -154,12 +157,11 @@ def _collect_passed_policy_check_ids(
             path=f"policy_report[{i}]",
         )
         if errs:
-            first = errs[0]
-            return set(), f"policy_report[{i}] schema invalid at {first.path}: {first.message}"
+            continue
 
         checks = payload.get("checks")
         if not isinstance(checks, list):
-            return set(), f"policy_report[{i}] checks missing/invalid"
+            continue
 
         for check in checks:
             if not isinstance(check, dict):
