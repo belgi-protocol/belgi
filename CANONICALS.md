@@ -1,4 +1,4 @@
-# Belgi Protocol (BELGI) Canonicals (Sprint 1)
+# Belgi Protocol (BELGI) Canonicals
 
 <a id="purpose"></a>
 ## 0. Purpose (Canonical)

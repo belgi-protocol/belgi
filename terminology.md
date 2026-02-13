@@ -1,4 +1,4 @@
-# BELGI Terminology (Sprint 1)
+# BELGI Terminology
 
 ## 0. Rule of Use (Canonical Pointer)
 This file MUST NOT define or redefine terms. The single source of truth is [CANONICALS.md](CANONICALS.md).
