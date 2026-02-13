@@ -75,7 +75,7 @@ def test_policy_stub_cli_is_deterministic_on_repeat(tmp_path: Path) -> None:
         "--run-id",
         "run-demo-001",
         "--check-id",
-        "PFY-OVERLAY-001",
+        "OVERLAY-REQ-001",
         "--generated-at",
         "1970-01-01T00:00:00Z",
     ]
@@ -118,7 +118,7 @@ def test_policy_check_overlay_cli_fail_then_pass(tmp_path: Path) -> None:
                 "pack_id": protocol.pack_id,
                 "manifest_sha256": protocol.manifest_sha256,
             },
-            "required_policy_check_ids": ["PFY-OVERLAY-001"],
+            "required_policy_check_ids": ["OVERLAY-REQ-001"],
         },
     )
 
@@ -158,7 +158,7 @@ def test_policy_check_overlay_cli_fail_then_pass(tmp_path: Path) -> None:
             "--run-id",
             "run-demo-001",
             "--check-id",
-            "PFY-OVERLAY-001",
+            "OVERLAY-REQ-001",
         ]
     )
     assert rc_stub == 0
@@ -170,7 +170,7 @@ def test_policy_check_overlay_cli_fail_then_pass(tmp_path: Path) -> None:
     artifacts.append(
         {
             "kind": "policy_report",
-            "id": "policy.portfoly_overlay",
+            "id": "policy.overlay_demo",
             "hash": sha256_bytes(artifact_bytes),
             "media_type": "application/json",
             "storage_ref": "artifacts/policy.overlay.json",

@@ -73,7 +73,7 @@ belgi init --repo .
 belgi run new --repo . --run-id run-demo-001
 
 # Generate deterministic PolicyReportPayload stub (adopter overlay checks)
-belgi policy stub --out .belgi/runs/run-demo-001/artifacts/policy.overlay.json --run-id run-demo-001 --check-id PFY-OVERLAY-001
+belgi policy stub --out .belgi/runs/run-demo-001/artifacts/policy.overlay.json --run-id run-demo-001 --check-id OVERLAY-REQ-001
 
 # Add/update artifact in EvidenceManifest deterministically
 belgi manifest add --repo . --manifest .belgi/runs/run-demo-001/EvidenceManifest.json --artifact .belgi/runs/run-demo-001/artifacts/policy.overlay.json --kind policy_report --id policy.overlay --media-type application/json --produced-by R

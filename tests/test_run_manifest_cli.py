@@ -100,7 +100,7 @@ def test_manifest_add_deterministic_and_hash_correct(tmp_path: Path) -> None:
         "run_id": run_id,
         "generated_at": "1970-01-01T00:00:00Z",
         "summary": {"total_checks": 1, "passed": 1, "failed": 0},
-        "checks": [{"check_id": "PFY-OVERLAY-001", "passed": True}],
+        "checks": [{"check_id": "OVERLAY-REQ-001", "passed": True}],
     }
     _write_json(artifact_path, artifact_payload)
     artifact_hash = sha256_bytes(artifact_path.read_bytes())

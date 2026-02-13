@@ -134,7 +134,7 @@ Generate deterministic adopter overlay policy report:
 belgi policy stub \
   --out .belgi/runs/${RUN_ID}/artifacts/policy.overlay.json \
   --run-id ${RUN_ID} \
-  --check-id PFY-OVERLAY-001
+  --check-id OVERLAY-REQ-001
 ```
 
 ## 4) Optional dev extras
