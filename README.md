@@ -137,6 +137,17 @@ Canonical chain runbook (exact `chain/*` commands + when-to-run-what): [docs/ope
 
 Adopter dev-tier runbook (`belgi init`, run-local workspace, Gate R overlay mode): [docs/operations/runbook_dev_tier.md](docs/operations/runbook_dev_tier.md)
 
+Local CI proof (Docker + `act`) is recommended before pushing workflow changes:
+
+```bash
+act push -W .github/workflows/demo_matrix.yml -j demo \
+  -P ubuntu-latest=catthehacker/ubuntu:full-latest \
+  -P windows-latest=catthehacker/ubuntu:full-latest \
+  --secret GITHUB_TOKEN="$(gh auth token)"
+```
+
+For cross-repo checkout jobs, a valid `GITHUB_TOKEN` secret is required locally; missing/invalid token is a fail-closed NO-GO.
+
 From the repo workspace:
 
 ```bash
