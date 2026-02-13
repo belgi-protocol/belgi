@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -54,12 +55,19 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     summary1 = json.loads((first_attempt / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     assert summary1["run_key"] == run_key_dir.name
     assert summary1["attempt_id"] == "attempt-0001"
+    assert summary1["run_key_preimage"]["normalized_inputs"]["intent_spec_source"] == "(auto)"
     evidence1 = json.loads(
         (first_attempt / "repo" / "out" / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict")
     )
     assert evidence1["run_id"] == run_key_dir.name
     seal = json.loads((first_attempt / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict"))
     assert seal["run_id"] == run_key_dir.name
+    prompt_hashes = json.loads(
+        (first_attempt / "repo" / "out" / "prompt_block_hashes.json").read_text(encoding="utf-8", errors="strict")
+    )
+    assert prompt_hashes
+    assert all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v) for v in prompt_hashes.values())
+    assert all(v != "0" * 64 for v in prompt_hashes.values())
 
     rc_verify_1 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_1 == 0

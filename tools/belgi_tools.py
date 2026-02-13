@@ -1092,7 +1092,7 @@ def cmd_run_tests(args: argparse.Namespace) -> int:
             "passed": passed,
             "failed": failed,
             "skipped": skipped,
-            "duration_seconds": round(duration, 2) if not args.deterministic else 0,
+            "duration_seconds": round(duration, 2) if not args.deterministic else 0.0,
         },
         "exit_code": result.returncode,
         "stdout_tail": stdout[-2000:] if len(stdout) > 2000 else stdout,

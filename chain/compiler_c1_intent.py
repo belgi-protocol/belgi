@@ -464,6 +464,8 @@ def _render_prompt_block(*, block_id: str, locked_spec_preimage: dict[str, Any])
         lines.append("Adversarial scan evidence obligation: see gates/GATE_R.md#r8--adversarial-diff-scan-category-level")
     elif block_id == "PB-014":
         lines.append("Output format contract: be explicit, auditable, deterministic.")
+    elif block_id == "PB-015":
+        lines.append("Optional examples pack disclosure: include only when explicitly selected and recorded.")
     else:
         raise _UserInputError(f"unsupported prompt block id for assembly: {block_id}")
 

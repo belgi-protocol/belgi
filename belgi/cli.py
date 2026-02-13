@@ -25,10 +25,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib
-import inspect
 import json
-import os
 import re
 import subprocess
 import sys
@@ -40,14 +37,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-
-# ---------------------------------------------------------------------------
-# Constants for seal_hash computation
-# ---------------------------------------------------------------------------
-# NOTE: Do not treat this file as an algorithm SSOT. The normative seal_hash
-# algorithm is defined in docs/operations/evidence-bundles.md and implemented
-# by the repo-local seal producer/verifier tooling.
-SEAL_HASH_DELIMITER = b"\x00"
+from belgi.core.run_orchestrator import (
+    CHAIN_OUT_DIRNAME,
+    CHAIN_REPO_DIRNAME,
+    orchestrate_chain_run,
+    render_default_intent_spec,
+)
 
 
 ABOUT_PHILOSOPHY = '"Hayatta en hakiki mürşit ilimdir." (M.K. Atatürk)'
@@ -57,41 +52,6 @@ DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
 ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
-CHAIN_REPO_DIRNAME = "repo"
-CHAIN_OUT_DIRNAME = "out"
-FIXED_GENERATED_AT = "1970-01-01T00:00:00Z"
-FIXED_SEALED_AT = "2000-01-01T00:30:00Z"
-FIXED_SIGNER = "human:belgi-run"
-
-
-def _compute_seal_hash(
-    *,
-    run_id: str,
-    locked_spec_hash: str,
-    evidence_manifest_hash: str,
-    gate_q_hash: str,
-    gate_r_hash: str,
-    final_commit_sha: str,
-    protocol_pack_id: str,
-) -> str:
-    """Compute deterministic seal_hash from binding fields.
-
-    This implementation is used by the publish-safe `belgi bundle check --demo`
-    path to recompute SealManifest.seal_hash deterministically.
-
-    Normative definition lives in docs/operations/evidence-bundles.md.
-    """
-    parts = [
-        run_id.encode("utf-8"),
-        locked_spec_hash.encode("utf-8"),
-        evidence_manifest_hash.encode("utf-8"),
-        gate_q_hash.encode("utf-8"),
-        gate_r_hash.encode("utf-8"),
-        final_commit_sha.encode("utf-8"),
-        protocol_pack_id.encode("utf-8"),
-    ]
-    payload = SEAL_HASH_DELIMITER.join(parts)
-    return hashlib.sha256(payload).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -915,192 +875,6 @@ def _build_artifact_entries(repo_root: Path, *, paths: list[Path]) -> list[dict[
     return out
 
 
-def _invoke_module_main(module_name: str, argv: list[str]) -> int:
-    module = importlib.import_module(module_name)
-    main_fn = getattr(module, "main", None)
-    if not callable(main_fn):
-        raise ValueError(f"{module_name} does not expose a callable main()")
-
-    try:
-        sig = inspect.signature(main_fn)
-    except Exception:
-        sig = None
-
-    try:
-        if sig is not None and len(sig.parameters) == 0:
-            old_argv = sys.argv
-            sys.argv = [module_name, *argv]
-            try:
-                rc = main_fn()
-            finally:
-                sys.argv = old_argv
-        else:
-            rc = main_fn(argv)
-    except SystemExit as e:
-        if isinstance(e.code, int):
-            return e.code
-        return 3
-
-    if rc is None:
-        return 0
-    if not isinstance(rc, int):
-        raise ValueError(f"{module_name} returned non-integer exit code: {rc!r}")
-    return rc
-
-
-def _run_module_expect_rc(module_name: str, argv: list[str], *, allowed: tuple[int, ...] = (0,)) -> None:
-    rc = _invoke_module_main(module_name, argv)
-    if rc not in allowed:
-        raise ValueError(f"{module_name} returned rc={rc}")
-
-
-def _git_clone_at_commit(*, source_repo: Path, dest_repo: Path, commit_sha: str) -> None:
-    if dest_repo.exists():
-        raise ValueError(f"clone destination already exists: {dest_repo}")
-
-    cp_clone = subprocess.run(
-        ["git", "clone", "--quiet", "--shared", "--", str(source_repo), str(dest_repo)],
-        capture_output=True,
-        text=True,
-    )
-    if cp_clone.returncode != 0:
-        msg = (cp_clone.stderr or cp_clone.stdout or "").strip()
-        raise ValueError(f"git clone failed: {msg or 'unknown error'}")
-
-    cp_checkout = subprocess.run(
-        ["git", "-C", str(dest_repo), "checkout", "--quiet", commit_sha],
-        capture_output=True,
-        text=True,
-    )
-    if cp_checkout.returncode != 0:
-        msg = (cp_checkout.stderr or cp_checkout.stdout or "").strip()
-        raise ValueError(f"git checkout failed: {msg or 'unknown error'}")
-
-
-def _git_diff_bytes(*, repo_root: Path, upstream: str, evaluated: str) -> bytes:
-    cp = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo_root),
-            "-c",
-            "core.pager=cat",
-            "diff",
-            "--no-color",
-            "--no-ext-diff",
-            "--full-index",
-            upstream,
-            evaluated,
-            "--",
-            ".",
-        ],
-        capture_output=True,
-        check=False,
-    )
-    if cp.returncode != 0:
-        msg = cp.stderr.decode("utf-8", errors="replace").strip()
-        raise ValueError(f"git diff failed: {msg or f'rc={cp.returncode}'}")
-    return cp.stdout
-
-
-def _render_default_intent_spec(*, tier_id: str) -> bytes:
-    text = (
-        "# IntentSpec (auto-generated by belgi run)\n\n"
-        "```yaml\n"
-        'intent_id: "INTENT-AUTO-RUN"\n'
-        'title: "Deterministic BELGI chain run"\n'
-        'goal: "Execute the canonical BELGI chain to Seal deterministically."\n'
-        "scope:\n"
-        "  allowed_dirs:\n"
-        '    - "belgi/"\n'
-        "  forbidden_dirs:\n"
-        '    - "main/"\n'
-        "acceptance:\n"
-        "  success_criteria:\n"
-        '    - "Gate Q, Gate R, and Gate S return GO."\n'
-        "tier:\n"
-        f'  tier_pack_id: "{tier_id}"\n'
-        "doc_impact:\n"
-        "  required_paths: []\n"
-        '  note_on_empty: "No documentation updates are required for this deterministic workspace run."\n'
-        "publication_intent:\n"
-        "  publish: true\n"
-        '  profile: "public"\n'
-        "```\n"
-    )
-    return text.encode("utf-8", errors="strict")
-
-
-def _make_evidence_artifact(
-    *,
-    chain_repo_root: Path,
-    path: Path,
-    kind: str,
-    artifact_id: str,
-    media_type: str,
-    produced_by: str,
-) -> dict[str, str]:
-    from belgi.core.hash import sha256_bytes
-    from belgi.core.jail import safe_relpath
-
-    return {
-        "kind": kind,
-        "id": artifact_id,
-        "hash": sha256_bytes(path.read_bytes()),
-        "media_type": media_type,
-        "storage_ref": safe_relpath(chain_repo_root, path),
-        "produced_by": produced_by,
-    }
-
-
-def _collect_chain_artifact_paths(*, chain_repo_root: Path, chain_out_dir: Path) -> list[Path]:
-    if chain_out_dir.is_symlink() or not chain_out_dir.is_dir():
-        raise ValueError(f"missing chain output directory: {chain_out_dir}")
-
-    out_files: list[Path] = []
-    for p in sorted(chain_out_dir.rglob("*"), key=lambda x: x.as_posix()):
-        if p.is_symlink():
-            raise ValueError(f"symlink output not allowed: {p}")
-        if p.is_file():
-            out_files.append(p)
-
-    extras = [
-        chain_repo_root / "IntentSpec.core.md",
-        chain_repo_root / "docs" / "docs_compilation_log.json",
-    ]
-    for p in extras:
-        if not p.exists() or p.is_symlink() or not p.is_file():
-            raise ValueError(f"missing required chain artifact: {p}")
-        out_files.append(p)
-
-    dedup: dict[str, Path] = {}
-    for p in out_files:
-        dedup[str(p.resolve())] = p
-    return sorted(dedup.values(), key=lambda x: x.as_posix())
-
-
-def _backfill_prompt_block_hashes(*, chain_repo_root: Path, prompt_hashes_path: Path) -> None:
-    mapping_obj = _load_json_object(prompt_hashes_path, label="prompt_block_hashes.json")
-    mapping: dict[str, str] = {}
-    for k, v in mapping_obj.items():
-        if isinstance(k, str) and isinstance(v, str):
-            mapping[k] = v
-
-    registry_path = chain_repo_root / "belgi" / "templates" / "PromptBundle.blocks.md"
-    if not registry_path.exists() or registry_path.is_symlink() or not registry_path.is_file():
-        raise ValueError(f"missing prompt block registry: {registry_path}")
-    registry_text = registry_path.read_text(encoding="utf-8", errors="strict")
-
-    block_ids = sorted(set(re.findall(r"PB-\d{3}", registry_text)))
-    changed = False
-    for block_id in block_ids:
-        if block_id not in mapping:
-            mapping[block_id] = "0" * 64
-            changed = True
-    if changed:
-        _write_json(prompt_hashes_path, mapping)
-
-
 def _validate_paths_within_attempt(*, attempt_dir: Path, paths: list[Path]) -> None:
     attempt_resolved = attempt_dir.resolve()
     for p in paths:
@@ -1109,52 +883,9 @@ def _validate_paths_within_attempt(*, attempt_dir: Path, paths: list[Path]) -> N
             raise ValueError(f"artifact escapes attempt directory: {p}")
 
 
-def _command_records_for_tier(tier_id: str) -> list[object]:
-    if tier_id == "tier-0":
-        return [
-            "belgi invariant-eval",
-            "belgi supplychain-scan",
-            "belgi adversarial-scan",
-        ]
-
-    return [
-        {
-            "argv": ["belgi", "invariant-eval"],
-            "exit_code": 0,
-            "started_at": FIXED_GENERATED_AT,
-            "finished_at": FIXED_GENERATED_AT,
-        },
-        {
-            "argv": ["belgi", "run-tests"],
-            "exit_code": 0,
-            "started_at": FIXED_GENERATED_AT,
-            "finished_at": FIXED_GENERATED_AT,
-        },
-        {
-            "argv": ["belgi", "verify-attestation"],
-            "exit_code": 0,
-            "started_at": FIXED_GENERATED_AT,
-            "finished_at": FIXED_GENERATED_AT,
-        },
-        {
-            "argv": ["belgi", "supplychain-scan"],
-            "exit_code": 0,
-            "started_at": FIXED_GENERATED_AT,
-            "finished_at": FIXED_GENERATED_AT,
-        },
-        {
-            "argv": ["belgi", "adversarial-scan"],
-            "exit_code": 0,
-            "started_at": FIXED_GENERATED_AT,
-            "finished_at": FIXED_GENERATED_AT,
-        },
-    ]
-
-
 def cmd_run(args: argparse.Namespace) -> int:
     from belgi.core.hash import sha256_bytes
     from belgi.core.jail import resolve_repo_rel_path, safe_relpath
-    from belgi.core.schema import validate_schema
     from belgi.protocol.pack import get_builtin_protocol_context
 
     repo_root = Path(str(args.repo)).resolve()
@@ -1201,8 +932,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             intent_bytes = intent_path.read_bytes()
             intent_source_rel = safe_relpath(repo_root, intent_path)
         else:
-            intent_bytes = _render_default_intent_spec(tier_id=tier_id)
-            intent_source_rel = safe_relpath(repo_root, template_path)
+            intent_bytes = render_default_intent_spec(tier_id=tier_id)
+            intent_source_rel = "(auto)"
 
         protocol = get_builtin_protocol_context()
         repo_head_sha = _repo_head_sha(repo_root)
@@ -1229,423 +960,18 @@ def cmd_run(args: argparse.Namespace) -> int:
             raise ValueError(f"attempt directory already exists: {attempt_dir}")
         attempt_dir.mkdir(parents=False, exist_ok=False)
 
-        chain_repo_dir = attempt_dir / CHAIN_REPO_DIRNAME
-        chain_out_dir = chain_repo_dir / CHAIN_OUT_DIRNAME
-        chain_artifacts_dir = chain_out_dir / "artifacts"
-
-        _git_clone_at_commit(source_repo=repo_root, dest_repo=chain_repo_dir, commit_sha=repo_head_sha)
-        chain_out_dir.mkdir(parents=True, exist_ok=True)
-        chain_artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-        rel_locked = f"{CHAIN_OUT_DIRNAME}/LockedSpec.json"
-        rel_prompt_bundle = f"{CHAIN_OUT_DIRNAME}/prompt_bundle.md"
-        rel_prompt_hashes = f"{CHAIN_OUT_DIRNAME}/prompt_block_hashes.json"
-        rel_prompt_policy = f"{CHAIN_OUT_DIRNAME}/policy.prompt_bundle.json"
-        rel_policy_inv = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.invariant_eval.json"
-        rel_policy_supply = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.supplychain.json"
-        rel_policy_adv = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.adversarial_scan.json"
-        rel_command_log = f"{CHAIN_OUT_DIRNAME}/artifacts/command_log.json"
-        rel_diff = f"{CHAIN_OUT_DIRNAME}/artifacts/diff.patch"
-        rel_test_report = f"{CHAIN_OUT_DIRNAME}/artifacts/tests.report.json"
-        rel_env_att = f"{CHAIN_OUT_DIRNAME}/artifacts/env.attestation.json"
-        rel_evidence_input = f"{CHAIN_OUT_DIRNAME}/EvidenceManifest.input.json"
-        rel_gate_q = f"{CHAIN_OUT_DIRNAME}/GateVerdict.Q.json"
-        rel_verify_report = f"{CHAIN_OUT_DIRNAME}/verify_report.R.json"
-        rel_gate_r = f"{CHAIN_OUT_DIRNAME}/GateVerdict.R.json"
-        rel_r_snapshot = f"{CHAIN_OUT_DIRNAME}/EvidenceManifest.r_snapshot.json"
-        rel_evidence_final = f"{CHAIN_OUT_DIRNAME}/EvidenceManifest.json"
-        rel_docs = f"{CHAIN_OUT_DIRNAME}/run_docs.md"
-        rel_bundle = f"{CHAIN_OUT_DIRNAME}/bundle"
-        rel_bundle_root_sha = f"{CHAIN_OUT_DIRNAME}/bundle_root.sha256"
-        rel_seal = f"{CHAIN_OUT_DIRNAME}/SealManifest.json"
-        rel_gate_s = f"{CHAIN_OUT_DIRNAME}/GateVerdict.S.json"
-
-        rc_supply = cmd_supplychain_scan(
-            argparse.Namespace(
-                repo=str(chain_repo_dir),
-                evaluated_revision=repo_head_sha,
-                out=str(chain_repo_dir / rel_policy_supply),
-                deterministic=True,
-                run_id=run_key,
-            )
+        chain_result = orchestrate_chain_run(
+            source_repo_root=repo_root,
+            chain_repo_dir=attempt_dir / CHAIN_REPO_DIRNAME,
+            run_key=run_key,
+            tier_id=tier_id,
+            repo_head_sha=repo_head_sha,
+            intent_bytes=intent_bytes,
+            protocol=protocol,
         )
-        if rc_supply != 0:
-            raise ValueError(f"supplychain scan failed (rc={rc_supply})")
-
-        rc_adv = cmd_adversarial_scan(
-            argparse.Namespace(
-                repo=str(chain_repo_dir),
-                out=str(chain_repo_dir / rel_policy_adv),
-                deterministic=True,
-                run_id=run_key,
-            )
-        )
-        if rc_adv != 0:
-            raise ValueError(f"adversarial scan failed (rc={rc_adv})")
-
-        intent_in_chain = chain_repo_dir / "IntentSpec.core.md"
-        intent_in_chain.write_bytes(intent_bytes)
-
-        tolerances_path = chain_out_dir / "inputs" / "tolerances.json"
-        toolchain_path = chain_out_dir / "inputs" / "toolchain.json"
-        _write_json(tolerances_path, {"schema_version": "1.0.0", "tier_id": tier_id})
-        _write_json(
-            toolchain_path,
-            {
-                "schema_version": "1.0.0",
-                "python_version": sys.version.split()[0],
-                "runner": "belgi.cli.run",
-            },
-        )
-
-        c1_argv = [
-            "--repo",
-            str(chain_repo_dir),
-            "--intent-spec",
-            "IntentSpec.core.md",
-            "--out",
-            rel_locked,
-            "--run-id",
-            run_key,
-            "--repo-ref",
-            repo_head_sha,
-            "--prompt-bundle-out",
-            rel_prompt_bundle,
-            "--prompt-bundle-id",
-            "prompt.bundle",
-            "--prompt-block-hashes-out",
-            rel_prompt_hashes,
-            "--prompt-bundle-policy-out",
-            rel_prompt_policy,
-            "--tolerances",
-            f"tier.tolerances={safe_relpath(chain_repo_dir, tolerances_path)}",
-            "--envelope-id",
-            "env.default",
-            "--envelope-description",
-            "Deterministic BELGI run envelope",
-            "--expected-runner",
-            "belgi.cli.run",
-            "--toolchain-ref",
-            f"toolchain.main={safe_relpath(chain_repo_dir, toolchain_path)}",
-        ]
-        ci_prev = os.environ.pop("CI", None)
-        try:
-            _run_module_expect_rc("chain.compiler_c1_intent", c1_argv)
-        finally:
-            if ci_prev is not None:
-                os.environ["CI"] = ci_prev
-
-        locked_spec_path = chain_repo_dir / rel_locked
-        locked_spec = _load_json_object(locked_spec_path, label="LockedSpec.json")
-        locked_run_id = str(locked_spec.get("run_id") or "")
-        if locked_run_id != run_key:
-            raise ValueError("LockedSpec.run_id mismatch after C1 compilation")
-        locked_tier = ""
-        tier_obj = locked_spec.get("tier")
-        if isinstance(tier_obj, dict):
-            locked_tier = str(tier_obj.get("tier_id") or "")
-        if locked_tier != tier_id:
-            raise ValueError(
-                f"LockedSpec tier mismatch: expected {tier_id}, got {locked_tier or '<missing>'}"
-            )
-        _backfill_prompt_block_hashes(
-            chain_repo_root=chain_repo_dir,
-            prompt_hashes_path=chain_repo_dir / rel_prompt_hashes,
-        )
-
-        inv_ids: list[str] = []
-        for inv in locked_spec.get("invariants", []) if isinstance(locked_spec.get("invariants"), list) else []:
-            if isinstance(inv, dict):
-                inv_id = inv.get("id")
-                if isinstance(inv_id, str) and inv_id.strip():
-                    inv_ids.append(inv_id.strip())
-        if not inv_ids:
-            inv_ids = ["INV-INTENT-001"]
-
-        rc_policy_inv = cmd_policy_stub(
-            argparse.Namespace(
-                out=str(chain_repo_dir / rel_policy_inv),
-                run_id=run_key,
-                check_id=inv_ids,
-                generated_at=FIXED_GENERATED_AT,
-            )
-        )
-        if rc_policy_inv != 0:
-            raise ValueError(f"policy stub generation failed for policy.invariant_eval (rc={rc_policy_inv})")
-
-        commands_executed = _command_records_for_tier(tier_id)
-
-        command_log_path = chain_repo_dir / rel_command_log
-        _write_json(
-            command_log_path,
-            {
-                "schema_version": "1.0.0",
-                "run_id": run_key,
-                "commands_executed": commands_executed,
-            },
-        )
-
-        diff_path = chain_repo_dir / rel_diff
-        diff_path.parent.mkdir(parents=True, exist_ok=True)
-        diff_path.write_bytes(_git_diff_bytes(repo_root=chain_repo_dir, upstream=repo_head_sha, evaluated=repo_head_sha))
-
-        test_report_path = chain_repo_dir / rel_test_report
-        env_att_path = chain_repo_dir / rel_env_att
-        envelope_attestation: dict[str, str] | None = None
-        if tier_id == "tier-1":
-            _write_json(
-                test_report_path,
-                {
-                    "schema_version": "1.0.0",
-                    "run_id": run_key,
-                    "generated_at": FIXED_GENERATED_AT,
-                    "summary": {
-                        "total": 1,
-                        "passed": 1,
-                        "failed": 0,
-                        "skipped": 0,
-                        "duration_seconds": 0.0,
-                    },
-                },
-            )
-            _write_json(
-                env_att_path,
-                {
-                    "schema_version": "1.0.0",
-                    "run_id": run_key,
-                    "attestation_id": "env.attestation",
-                    "generated_at": FIXED_GENERATED_AT,
-                    "command_log_sha256": sha256_bytes(command_log_path.read_bytes()),
-                },
-            )
-            envelope_attestation = {
-                "id": "env.attestation",
-                "hash": sha256_bytes(env_att_path.read_bytes()),
-                "storage_ref": safe_relpath(chain_repo_dir, env_att_path),
-            }
-
-        artifacts = [
-            _make_evidence_artifact(
-                chain_repo_root=chain_repo_dir,
-                path=locked_spec_path,
-                kind="schema_validation",
-                artifact_id="schema.lockedspec",
-                media_type="application/json",
-                produced_by="C1",
-            ),
-            _make_evidence_artifact(
-                chain_repo_root=chain_repo_dir,
-                path=command_log_path,
-                kind="command_log",
-                artifact_id="command.log",
-                media_type="application/json",
-                produced_by="C1",
-            ),
-            _make_evidence_artifact(
-                chain_repo_root=chain_repo_dir,
-                path=chain_repo_dir / rel_policy_inv,
-                kind="policy_report",
-                artifact_id="policy.invariant_eval",
-                media_type="application/json",
-                produced_by="C1",
-            ),
-            _make_evidence_artifact(
-                chain_repo_root=chain_repo_dir,
-                path=chain_repo_dir / rel_policy_supply,
-                kind="policy_report",
-                artifact_id="policy.supplychain",
-                media_type="application/json",
-                produced_by="C1",
-            ),
-            _make_evidence_artifact(
-                chain_repo_root=chain_repo_dir,
-                path=chain_repo_dir / rel_policy_adv,
-                kind="policy_report",
-                artifact_id="policy.adversarial_scan",
-                media_type="application/json",
-                produced_by="C1",
-            ),
-            _make_evidence_artifact(
-                chain_repo_root=chain_repo_dir,
-                path=diff_path,
-                kind="diff",
-                artifact_id="changes.diff",
-                media_type="text/x-diff",
-                produced_by="C1",
-            ),
-        ]
-        if tier_id == "tier-1":
-            artifacts.append(
-                _make_evidence_artifact(
-                    chain_repo_root=chain_repo_dir,
-                    path=test_report_path,
-                    kind="test_report",
-                    artifact_id="tests.report",
-                    media_type="application/json",
-                    produced_by="C1",
-                )
-            )
-            artifacts.append(
-                _make_evidence_artifact(
-                    chain_repo_root=chain_repo_dir,
-                    path=env_att_path,
-                    kind="env_attestation",
-                    artifact_id="env.attestation",
-                    media_type="application/json",
-                    produced_by="C1",
-                )
-            )
-        artifacts.sort(key=lambda a: (a.get("kind", ""), a.get("id", ""), a.get("storage_ref", "")))
-
-        evidence_input = {
-            "schema_version": "1.0.0",
-            "run_id": run_key,
-            "artifacts": artifacts,
-            "commands_executed": commands_executed,
-            "envelope_attestation": envelope_attestation,
-        }
-        evidence_schema = protocol.read_json("schemas/EvidenceManifest.schema.json")
-        if not isinstance(evidence_schema, dict):
-            raise ValueError("EvidenceManifest schema must be a JSON object")
-        em_errors = validate_schema(
-            evidence_input,
-            evidence_schema,
-            root_schema=evidence_schema,
-            path="EvidenceManifest",
-        )
-        if em_errors:
-            first = em_errors[0]
-            raise ValueError(f"initial EvidenceManifest invalid at {first.path}: {first.message}")
-        _write_json(chain_repo_dir / rel_evidence_input, evidence_input)
-
-        _run_module_expect_rc(
-            "chain.gate_q_verify",
-            [
-                "--repo",
-                str(chain_repo_dir),
-                "--intent-spec",
-                "IntentSpec.core.md",
-                "--locked-spec",
-                rel_locked,
-                "--evidence-manifest",
-                rel_evidence_input,
-                "--out",
-                rel_gate_q,
-            ],
-        )
-
-        _run_module_expect_rc(
-            "chain.gate_r_verify",
-            [
-                "--repo",
-                str(chain_repo_dir),
-                "--locked-spec",
-                rel_locked,
-                "--gate-q-verdict",
-                rel_gate_q,
-                "--evidence-manifest",
-                rel_evidence_input,
-                "--r-snapshot-manifest-out",
-                rel_r_snapshot,
-                "--gate-verdict-out",
-                rel_gate_r,
-                "--out",
-                rel_verify_report,
-                "--evaluated-revision",
-                repo_head_sha,
-            ],
-        )
-
-        profile = "public"
-        pub_intent = locked_spec.get("publication_intent")
-        if isinstance(pub_intent, dict):
-            prof = pub_intent.get("profile")
-            if isinstance(prof, str) and prof in ("public", "internal"):
-                profile = prof
-
-        _run_module_expect_rc(
-            "chain.compiler_c3_docs",
-            [
-                "--repo",
-                str(chain_repo_dir),
-                "--locked-spec",
-                rel_locked,
-                "--gate-q-verdict",
-                rel_gate_q,
-                "--gate-r-verdict",
-                rel_gate_r,
-                "--r-snapshot-manifest",
-                rel_r_snapshot,
-                "--out-final-manifest",
-                rel_evidence_final,
-                "--out-log",
-                "docs/docs_compilation_log.json",
-                "--out-docs",
-                rel_docs,
-                "--out-bundle-dir",
-                rel_bundle,
-                "--out-bundle-root-sha",
-                rel_bundle_root_sha,
-                "--profile",
-                profile,
-                "--prompt-block-hashes",
-                rel_prompt_hashes,
-            ],
-        )
-
-        _run_module_expect_rc(
-            "chain.seal_bundle",
-            [
-                "--repo",
-                str(chain_repo_dir),
-                "--locked-spec",
-                rel_locked,
-                "--gate-q-verdict",
-                rel_gate_q,
-                "--gate-r-verdict",
-                rel_gate_r,
-                "--evidence-manifest",
-                rel_evidence_final,
-                "--final-commit-sha",
-                repo_head_sha,
-                "--sealed-at",
-                FIXED_SEALED_AT,
-                "--signer",
-                FIXED_SIGNER,
-                "--out",
-                rel_seal,
-            ],
-        )
-
-        _run_module_expect_rc(
-            "chain.gate_s_verify",
-            [
-                "--repo",
-                str(chain_repo_dir),
-                "--locked-spec",
-                rel_locked,
-                "--seal-manifest",
-                rel_seal,
-                "--evidence-manifest",
-                rel_evidence_final,
-                "--out",
-                rel_gate_s,
-            ],
-        )
-
-        for src_rel, dst_rel in (
-            (rel_gate_q, f"{CHAIN_OUT_DIRNAME}/GateVerdict_Q.json"),
-            (rel_gate_r, f"{CHAIN_OUT_DIRNAME}/GateVerdict_R.json"),
-            (rel_gate_s, f"{CHAIN_OUT_DIRNAME}/GateVerdict_S.json"),
-        ):
-            src = chain_repo_dir / src_rel
-            dst = chain_repo_dir / dst_rel
-            if not src.exists() or src.is_symlink() or not src.is_file():
-                raise ValueError(f"missing GateVerdict output for bundle check alias: {src}")
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_bytes(src.read_bytes())
-
-        chain_paths = _collect_chain_artifact_paths(chain_repo_root=chain_repo_dir, chain_out_dir=chain_out_dir)
+        chain_repo_dir = chain_result.chain_repo_dir
+        chain_out_dir = chain_result.chain_out_dir
+        chain_paths = chain_result.chain_paths
         _validate_paths_within_attempt(attempt_dir=attempt_dir, paths=chain_paths)
 
         summary_obj = {
@@ -1678,9 +1004,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"[belgi run] run_key: {run_key}", file=sys.stderr)
     print(f"[belgi run] attempt_id: {attempt_id}", file=sys.stderr)
     print(f"[belgi run] created: {safe_relpath(repo_root, summary_path)}", file=sys.stderr)
-    print(f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / rel_evidence_final)}", file=sys.stderr)
-    print(f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / rel_seal)}", file=sys.stderr)
-    print(f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / rel_gate_s)}", file=sys.stderr)
+    print(
+        f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_evidence_final)}",
+        file=sys.stderr,
+    )
+    print(
+        f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_seal)}",
+        file=sys.stderr,
+    )
+    print(
+        f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_gate_s)}",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -2320,6 +1655,7 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     """
     from belgi.protocol.pack import get_builtin_protocol_context
     from belgi.core.hash import sha256_bytes, is_hex_sha256
+    from chain.seal_bundle import _seal_hash as canonical_seal_hash
     
     if not args.demo:
         print("[belgi bundle check] ERROR: --demo flag required", file=sys.stderr)
@@ -2399,7 +1735,6 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     # Verify protocol identity binding (pack_id/pack_name/manifest_sha256).
     # NOTE: source is metadata and is intentionally NOT treated as identity.
     checks_total += 1
-    protocol_pack_id: str = ""
     try:
         protocol = get_builtin_protocol_context()
         if locked_spec is not None:
@@ -2422,7 +1757,6 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
                     for m in mismatches:
                         failures.append(f"protocol_pack binding mismatch: {m}")
                 else:
-                    protocol_pack_id = str(protocol.pack_id)
                     checks_passed += 1
             else:
                 failures.append("LockedSpec.protocol_pack missing or invalid")
@@ -2556,25 +1890,19 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
             failures.append("SealManifest.final_commit_sha: missing or empty")
         elif not run_id:
             failures.append("SealManifest.run_id: missing or empty")
-        elif not protocol_pack_id:
-            failures.append("seal_hash check skipped: protocol_pack_id not available")
         else:
-            computed_seal = _compute_seal_hash(
-                run_id=run_id,
-                locked_spec_hash=locked_spec_hash,
-                evidence_manifest_hash=evidence_manifest_hash,
-                gate_q_hash=gate_q_hash,
-                gate_r_hash=gate_r_hash,
-                final_commit_sha=final_commit_sha,
-                protocol_pack_id=protocol_pack_id,
-            )
-            if computed_seal == declared_seal_hash:
-                checks_passed += 1
+            try:
+                computed_seal = canonical_seal_hash(dict(seal_manifest))
+            except Exception as e:
+                failures.append(f"seal_hash recomputation failed: {e}")
             else:
-                failures.append(
-                    f"seal_hash mismatch: declared={declared_seal_hash[:16]}..., "
-                    f"computed={computed_seal[:16]}..."
-                )
+                if computed_seal.lower() == str(declared_seal_hash).lower():
+                    checks_passed += 1
+                else:
+                    failures.append(
+                        f"seal_hash mismatch: declared={str(declared_seal_hash)[:16]}..., "
+                        f"computed={computed_seal[:16]}..."
+                    )
     else:
         failures.append("seal_hash check skipped: prerequisite ObjectRef checks failed")
     
@@ -2677,7 +2005,7 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument(
         "--intent-spec",
         default=None,
-        help="Repo-relative intent/spec source to bind into run_key (default: workspace template)",
+        help='Repo-relative intent/spec source to bind into run_key (default: auto-generated "(auto)")',
     )
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")
 
