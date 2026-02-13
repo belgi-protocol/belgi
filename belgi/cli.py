@@ -7,6 +7,8 @@ Subcommands:
 - belgi init           → Initialize adopter overlay defaults in a repo
 - belgi policy stub    → Generate deterministic PolicyReportPayload stubs
 - belgi run new        → Create deterministic adopter run workspace
+- belgi run --tier     → Create deterministic run attempt under run_key/attempt_id
+- belgi verify         → Verify deterministic run summaries/manifests
 - belgi manifest add   → Deterministically add/update EvidenceManifest artifacts
 - belgi pack build     → Build/update protocol pack manifest deterministically
 - belgi pack verify    → Verify protocol pack manifest matches file tree
@@ -24,6 +26,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
+import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, metadata, version
 from importlib.resources import as_file, files
@@ -46,6 +50,10 @@ SEAL_HASH_DELIMITER = b"\x00"
 ABOUT_PHILOSOPHY = '"Hayatta en hakiki mürşit ilimdir." (M.K. Atatürk)'
 ABOUT_DEDICATION = "Bilge (8)"
 ABOUT_REPO_URL = "https://github.com/belgi-protocol/belgi"
+DEFAULT_WORKSPACE_REL = ".belgi"
+RUN_SUMMARY_FILENAME = "run.summary.json"
+ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
+ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
 
 
 def _compute_seal_hash(
@@ -277,6 +285,159 @@ def cmd_about(_: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# shared helpers (workspace + run metadata)
+# ---------------------------------------------------------------------------
+
+def _package_version() -> str:
+    try:
+        return version("belgi")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
+def _repo_head_sha(repo_root: Path) -> str:
+    try:
+        cp = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return "unknown"
+    sha = cp.stdout.strip()
+    if len(sha) == 40 and all(c in "0123456789abcdefABCDEF" for c in sha):
+        return sha.lower()
+    return "unknown"
+
+
+def _validate_tier_id(raw: str) -> str:
+    tier_id = str(raw or "").strip()
+    if tier_id not in ALLOWED_RUN_TIERS:
+        raise ValueError("--tier must be one of: tier-0, tier-1")
+    return tier_id
+
+
+def _normalize_workspace_rel(raw: str | None) -> str:
+    from belgi.core.jail import normalize_repo_rel
+
+    ws_raw = str(raw).strip() if raw is not None else DEFAULT_WORKSPACE_REL
+    if not ws_raw:
+        ws_raw = DEFAULT_WORKSPACE_REL
+    rel = normalize_repo_rel(ws_raw, allow_backslashes=False)
+    if rel == ".":
+        raise ValueError("workspace path must not be repo root")
+    return rel
+
+
+def _resolve_workspace_dir(repo_root: Path, workspace_raw: str | None, *, must_exist: bool) -> tuple[str, Path]:
+    from belgi.core.jail import resolve_repo_rel_path
+
+    rel = _normalize_workspace_rel(workspace_raw)
+    ws_dir = resolve_repo_rel_path(
+        repo_root,
+        rel,
+        must_exist=must_exist,
+        must_be_file=False,
+        allow_backslashes=False,
+        forbid_symlinks=True,
+    )
+    if ws_dir == repo_root:
+        raise ValueError("workspace path must not be repo root")
+    return rel, ws_dir
+
+
+def _canonical_json_bytes(obj: object) -> bytes:
+    return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8", errors="strict")
+
+
+def _compute_run_key_from_preimage(preimage: dict[str, object]) -> str:
+    return hashlib.sha256(_canonical_json_bytes(preimage)).hexdigest()
+
+
+def _derive_run_key_preimage(
+    *,
+    repo_root: Path,
+    tier_id: str,
+    workspace_rel: str,
+    intent_source_rel: str,
+    intent_spec_sha256: str,
+    protocol_pack_name: str,
+    protocol_pack_id: str,
+    protocol_manifest_sha256: str,
+) -> dict[str, object]:
+    return {
+        "schema_version": "1.0.0",
+        "summary_kind": "belgi.run_key.preimage",
+        "normalized_inputs": {
+            "intent_spec_source": intent_source_rel,
+            "tier_id": tier_id,
+            "workspace_root": workspace_rel,
+        },
+        "intent_spec_sha256": intent_spec_sha256,
+        "belgi": {
+            "package_version": _package_version(),
+            "repo_head_sha": _repo_head_sha(repo_root),
+        },
+        "protocol_pack": {
+            "manifest_sha256": protocol_manifest_sha256,
+            "pack_id": protocol_pack_id,
+            "pack_name": protocol_pack_name,
+        },
+    }
+
+
+def _next_attempt_id(run_key_dir: Path) -> str:
+    max_seen = 0
+    if not run_key_dir.exists():
+        return "attempt-0001"
+    if run_key_dir.is_symlink() or not run_key_dir.is_dir():
+        raise ValueError(f"invalid run key directory: {run_key_dir}")
+    for child in sorted(run_key_dir.iterdir(), key=lambda p: p.name):
+        if child.name.startswith(".") and not child.is_symlink():
+            continue
+        if child.is_symlink():
+            raise ValueError(f"symlink attempt directory not allowed: {child}")
+        if not child.is_dir():
+            continue
+        m = ATTEMPT_ID_PATTERN.fullmatch(child.name)
+        if m is None:
+            raise ValueError(f"unexpected attempt directory name: {child.name}")
+        idx = int(m.group(1))
+        if idx > max_seen:
+            max_seen = idx
+    return f"attempt-{max_seen + 1:04d}"
+
+
+def _ensure_gitignore_entries(repo_root: Path, *, entries: list[str]) -> str | None:
+    if not entries:
+        return None
+    gitignore_path = repo_root / ".gitignore"
+    normalized = [f"{e.strip('/')}/" for e in entries]
+    if any(not e or e == "/" for e in normalized):
+        raise ValueError("invalid .gitignore entry")
+
+    if gitignore_path.exists():
+        if gitignore_path.is_symlink() or not gitignore_path.is_file():
+            raise ValueError(f"invalid .gitignore path: {gitignore_path}")
+        content = gitignore_path.read_text(encoding="utf-8", errors="strict")
+        lines = content.splitlines()
+        existing = {line.strip() for line in lines}
+        missing = [e for e in normalized if e not in existing and f"/{e}" not in existing]
+        if not missing:
+            return None
+        out_lines = list(lines)
+        if out_lines and out_lines[-1].strip():
+            out_lines.append("")
+        out_lines.extend(missing)
+        _write_text(gitignore_path, "\n".join(out_lines) + "\n")
+        return "updated"
+
+    _write_text(gitignore_path, "".join(f"{entry}\n" for entry in normalized))
+    return "created"
+
+
+# ---------------------------------------------------------------------------
 # init subcommand
 # ---------------------------------------------------------------------------
 
@@ -340,13 +501,21 @@ def _parse_protocol_pin_from_adopter_toml(text: str) -> dict[str, str]:
     return values
 
 
-def _render_adopter_toml(*, pack_name: str, pack_id: str, manifest_sha256: str) -> str:
+def _render_adopter_toml(
+    *,
+    pack_name: str,
+    pack_id: str,
+    manifest_sha256: str,
+    workspace_rel: str,
+) -> str:
+    run_workspace_root = f"{workspace_rel}/runs"
+    intent_template = f"{workspace_rel}/templates/IntentSpec.core.template.md"
     return (
         "# BELGI adopter defaults (one-time initialization)\n"
         "# This file is NOT per-run state. Do not mutate it during runs.\n"
         "format_version = 1\n"
-        "run_workspace_root = \".belgi/runs\"\n"
-        "intent_template = \".belgi/templates/IntentSpec.core.template.md\"\n"
+        f"run_workspace_root = \"{run_workspace_root}\"\n"
+        f"intent_template = \"{intent_template}\"\n"
         "default_tier_id = \"tier-0\"\n"
         "\n"
         "[protocol_pack_pin]\n"
@@ -359,16 +528,17 @@ def _render_adopter_toml(*, pack_name: str, pack_id: str, manifest_sha256: str) 
     )
 
 
-def _render_adopter_readme() -> str:
+def _render_adopter_readme(*, workspace_rel: str) -> str:
+    run_root = f"{workspace_rel}/runs"
     return (
         "# BELGI Local Layout\n\n"
-        "- `.belgi/adopter.toml`: one-time defaults for this repository (not per-run state)\n"
-        "- `.belgi/templates/IntentSpec.core.template.md`: local template copied from BELGI package at init time\n"
-        "- `.belgi/runs/<run_id>/`: run-local workspace (authoritative per-run files)\n"
+        f"- `{workspace_rel}/adopter.toml`: one-time defaults for this repository (not per-run state)\n"
+        f"- `{workspace_rel}/templates/IntentSpec.core.template.md`: local template copied from BELGI package at init time\n"
+        f"- `{run_root}/<run_key>/<attempt_id>/`: run-local workspace (authoritative per-run files)\n"
         "- `belgi_pack/DomainPackManifest.json`: adopter-owned overlay checks for optional strict verification\n\n"
         "Rules:\n"
         "- Do not copy BELGI canonicals (`schemas/`, `gates/`, `tiers/`) into this repository.\n"
-        "- Keep per-run files under `.belgi/runs/<run_id>/` and freeze them into LockedSpec/evidence artifacts.\n"
+        f"- Keep per-run files under `{run_root}/<run_key>/<attempt_id>/` and freeze them into LockedSpec/evidence artifacts.\n"
     )
 
 
@@ -403,13 +573,25 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 3
 
     try:
+        workspace_rel, workspace_dir = _resolve_workspace_dir(
+            repo_root,
+            getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+            must_exist=False,
+        )
+    except Exception as e:
+        print(f"[belgi init] ERROR: invalid workspace path: {e}", file=sys.stderr)
+        return 3
+
+    try:
         protocol = get_builtin_protocol_context()
     except Exception as e:
         print(f"[belgi init] ERROR: cannot load builtin protocol pack identity: {e}", file=sys.stderr)
         return 3
 
-    adopter_dir = repo_root / ".belgi"
+    adopter_dir = workspace_dir
     runs_dir = adopter_dir / "runs"
+    cache_dir = adopter_dir / "cache"
+    config_dir = adopter_dir / "config"
     overlay_dir = repo_root / "belgi_pack"
     templates_dir = adopter_dir / "templates"
     adopter_toml_path = adopter_dir / "adopter.toml"
@@ -418,7 +600,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     intent_template_path = templates_dir / "IntentSpec.core.template.md"
 
     # Guard against symlink directories and conflicting file paths.
-    for d in (adopter_dir, runs_dir, overlay_dir, templates_dir):
+    for d in (adopter_dir, runs_dir, cache_dir, config_dir, overlay_dir, templates_dir):
         if d.exists() and not d.is_dir():
             print(f"[belgi init] ERROR: expected directory path but found non-directory: {d}", file=sys.stderr)
             return 3
@@ -428,6 +610,8 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     adopter_dir.mkdir(parents=True, exist_ok=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True)
     templates_dir.mkdir(parents=True, exist_ok=True)
     overlay_dir.mkdir(parents=True, exist_ok=True)
 
@@ -440,6 +624,15 @@ def cmd_init(args: argparse.Namespace) -> int:
     }
 
     try:
+        ignore_entries = [DEFAULT_WORKSPACE_REL]
+        if workspace_rel != DEFAULT_WORKSPACE_REL:
+            ignore_entries.append(workspace_rel)
+        gitignore_state = _ensure_gitignore_entries(repo_root, entries=ignore_entries)
+        if gitignore_state == "created":
+            created.append(repo_root / ".gitignore")
+        elif gitignore_state == "updated":
+            updated.append(repo_root / ".gitignore")
+
         # Template provisioning for adopter repos (repo-local path).
         if _write_text_if_missing(intent_template_path, _read_builtin_intent_template_text()):
             created.append(intent_template_path)
@@ -465,6 +658,7 @@ def cmd_init(args: argparse.Namespace) -> int:
                         pack_name=protocol.pack_name,
                         pack_id=protocol.pack_id,
                         manifest_sha256=protocol.manifest_sha256,
+                        workspace_rel=workspace_rel,
                     ),
                 )
                 updated.append(adopter_toml_path)
@@ -474,11 +668,12 @@ def cmd_init(args: argparse.Namespace) -> int:
                 pack_name=protocol.pack_name,
                 pack_id=protocol.pack_id,
                 manifest_sha256=protocol.manifest_sha256,
+                workspace_rel=workspace_rel,
             ),
         ):
             created.append(adopter_toml_path)
 
-        if _write_text_if_missing(adopter_readme_path, _render_adopter_readme()):
+        if _write_text_if_missing(adopter_readme_path, _render_adopter_readme(workspace_rel=workspace_rel)):
             created.append(adopter_readme_path)
 
         if overlay_manifest_path.exists():
@@ -516,6 +711,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 3
 
     print(f"[belgi init] repo: {repo_root}", file=sys.stderr)
+    print(f"[belgi init] workspace: {workspace_rel}", file=sys.stderr)
     print(
         f"[belgi init] protocol_pack: {protocol.pack_name} "
         f"(pack_id={protocol.pack_id}, manifest_sha256={protocol.manifest_sha256})",
@@ -575,6 +771,66 @@ def _write_json_object(path: Path, obj: object, *, force: bool) -> str | None:
     return "created"
 
 
+def _write_json(path: Path, obj: object) -> None:
+    _write_text(path, json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+def _seed_run_workspace(
+    *,
+    run_dir: Path,
+    run_id: str,
+    intent_bytes: bytes,
+    force: bool,
+) -> tuple[list[Path], list[Path], list[Path]]:
+    intent_path = run_dir / "IntentSpec.core.md"
+    placeholders = [
+        run_dir / "tolerances.json",
+        run_dir / "toolchain.json",
+    ]
+    evidence_manifest_path = run_dir / "EvidenceManifest.json"
+    evidence_manifest_obj = {
+        "schema_version": "1.0.0",
+        "run_id": run_id,
+        "artifacts": [],
+        "commands_executed": [],
+        "envelope_attestation": None,
+    }
+
+    created: list[Path] = []
+    updated: list[Path] = []
+
+    if intent_path.exists():
+        if intent_path.is_symlink() or not intent_path.is_file():
+            raise ValueError(f"invalid path in run workspace: {intent_path}")
+        if force:
+            intent_path.write_bytes(intent_bytes)
+            updated.append(intent_path)
+    else:
+        intent_path.parent.mkdir(parents=True, exist_ok=True)
+        intent_path.write_bytes(intent_bytes)
+        created.append(intent_path)
+
+    for path in placeholders:
+        state = _write_json_placeholder(path, force=force)
+        if state == "created":
+            created.append(path)
+        elif state == "updated":
+            updated.append(path)
+
+    manifest_state = _write_json_object(
+        evidence_manifest_path,
+        evidence_manifest_obj,
+        force=force,
+    )
+    if manifest_state == "created":
+        created.append(evidence_manifest_path)
+    elif manifest_state == "updated":
+        updated.append(evidence_manifest_path)
+
+    seeded_paths = [intent_path, *placeholders, evidence_manifest_path]
+    return created, updated, seeded_paths
+
+
 def cmd_run_new(args: argparse.Namespace) -> int:
     from belgi.core.jail import safe_relpath
 
@@ -590,71 +846,39 @@ def cmd_run_new(args: argparse.Namespace) -> int:
         return 3
 
     try:
+        workspace_rel, workspace_dir = _resolve_workspace_dir(
+            repo_root,
+            getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+            must_exist=True,
+        )
         run_id = _validate_run_id(str(args.run_id))
         force = bool(getattr(args, "force", False))
 
-        template_path = repo_root / ".belgi" / "templates" / "IntentSpec.core.template.md"
+        template_path = workspace_dir / "templates" / "IntentSpec.core.template.md"
         if not template_path.exists() or not template_path.is_file() or template_path.is_symlink():
             raise ValueError(
-                "missing .belgi template; run `belgi init --repo .` first"
+                f"missing workspace template; run `belgi init --repo . --workspace {workspace_rel}` first"
             )
         template_bytes = template_path.read_bytes()
 
-        run_dir = repo_root / ".belgi" / "runs" / run_id
+        run_dir = workspace_dir / "runs" / run_id
         if run_dir.exists() and (run_dir.is_symlink() or not run_dir.is_dir()):
             raise ValueError(f"invalid run workspace path: {run_dir}")
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        intent_path = run_dir / "IntentSpec.core.md"
-        placeholders = [
-            run_dir / "tolerances.json",
-            run_dir / "toolchain.json",
-        ]
-        evidence_manifest_path = run_dir / "EvidenceManifest.json"
-        evidence_manifest_obj = {
-            "schema_version": "1.0.0",
-            "run_id": run_id,
-            "artifacts": [],
-            "commands_executed": [],
-            "envelope_attestation": None,
-        }
-
-        created: list[Path] = []
-        updated: list[Path] = []
-
-        if intent_path.exists():
-            if intent_path.is_symlink() or not intent_path.is_file():
-                raise ValueError(f"invalid path in run workspace: {intent_path}")
-            if force:
-                intent_path.write_bytes(template_bytes)
-                updated.append(intent_path)
-        else:
-            intent_path.parent.mkdir(parents=True, exist_ok=True)
-            intent_path.write_bytes(template_bytes)
-            created.append(intent_path)
-
-        for path in placeholders:
-            state = _write_json_placeholder(path, force=force)
-            if state == "created":
-                created.append(path)
-            elif state == "updated":
-                updated.append(path)
-
-        manifest_state = _write_json_object(
-            evidence_manifest_path,
-            evidence_manifest_obj,
+        created, updated, _ = _seed_run_workspace(
+            run_dir=run_dir,
+            run_id=run_id,
+            intent_bytes=template_bytes,
             force=force,
         )
-        if manifest_state == "created":
-            created.append(evidence_manifest_path)
-        elif manifest_state == "updated":
-            updated.append(evidence_manifest_path)
 
     except Exception as e:
         print(f"[belgi run new] ERROR: {e}", file=sys.stderr)
         return 3
 
     print(f"[belgi run new] repo: {repo_root}", file=sys.stderr)
+    print(f"[belgi run new] workspace: {workspace_rel}", file=sys.stderr)
     print(f"[belgi run new] run_id: {run_id}", file=sys.stderr)
     if created:
         for p in created:
@@ -664,6 +888,359 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             print(f"[belgi run new] updated: {safe_relpath(repo_root, p)}", file=sys.stderr)
     if not created and not updated:
         print("[belgi run new] no changes (already initialized)", file=sys.stderr)
+    return 0
+
+
+def _build_artifact_entries(repo_root: Path, *, paths: list[Path]) -> list[dict[str, str]]:
+    from belgi.core.hash import sha256_bytes
+    from belgi.core.jail import safe_relpath
+
+    pairs = sorted(
+        ((safe_relpath(repo_root, p), p) for p in paths),
+        key=lambda x: x[0],
+    )
+    out: list[dict[str, str]] = []
+    for rel, p in pairs:
+        out.append({"path": rel, "sha256": sha256_bytes(p.read_bytes())})
+    return out
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    from belgi.core.hash import sha256_bytes
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    repo_root = Path(str(args.repo)).resolve()
+    if not repo_root.exists():
+        print(f"[belgi run] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
+        return 3
+    if not repo_root.is_dir():
+        print(f"[belgi run] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
+        return 3
+    if repo_root.is_symlink():
+        print(f"[belgi run] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
+        return 3
+
+    try:
+        tier_id = _validate_tier_id(str(getattr(args, "tier", "")))
+        workspace_rel, workspace_dir = _resolve_workspace_dir(
+            repo_root,
+            getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+            must_exist=True,
+        )
+        runs_dir = workspace_dir / "runs"
+        if runs_dir.exists() and (runs_dir.is_symlink() or not runs_dir.is_dir()):
+            raise ValueError(f"invalid runs directory: {runs_dir}")
+        runs_dir.mkdir(parents=True, exist_ok=True)
+
+        template_path = workspace_dir / "templates" / "IntentSpec.core.template.md"
+        if not template_path.exists() or not template_path.is_file() or template_path.is_symlink():
+            raise ValueError(
+                f"missing workspace template; run `belgi init --repo . --workspace {workspace_rel}` first"
+            )
+
+        intent_spec_arg = str(getattr(args, "intent_spec", "") or "").strip()
+        if intent_spec_arg:
+            intent_path = resolve_repo_rel_path(
+                repo_root,
+                intent_spec_arg,
+                must_exist=True,
+                must_be_file=True,
+                allow_backslashes=False,
+                forbid_symlinks=True,
+            )
+            if intent_path.is_symlink():
+                raise ValueError("intent spec symlink not allowed")
+            intent_bytes = intent_path.read_bytes()
+            intent_source_rel = safe_relpath(repo_root, intent_path)
+        else:
+            intent_bytes = template_path.read_bytes()
+            intent_source_rel = safe_relpath(repo_root, template_path)
+
+        protocol = get_builtin_protocol_context()
+        preimage = _derive_run_key_preimage(
+            repo_root=repo_root,
+            tier_id=tier_id,
+            workspace_rel=workspace_rel,
+            intent_source_rel=intent_source_rel,
+            intent_spec_sha256=sha256_bytes(intent_bytes),
+            protocol_pack_name=protocol.pack_name,
+            protocol_pack_id=protocol.pack_id,
+            protocol_manifest_sha256=protocol.manifest_sha256,
+        )
+        run_key = _compute_run_key_from_preimage(preimage)
+
+        run_key_dir = runs_dir / run_key
+        if run_key_dir.exists() and (run_key_dir.is_symlink() or not run_key_dir.is_dir()):
+            raise ValueError(f"invalid run_key directory: {run_key_dir}")
+        run_key_dir.mkdir(parents=True, exist_ok=True)
+
+        attempt_id = _next_attempt_id(run_key_dir)
+        attempt_dir = run_key_dir / attempt_id
+        if attempt_dir.exists():
+            raise ValueError(f"attempt directory already exists: {attempt_dir}")
+        attempt_dir.mkdir(parents=False, exist_ok=False)
+
+        created, _, seeded_paths = _seed_run_workspace(
+            run_dir=attempt_dir,
+            run_id=run_key,
+            intent_bytes=intent_bytes,
+            force=False,
+        )
+
+        summary_obj = {
+            "schema_version": "1.0.0",
+            "summary_kind": "belgi_run_attempt",
+            "run_key": run_key,
+            "attempt_id": attempt_id,
+            "tier_id": tier_id,
+            "workspace_root": workspace_rel,
+            "run_root": safe_relpath(repo_root, run_key_dir),
+            "attempt_root": safe_relpath(repo_root, attempt_dir),
+            "run_key_preimage": preimage,
+            "artifacts": _build_artifact_entries(repo_root, paths=seeded_paths),
+        }
+        summary_path = attempt_dir / RUN_SUMMARY_FILENAME
+        _write_json(summary_path, summary_obj)
+        created.append(summary_path)
+
+    except Exception as e:
+        print(f"[belgi run] ERROR: {e}", file=sys.stderr)
+        return 3
+
+    print(f"[belgi run] repo: {repo_root}", file=sys.stderr)
+    print(f"[belgi run] workspace: {workspace_rel}", file=sys.stderr)
+    print(f"[belgi run] tier: {tier_id}", file=sys.stderr)
+    print(f"[belgi run] run_key: {run_key}", file=sys.stderr)
+    print(f"[belgi run] attempt_id: {attempt_id}", file=sys.stderr)
+    for p in sorted(created, key=lambda x: safe_relpath(repo_root, x)):
+        print(f"[belgi run] created: {safe_relpath(repo_root, p)}", file=sys.stderr)
+    return 0
+
+
+def _load_json_object(path: Path, *, label: str) -> dict[str, object]:
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8", errors="strict"))
+    except Exception as e:
+        raise ValueError(f"{label} is not valid UTF-8 JSON: {e}") from e
+    if not isinstance(obj, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    return obj
+
+
+def _list_dirs_sorted(root: Path) -> list[Path]:
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError(f"expected directory (non-symlink): {root}")
+    out: list[Path] = []
+    for child in sorted(root.iterdir(), key=lambda p: p.name):
+        if child.name.startswith(".") and not child.is_symlink():
+            continue
+        if child.is_symlink():
+            raise ValueError(f"symlink path not allowed: {child}")
+        if child.is_dir():
+            out.append(child)
+    return out
+
+
+def _discover_attempt_dirs(target: Path) -> list[Path]:
+    if target.is_symlink():
+        raise ValueError(f"symlink path not allowed: {target}")
+    if target.is_file():
+        if target.name != RUN_SUMMARY_FILENAME:
+            raise ValueError("--in file path must be run.summary.json")
+        return [target.parent]
+    if not target.is_dir():
+        raise ValueError(f"--in path is not a file or directory: {target}")
+
+    summary_here = target / RUN_SUMMARY_FILENAME
+    if summary_here.exists():
+        if summary_here.is_symlink() or not summary_here.is_file():
+            raise ValueError(f"invalid summary path: {summary_here}")
+        return [target]
+
+    first_level = _list_dirs_sorted(target)
+    if not first_level:
+        raise ValueError(f"no run attempts found under: {target}")
+
+    direct_attempts = [d for d in first_level if (d / RUN_SUMMARY_FILENAME).is_file()]
+    if direct_attempts:
+        if len(direct_attempts) != len(first_level):
+            raise ValueError(f"mixed directory structure under: {target}")
+        return direct_attempts
+
+    attempts: list[Path] = []
+    for run_dir in first_level:
+        second_level = _list_dirs_sorted(run_dir)
+        if not second_level:
+            raise ValueError(f"run_key directory has no attempts: {run_dir}")
+        for attempt_dir in second_level:
+            summary_path = attempt_dir / RUN_SUMMARY_FILENAME
+            if not summary_path.exists() or summary_path.is_symlink() or not summary_path.is_file():
+                raise ValueError(f"missing run summary: {summary_path}")
+            attempts.append(attempt_dir)
+    return attempts
+
+
+def _verify_attempt_dir(repo_root: Path, attempt_dir: Path) -> tuple[str, str]:
+    from belgi.core.hash import sha256_bytes
+    from belgi.core.jail import resolve_repo_rel_path
+    from belgi.core.schema import validate_schema
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    summary_path = attempt_dir / RUN_SUMMARY_FILENAME
+    if not summary_path.exists() or summary_path.is_symlink() or not summary_path.is_file():
+        raise ValueError(f"missing run summary: {summary_path}")
+    summary = _load_json_object(summary_path, label=RUN_SUMMARY_FILENAME)
+
+    run_key = str(summary.get("run_key") or "")
+    attempt_id = str(summary.get("attempt_id") or "")
+    if not run_key:
+        raise ValueError("run.summary.json missing run_key")
+    if not attempt_id:
+        raise ValueError("run.summary.json missing attempt_id")
+    if run_key != attempt_dir.parent.name:
+        raise ValueError("run_key does not match directory layout")
+    if attempt_id != attempt_dir.name:
+        raise ValueError("attempt_id does not match directory layout")
+
+    preimage = summary.get("run_key_preimage")
+    if not isinstance(preimage, dict):
+        raise ValueError("run.summary.json missing run_key_preimage object")
+    if _compute_run_key_from_preimage(preimage) != run_key:
+        raise ValueError("run_key preimage hash mismatch")
+
+    artifacts = summary.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        raise ValueError("run.summary.json artifacts missing/invalid")
+
+    last_path = ""
+    evidence_manifest_path: Path | None = None
+    for item in artifacts:
+        if not isinstance(item, dict):
+            raise ValueError("run.summary.json artifacts[] entries must be objects")
+        rel = item.get("path")
+        declared_hash = item.get("sha256")
+        if not isinstance(rel, str) or not rel:
+            raise ValueError("run.summary.json artifact.path missing/invalid")
+        if not isinstance(declared_hash, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", declared_hash):
+            raise ValueError("run.summary.json artifact.sha256 missing/invalid")
+        if last_path and rel < last_path:
+            raise ValueError("run.summary.json artifacts must be sorted by path")
+        last_path = rel
+
+        target = resolve_repo_rel_path(
+            repo_root,
+            rel,
+            must_exist=True,
+            must_be_file=True,
+            allow_backslashes=False,
+            forbid_symlinks=True,
+        )
+        resolved_target = target.resolve()
+        resolved_attempt = attempt_dir.resolve()
+        if resolved_target != resolved_attempt and resolved_attempt not in resolved_target.parents:
+            raise ValueError(f"artifact escapes attempt directory: {rel}")
+        actual_hash = sha256_bytes(target.read_bytes())
+        if actual_hash.lower() != declared_hash.lower():
+            raise ValueError(f"artifact hash mismatch: {rel}")
+        if target.name == "EvidenceManifest.json":
+            evidence_manifest_path = target
+
+    if evidence_manifest_path is None:
+        raise ValueError("run.summary.json artifacts missing EvidenceManifest.json")
+
+    evidence_obj = _load_json_object(evidence_manifest_path, label="EvidenceManifest.json")
+    artifacts_field = evidence_obj.get("artifacts")
+    if not isinstance(artifacts_field, list):
+        raise ValueError("EvidenceManifest.artifacts missing/invalid")
+
+    if artifacts_field:
+        protocol = get_builtin_protocol_context()
+        schema = protocol.read_json("schemas/EvidenceManifest.schema.json")
+        if not isinstance(schema, dict):
+            raise ValueError("EvidenceManifest schema must be a JSON object")
+        errs = validate_schema(
+            evidence_obj,
+            schema,
+            root_schema=schema,
+            path="EvidenceManifest",
+        )
+        if errs:
+            first = errs[0]
+            raise ValueError(f"EvidenceManifest schema invalid at {first.path}: {first.message}")
+    else:
+        required = ("schema_version", "run_id", "artifacts", "commands_executed", "envelope_attestation")
+        missing = [k for k in required if k not in evidence_obj]
+        if missing:
+            raise ValueError(f"EvidenceManifest missing required keys: {', '.join(missing)}")
+        commands_executed = evidence_obj.get("commands_executed")
+        if not isinstance(commands_executed, list):
+            raise ValueError("EvidenceManifest.commands_executed missing/invalid")
+
+    run_id = evidence_obj.get("run_id")
+    if run_id != run_key:
+        raise ValueError("EvidenceManifest.run_id does not match run_key")
+
+    return run_key, attempt_id
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+
+    repo_root = Path(str(args.repo)).resolve()
+    if not repo_root.exists():
+        print(f"[belgi verify] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
+        return 3
+    if not repo_root.is_dir():
+        print(f"[belgi verify] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
+        return 3
+    if repo_root.is_symlink():
+        print(f"[belgi verify] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
+        return 3
+
+    try:
+        in_arg = str(getattr(args, "input", "") or "").strip()
+        if in_arg:
+            target = resolve_repo_rel_path(
+                repo_root,
+                in_arg,
+                must_exist=True,
+                must_be_file=None,
+                allow_backslashes=False,
+                forbid_symlinks=True,
+            )
+        else:
+            workspace_rel, _ = _resolve_workspace_dir(
+                repo_root,
+                getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+                must_exist=True,
+            )
+            target = resolve_repo_rel_path(
+                repo_root,
+                f"{workspace_rel}/runs",
+                must_exist=True,
+                must_be_file=False,
+                allow_backslashes=False,
+                forbid_symlinks=True,
+            )
+
+        attempt_dirs = _discover_attempt_dirs(target)
+        verified: list[str] = []
+        for attempt_dir in attempt_dirs:
+            run_key, attempt_id = _verify_attempt_dir(repo_root, attempt_dir)
+            verified.append(f"{run_key}/{attempt_id}")
+
+    except ValueError as e:
+        print(f"[belgi verify] NO-GO: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"[belgi verify] ERROR: {e}", file=sys.stderr)
+        return 3
+
+    for ref in verified:
+        print(f"[belgi verify] GO: {ref}", file=sys.stderr)
+    print(f"[belgi verify] PASS: verified {len(verified)} attempt(s)", file=sys.stderr)
+    print(f"[belgi verify] source: {safe_relpath(repo_root, target)}", file=sys.stderr)
     return 0
 
 
@@ -1373,6 +1950,11 @@ def main(argv: list[str] | None = None) -> int:
     p_init = subparsers.add_parser("init", help="Initialize BELGI adopter defaults in a repository")
     p_init.add_argument("--repo", default=".", help="Repo root (default: .)")
     p_init.add_argument(
+        "--workspace",
+        default=DEFAULT_WORKSPACE_REL,
+        help=f"Repo-relative workspace root (default: {DEFAULT_WORKSPACE_REL})",
+    )
+    p_init.add_argument(
         "--refresh-pin",
         action="store_true",
         help="Explicitly refresh protocol pack pins in adopter.toml (and overlay manifest if present)",
@@ -1419,16 +2001,48 @@ def main(argv: list[str] | None = None) -> int:
 
     # run (subparser group)
     p_run = subparsers.add_parser("run", help="Run workspace helper commands")
+    p_run.add_argument("--repo", default=".", help="Repo root (default: .)")
+    p_run.add_argument("--tier", choices=sorted(ALLOWED_RUN_TIERS), help="Tier ID for deterministic run scaffolding")
+    p_run.add_argument(
+        "--workspace",
+        default=DEFAULT_WORKSPACE_REL,
+        help=f"Repo-relative workspace root (default: {DEFAULT_WORKSPACE_REL})",
+    )
+    p_run.add_argument(
+        "--intent-spec",
+        default=None,
+        help="Repo-relative intent/spec source to bind into run_key (default: workspace template)",
+    )
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")
 
     # run new
     p_run_new = run_subs.add_parser("new", help="Create deterministic run workspace from adopter template")
     p_run_new.add_argument("--repo", default=".", help="Repo root (default: .)")
+    p_run_new.add_argument(
+        "--workspace",
+        default=DEFAULT_WORKSPACE_REL,
+        help=f"Repo-relative workspace root (default: {DEFAULT_WORKSPACE_REL})",
+    )
     p_run_new.add_argument("--run-id", required=True, help="Deterministic run ID")
     p_run_new.add_argument(
         "--force",
         action="store_true",
         help="Overwrite existing run workspace files deterministically",
+    )
+
+    # verify
+    p_verify = subparsers.add_parser("verify", help="Verify deterministic run summaries and manifests")
+    p_verify.add_argument("--repo", default=".", help="Repo root (default: .)")
+    p_verify.add_argument(
+        "--in",
+        dest="input",
+        default=None,
+        help="Repo-relative run summary, attempt directory, run_key directory, or runs root",
+    )
+    p_verify.add_argument(
+        "--workspace",
+        default=DEFAULT_WORKSPACE_REL,
+        help=f"Repo-relative workspace root (default: {DEFAULT_WORKSPACE_REL})",
     )
 
     # manifest (subparser group)
@@ -1528,8 +2142,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "run":
         if args.run_command == "new":
             return cmd_run_new(args)
+        if getattr(args, "tier", None):
+            return cmd_run(args)
         p_run.print_help()
         return 3
+    elif args.command == "verify":
+        return cmd_verify(args)
     elif args.command == "manifest":
         if args.manifest_command == "add":
             return cmd_manifest_add(args)
