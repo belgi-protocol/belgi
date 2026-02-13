@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,14 +20,28 @@ def _list_dirs(path: Path) -> list[Path]:
     return sorted([p for p in path.iterdir() if p.is_dir()], key=lambda p: p.name)
 
 
+def _fresh_repo_clone(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    cp = subprocess.run(
+        ["git", "clone", "--quiet", "--shared", str(REPO_ROOT), str(repo)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp.returncode == 0, cp.stderr
+    return repo
+
+
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
-    rc_init = belgi_main(["init", "--repo", str(tmp_path)])
+    repo = _fresh_repo_clone(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
 
-    rc1 = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-0"])
+    rc1 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
     assert rc1 == 0
 
-    runs_root = tmp_path / ".belgi" / "runs"
+    runs_root = repo / ".belgi" / "runs"
     run_dirs = _list_dirs(runs_root)
     assert len(run_dirs) == 1
     run_key_dir = run_dirs[0]
@@ -39,13 +54,17 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     summary1 = json.loads((first_attempt / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     assert summary1["run_key"] == run_key_dir.name
     assert summary1["attempt_id"] == "attempt-0001"
-    evidence1 = json.loads((first_attempt / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict"))
+    evidence1 = json.loads(
+        (first_attempt / "repo" / "out" / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict")
+    )
     assert evidence1["run_id"] == run_key_dir.name
+    seal = json.loads((first_attempt / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict"))
+    assert seal["run_id"] == run_key_dir.name
 
-    rc_verify_1 = belgi_main(["verify", "--repo", str(tmp_path)])
+    rc_verify_1 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_1 == 0
 
-    rc2 = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-0"])
+    rc2 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
     assert rc2 == 0
 
     run_dirs_after_second = _list_dirs(runs_root)
@@ -57,41 +76,45 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     assert summary2["run_key"] == run_key_dir.name
     assert summary2["attempt_id"] == "attempt-0002"
 
-    rc_verify_2 = belgi_main(["verify", "--repo", str(tmp_path)])
+    rc_verify_2 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_2 == 0
 
 
 def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) -> None:
-    rc_init = belgi_main(["init", "--repo", str(tmp_path), "--workspace", ".belgi_alt"])
+    repo = _fresh_repo_clone(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo), "--workspace", ".belgi_alt"])
     assert rc_init == 0
 
-    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8", errors="strict")
+    gitignore = (repo / ".gitignore").read_text(encoding="utf-8", errors="strict")
     assert ".belgi/" in gitignore
     assert ".belgi_alt/" in gitignore
 
-    rc_run = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-1", "--workspace", ".belgi_alt"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--workspace", ".belgi_alt"])
     assert rc_run == 0
 
-    runs_root = tmp_path / ".belgi_alt" / "runs"
+    runs_root = repo / ".belgi_alt" / "runs"
     run_dirs = _list_dirs(runs_root)
     assert len(run_dirs) == 1
     attempts = _list_dirs(run_dirs[0])
     assert [p.name for p in attempts] == ["attempt-0001"]
 
-    rc_verify = belgi_main(["verify", "--repo", str(tmp_path), "--workspace", ".belgi_alt"])
+    rc_verify = belgi_main(["verify", "--repo", str(repo), "--workspace", ".belgi_alt"])
     assert rc_verify == 0
 
 
 def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> None:
-    rc_init = belgi_main(["init", "--repo", str(tmp_path)])
+    repo = _fresh_repo_clone(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
-    rc_run = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
     assert rc_run == 0
 
-    runs_root = tmp_path / ".belgi" / "runs"
+    runs_root = repo / ".belgi" / "runs"
     run_key_dir = _list_dirs(runs_root)[0]
     attempt_dir = _list_dirs(run_key_dir)[0]
-    manifest_path = attempt_dir / "EvidenceManifest.json"
+    manifest_path = attempt_dir / "repo" / "out" / "EvidenceManifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8", errors="strict"))
     manifest["run_id"] = "tampered"
     manifest_path.write_text(
@@ -101,5 +124,13 @@ def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> Non
         newline="\n",
     )
 
-    rc_verify = belgi_main(["verify", "--repo", str(tmp_path)])
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify == 1
+
+
+def test_run_fails_closed_when_repo_head_sha_is_unavailable(tmp_path: Path) -> None:
+    rc_init = belgi_main(["init", "--repo", str(tmp_path)])
+    assert rc_init == 0
+
+    rc_run = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-0"])
+    assert rc_run == 1
