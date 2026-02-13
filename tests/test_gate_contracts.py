@@ -1807,6 +1807,110 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     assert gv.get("failure_category") == "FR-PROTOCOL-IDENTITY-MISMATCH", gv
 
 
+def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path) -> None:
+    """Overlay enforcement must ignore non-PolicyReportPayload policy_report artifacts."""
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    fixture_dir = Path("policy/fixtures/public/gate_r/r_pass_tier1")
+    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
+
+    paths = {
+        "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
+        "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
+    }
+
+    evidence_path = tmp_path / paths["evidence"]
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    ids = {a.get("id") for a in artifacts if isinstance(a, dict)}
+    assert "policy.consistency_sweep" in ids
+
+    overlay_payload = {
+        "schema_version": "1.0.0",
+        "run_id": "r-pass-tier1",
+        "generated_at": "1970-01-01T00:00:00Z",
+        "summary": {"total_checks": 1, "passed": 1, "failed": 0},
+        "checks": [{"check_id": "ADOPTER-POLICY-001", "passed": True}],
+    }
+    overlay_rel = "policy/fixtures/public/gate_r/r_pass_tier1/policy.overlay_requirements.json"
+    overlay_path = tmp_path / Path(*overlay_rel.split("/"))
+    overlay_bytes = (json.dumps(overlay_payload, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_bytes(overlay_bytes)
+
+    artifacts.append(
+        {
+            "kind": "policy_report",
+            "id": "policy.overlay_requirements",
+            "hash": _sha256_hex(overlay_bytes),
+            "media_type": "application/json",
+            "storage_ref": overlay_rel,
+            "produced_by": "R",
+        }
+    )
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    protocol_manifest_path = tmp_path / "protocol_pack" / MANIFEST_FILENAME
+    protocol_manifest = _read_json(protocol_manifest_path)
+    (tmp_path / "belgi_pack").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "belgi_pack" / "DomainPackManifest.json").write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "pack_name": "adopter-overlay",
+                "pack_semver": "0.1.0",
+                "belgi_protocol_pack_pin": {
+                    "pack_name": protocol_manifest["pack_name"],
+                    "pack_id": protocol_manifest["pack_id"],
+                    "manifest_sha256": _sha256_hex(protocol_manifest_path.read_bytes()),
+                },
+                "required_policy_check_ids": ["ADOPTER-POLICY-001"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+
+    verify_report_rel = "out/verify_report.overlay.json"
+    gate_verdict_rel = "out/GateVerdict.R.overlay.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo", str(tmp_path),
+            "--protocol-pack", "protocol_pack",
+            "--locked-spec", paths["locked"],
+            "--gate-q-verdict", paths["gate_q_verdict"],
+            "--evidence-manifest", paths["evidence"],
+            "--evaluated-revision", commit_sha,
+            "--out", verify_report_rel,
+            "--gate-verdict-out", gate_verdict_rel,
+            "--overlay", "belgi_pack",
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+
+    gate_verdict = _read_json(tmp_path / gate_verdict_rel)
+    assert gate_verdict.get("verdict") == "GO", gate_verdict
+    assert gate_verdict.get("failure_category") is None, gate_verdict
+
+
 def test_gate_s_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     """Gate S MUST emit FS-PROTOCOL-IDENTITY-MISMATCH on pack_id mismatch."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"

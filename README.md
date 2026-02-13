@@ -66,6 +66,21 @@ pip install belgi
 # Package info
 belgi about
 
+# Initialize adopter-local BELGI workspace defaults (idempotent)
+belgi init --repo .
+
+# Create a deterministic run workspace
+belgi run new --repo . --run-id run-demo-001
+
+# Generate deterministic PolicyReportPayload stub (adopter overlay checks)
+belgi policy stub --out .belgi/runs/run-demo-001/artifacts/policy.overlay.json --run-id run-demo-001 --check-id OVERLAY-REQ-001
+
+# Add/update artifact in EvidenceManifest deterministically
+belgi manifest add --repo . --manifest .belgi/runs/run-demo-001/EvidenceManifest.json --artifact .belgi/runs/run-demo-001/artifacts/policy.overlay.json --kind policy_report --id policy.overlay --media-type application/json --produced-by R
+
+# Evaluate overlay requirements only (installed BELGI, no repo-local chain modules)
+belgi policy check-overlay --repo . --evidence-manifest .belgi/runs/run-demo-001/EvidenceManifest.json --overlay belgi_pack
+
 # Verify builtin protocol pack (installed package)
 belgi pack verify --builtin
 
@@ -85,7 +100,7 @@ Canonical definitions:
 Published wheel (`pip install belgi`) includes:
 - `belgi/_protocol_packs/v1/**` (builtin protocol pack mirror + `ProtocolPackManifest.json`)
 - `belgi/templates/**` (publish-safe templates)
-- `belgi` CLI entrypoint (`belgi about`, `belgi pack verify`, `belgi bundle check --demo`)
+- `belgi` CLI entrypoint (`belgi about`, `belgi init`, `belgi run new`, `belgi manifest add`, `belgi policy stub`, `belgi policy check-overlay`, `belgi pack verify`, `belgi bundle check --demo`)
 
 Repo-local only (not shipped in the wheel by design):
 - `chain/` (reference deterministic gate implementations)
@@ -119,6 +134,19 @@ Example (what this looks like in practice):
 If CI fails on sweep/fixtures, run the local fixer and commit the resulting changes. CI only verifies what’s in the repo; it must not mutate artifacts during verification.
 
 Canonical chain runbook (exact `chain/*` commands + when-to-run-what): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
+
+Adopter dev-tier runbook (`belgi init`, run-local workspace, Gate R overlay mode): [docs/operations/runbook_dev_tier.md](docs/operations/runbook_dev_tier.md)
+
+Local CI proof (Docker + `act`) is recommended before pushing workflow changes:
+
+```bash
+act push -W .github/workflows/demo_matrix.yml -j demo \
+  -P ubuntu-latest=catthehacker/ubuntu:full-latest \
+  -P windows-latest=catthehacker/ubuntu:full-latest \
+  --secret GITHUB_TOKEN="$(gh auth token)"
+```
+
+For cross-repo checkout jobs, a valid `GITHUB_TOKEN` secret is required locally; missing/invalid token is a fail-closed NO-GO.
 
 From the repo workspace:
 

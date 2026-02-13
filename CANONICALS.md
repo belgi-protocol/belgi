@@ -1,4 +1,4 @@
-# Belgi Protocol (BELGI) Canonicals (Sprint 1)
+# Belgi Protocol (BELGI) Canonicals
 
 <a id="purpose"></a>
 ## 0. Purpose (Canonical)
@@ -141,6 +141,8 @@ Waivers MUST NOT be created by an LLM.
 <a id="publication-posture"></a>
 ## 8. Publication Posture (Canonical)
 BELGI SHOULD publish the protocol and interfaces needed for independent verification (e.g., stage contracts, evidence categories, and deterministic gate behaviors) but MUST keep bypass-oriented rule details private (MUST NOT publish exploit signatures, evasion thresholds, or other bypass-friendly specifics; only categories of checks may be described).
+
+Adopter overlays (e.g., `DomainPackManifest.json`) are non-canonical, adopter-owned inputs. They MAY add fail-closed verification requirements only when explicitly supplied to verification entrypoints; they MUST NOT modify canonical schema/gate/tier semantics.
 
 <a id="propagation-consistency-sweep"></a>
 <a id="propagation-sweep"></a>

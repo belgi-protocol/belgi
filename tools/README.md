@@ -13,6 +13,7 @@ These tools are **fail-closed** and enforce **repo-root confinement** (rejects a
 | Builtin protocol pack matches canonicals | `python -m tools.check_drift` | Exit `0` = pack shape OK + no drift; exit `1` = NO-GO |
 | Builtin pack manifest is self-consistent | `belgi pack verify --in belgi/_protocol_packs/v1` | Exit `0` = PASS; exit `1/3` = NO-GO |
 | Installed pack (wheel) is self-consistent | `belgi pack verify --builtin` | Exit `0` = PASS; exit `1/3` = NO-GO |
+| Generate deterministic policy_report stub | `python -m tools.policy_report_stub --repo <ABS> --out <rel>.json --run-id <id> --check <CHECK_ID>` | Writes schema-valid `PolicyReportPayload` JSON for overlay/adopter checks |
 | Create a schema-valid EvidenceManifest | `python -m tools.belgi manifest-init --repo <ABS> --out <rel> --run-id <id> --add <spec> [--command-executed <cmd> | --command <cmd>]` | Writes manifest atomically; exit `0` = PASS; exit `3` = NO-GO |
 | EvidenceManifest hashes match bytes | `python -m tools.rehash evidence-manifest --repo . --manifest EvidenceManifest.json` | Prints `No changes needed` when hashes already match current bytes |
 

@@ -1,4 +1,4 @@
-# BELGI Trust Model (Sprint 1)
+# BELGI Trust Model
 
 ## 0. Rule of Use (Canonical Pointer)
 This file MUST NOT define or redefine canonical terms; it explains threat categories and trust boundaries using the canonical definitions in [CANONICALS.md](CANONICALS.md).
