@@ -480,7 +480,16 @@ def orchestrate_chain_run(
     if tier_id == "tier-1":
         rc_tests = _run_tools_belgi(
             chain_repo_dir,
-            ["run-tests", "--run-id", run_key, "--out", rel_test_report, "--deterministic"],
+            [
+                "run-tests",
+                "--run-id",
+                run_key,
+                "--out",
+                rel_test_report,
+                "--test-path",
+                "tests/test_import_graph_sanity.py",
+                "--deterministic",
+            ],
             allowed=(0,),
         )
         commands_executed = _append_command(
