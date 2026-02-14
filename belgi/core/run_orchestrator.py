@@ -17,7 +17,6 @@ from belgi.core.command_log import append_command_to_manifest
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import safe_relpath
 from belgi.core.schema import validate_schema
-from chain.logic.tier_packs import parse_tier_params
 
 
 CHAIN_REPO_DIRNAME = "repo"
@@ -185,6 +184,11 @@ def _load_json_object(path: Path, *, label: str) -> dict[str, object]:
 
 
 def _command_log_mode_for_tier(*, protocol: Any, tier_id: str) -> str:
+    try:
+        from chain.logic.tier_packs import parse_tier_params
+    except Exception as e:
+        raise ValueError(f"tier parser unavailable for run orchestration: {e}") from e
+
     tiers_text = protocol.read_text("tiers/tier-packs.json")
     params = parse_tier_params(tiers_text, tier_id)
     parse_err = params.get("_tier_parse_error")
