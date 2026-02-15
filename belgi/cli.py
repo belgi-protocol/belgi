@@ -16,14 +16,16 @@ Subcommands:
 - belgi about          → Print package identity info
 
 Exit codes:
-- 0: success
-- 1: check failed (verification failed, etc.)
-- 3: usage/internal error
+- 0: GO
+- 10: NO-GO (policy/evidence/contract failure)
+- 20: USER_ERROR
+- 30: INTERNAL_ERROR
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import re
@@ -52,6 +54,34 @@ DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
 ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
+RC_GO = 0
+RC_NO_GO = 10
+RC_USER_ERROR = 20
+RC_INTERNAL_ERROR = 30
+
+
+class _UserInputError(ValueError):
+    """User-facing input/configuration issue (mapped to RC_USER_ERROR)."""
+
+
+def _emit_machine_result(
+    *,
+    ok: bool,
+    verdict: str,
+    primary_reason: str,
+    tier_id: str | None,
+    run_key: str | None,
+    attempt_id: str | None,
+) -> None:
+    payload = {
+        "ok": bool(ok),
+        "verdict": verdict,
+        "primary_reason": str(primary_reason),
+        "tier_id": tier_id,
+        "run_key": run_key,
+        "attempt_id": attempt_id,
+    }
+    print(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
 
 
 # ---------------------------------------------------------------------------
@@ -889,23 +919,32 @@ def cmd_run(args: argparse.Namespace) -> int:
     from belgi.protocol.pack import get_builtin_protocol_context
 
     repo_root = Path(str(args.repo)).resolve()
-    if not repo_root.exists():
-        print(f"[belgi run] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
-        return 3
-    if not repo_root.is_dir():
-        print(f"[belgi run] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
-        return 3
-    if repo_root.is_symlink():
-        print(f"[belgi run] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
-        return 3
+    tier_id: str | None = str(getattr(args, "tier", "") or "").strip() or None
+    run_key: str | None = None
+    attempt_id: str | None = None
 
     try:
-        tier_id = _validate_tier_id(str(getattr(args, "tier", "")))
-        workspace_rel, workspace_dir = _resolve_workspace_dir(
-            repo_root,
-            getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
-            must_exist=True,
-        )
+        if not repo_root.exists():
+            raise _UserInputError(f"repo path does not exist: {repo_root}")
+        if not repo_root.is_dir():
+            raise _UserInputError(f"repo path is not a directory: {repo_root}")
+        if repo_root.is_symlink():
+            raise _UserInputError(f"symlink repo root not allowed: {repo_root}")
+
+        try:
+            tier_id = _validate_tier_id(str(getattr(args, "tier", "")))
+        except ValueError as e:
+            raise _UserInputError(str(e)) from e
+
+        try:
+            workspace_rel, workspace_dir = _resolve_workspace_dir(
+                repo_root,
+                getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+                must_exist=True,
+            )
+        except ValueError as e:
+            raise _UserInputError(str(e)) from e
+
         runs_dir = workspace_dir / "runs"
         if runs_dir.exists() and (runs_dir.is_symlink() or not runs_dir.is_dir()):
             raise ValueError(f"invalid runs directory: {runs_dir}")
@@ -960,15 +999,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             raise ValueError(f"attempt directory already exists: {attempt_dir}")
         attempt_dir.mkdir(parents=False, exist_ok=False)
 
-        chain_result = orchestrate_chain_run(
-            source_repo_root=repo_root,
-            chain_repo_dir=attempt_dir / CHAIN_REPO_DIRNAME,
-            run_key=run_key,
-            tier_id=tier_id,
-            repo_head_sha=repo_head_sha,
-            intent_bytes=intent_bytes,
-            protocol=protocol,
-        )
+        with contextlib.redirect_stdout(sys.stderr):
+            chain_result = orchestrate_chain_run(
+                source_repo_root=repo_root,
+                chain_repo_dir=attempt_dir / CHAIN_REPO_DIRNAME,
+                run_key=run_key,
+                tier_id=tier_id,
+                repo_head_sha=repo_head_sha,
+                intent_bytes=intent_bytes,
+                protocol=protocol,
+            )
         chain_repo_dir = chain_result.chain_repo_dir
         chain_out_dir = chain_result.chain_out_dir
         chain_paths = chain_result.chain_paths
@@ -991,13 +1031,48 @@ def cmd_run(args: argparse.Namespace) -> int:
         summary_path = attempt_dir / RUN_SUMMARY_FILENAME
         _write_json(summary_path, summary_obj)
 
+    except _UserInputError as e:
+        _emit_machine_result(
+            ok=False,
+            verdict="NO-GO",
+            primary_reason=str(e),
+            tier_id=tier_id,
+            run_key=run_key,
+            attempt_id=attempt_id,
+        )
+        print(f"[belgi run] USER_ERROR: {e}", file=sys.stderr)
+        return RC_USER_ERROR
     except ValueError as e:
+        _emit_machine_result(
+            ok=False,
+            verdict="NO-GO",
+            primary_reason=str(e),
+            tier_id=tier_id,
+            run_key=run_key,
+            attempt_id=attempt_id,
+        )
         print(f"[belgi run] NO-GO: {e}", file=sys.stderr)
-        return 1
+        return RC_NO_GO
     except Exception as e:
+        _emit_machine_result(
+            ok=False,
+            verdict="NO-GO",
+            primary_reason=str(e),
+            tier_id=tier_id,
+            run_key=run_key,
+            attempt_id=attempt_id,
+        )
         print(f"[belgi run] ERROR: {e}", file=sys.stderr)
-        return 3
+        return RC_INTERNAL_ERROR
 
+    _emit_machine_result(
+        ok=True,
+        verdict="GO",
+        primary_reason="",
+        tier_id=tier_id,
+        run_key=run_key,
+        attempt_id=attempt_id,
+    )
     print(f"[belgi run] repo: {repo_root}", file=sys.stderr)
     print(f"[belgi run] workspace: {workspace_rel}", file=sys.stderr)
     print(f"[belgi run] tier: {tier_id}", file=sys.stderr)
@@ -1016,7 +1091,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_gate_s)}",
         file=sys.stderr,
     )
-    return 0
+    return RC_GO
 
 
 def _load_json_object(path: Path, *, label: str) -> dict[str, object]:
@@ -1189,60 +1264,104 @@ def cmd_verify(args: argparse.Namespace) -> int:
     from belgi.core.jail import resolve_repo_rel_path, safe_relpath
 
     repo_root = Path(str(args.repo)).resolve()
-    if not repo_root.exists():
-        print(f"[belgi verify] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
-        return 3
-    if not repo_root.is_dir():
-        print(f"[belgi verify] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
-        return 3
-    if repo_root.is_symlink():
-        print(f"[belgi verify] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
-        return 3
+    run_key: str | None = None
+    attempt_id: str | None = None
 
     try:
+        if not repo_root.exists():
+            raise _UserInputError(f"repo path does not exist: {repo_root}")
+        if not repo_root.is_dir():
+            raise _UserInputError(f"repo path is not a directory: {repo_root}")
+        if repo_root.is_symlink():
+            raise _UserInputError(f"symlink repo root not allowed: {repo_root}")
+
         in_arg = str(getattr(args, "input", "") or "").strip()
         if in_arg:
-            target = resolve_repo_rel_path(
-                repo_root,
-                in_arg,
-                must_exist=True,
-                must_be_file=None,
-                allow_backslashes=False,
-                forbid_symlinks=True,
-            )
+            try:
+                target = resolve_repo_rel_path(
+                    repo_root,
+                    in_arg,
+                    must_exist=True,
+                    must_be_file=None,
+                    allow_backslashes=False,
+                    forbid_symlinks=True,
+                )
+            except ValueError as e:
+                raise _UserInputError(str(e)) from e
         else:
-            workspace_rel, _ = _resolve_workspace_dir(
-                repo_root,
-                getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
-                must_exist=True,
-            )
-            target = resolve_repo_rel_path(
-                repo_root,
-                f"{workspace_rel}/runs",
-                must_exist=True,
-                must_be_file=False,
-                allow_backslashes=False,
-                forbid_symlinks=True,
-            )
+            try:
+                workspace_rel, _ = _resolve_workspace_dir(
+                    repo_root,
+                    getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+                    must_exist=True,
+                )
+                target = resolve_repo_rel_path(
+                    repo_root,
+                    f"{workspace_rel}/runs",
+                    must_exist=True,
+                    must_be_file=False,
+                    allow_backslashes=False,
+                    forbid_symlinks=True,
+                )
+            except ValueError as e:
+                raise _UserInputError(str(e)) from e
 
         attempt_dirs = _discover_attempt_dirs(target)
         verified: list[str] = []
         for attempt_dir in attempt_dirs:
-            run_key, attempt_id = _verify_attempt_dir(repo_root, attempt_dir)
-            verified.append(f"{run_key}/{attempt_id}")
+            cur_run_key, cur_attempt_id = _verify_attempt_dir(repo_root, attempt_dir)
+            verified.append(f"{cur_run_key}/{cur_attempt_id}")
+            if run_key is None and attempt_id is None:
+                run_key = cur_run_key
+                attempt_id = cur_attempt_id
 
+    except _UserInputError as e:
+        _emit_machine_result(
+            ok=False,
+            verdict="NO-GO",
+            primary_reason=str(e),
+            tier_id=None,
+            run_key=run_key,
+            attempt_id=attempt_id,
+        )
+        print(f"[belgi verify] USER_ERROR: {e}", file=sys.stderr)
+        return RC_USER_ERROR
     except ValueError as e:
+        _emit_machine_result(
+            ok=False,
+            verdict="NO-GO",
+            primary_reason=str(e),
+            tier_id=None,
+            run_key=run_key,
+            attempt_id=attempt_id,
+        )
         print(f"[belgi verify] NO-GO: {e}", file=sys.stderr)
-        return 1
+        return RC_NO_GO
     except Exception as e:
+        _emit_machine_result(
+            ok=False,
+            verdict="NO-GO",
+            primary_reason=str(e),
+            tier_id=None,
+            run_key=run_key,
+            attempt_id=attempt_id,
+        )
         print(f"[belgi verify] ERROR: {e}", file=sys.stderr)
-        return 3
+        return RC_INTERNAL_ERROR
 
+    _emit_machine_result(
+        ok=True,
+        verdict="GO",
+        primary_reason="",
+        tier_id=None,
+        run_key=run_key,
+        attempt_id=attempt_id,
+    )
     for ref in verified:
         print(f"[belgi verify] GO: {ref}", file=sys.stderr)
     print(f"[belgi verify] PASS: verified {len(verified)} attempt(s)", file=sys.stderr)
     print(f"[belgi verify] source: {safe_relpath(repo_root, target)}", file=sys.stderr)
-    return 0
+    return RC_GO
 
 
 # ---------------------------------------------------------------------------

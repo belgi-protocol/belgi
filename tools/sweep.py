@@ -3796,6 +3796,12 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     print(f"Summary: total={len(results)} passed={passed} failed={failed}")
 
     failed_ids = [r.invariant_id for r in results if r.status == "FAIL"]
+    if failed_ids:
+        primary = next((r for r in results if r.status == "FAIL"), None)
+        if primary is not None:
+            primary_msg = str(primary.remediation or "").replace("\n", " ").strip()
+            print(f"PRIMARY_CAUSE: {primary.invariant_id}: {primary_msg}", file=sys.stderr)
+
     if not args.fix_fixtures and failed_ids == ["CS-EV-006"]:
         print(
             "\nNote: CS-EV-006 is intentionally self-referential (fixtures pin the sweep artifact hash; the sweep also reports CS-EV-006). "

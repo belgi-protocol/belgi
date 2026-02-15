@@ -133,7 +133,7 @@ def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> Non
     )
 
     rc_verify = belgi_main(["verify", "--repo", str(repo)])
-    assert rc_verify == 1
+    assert rc_verify == 10
 
 
 def test_run_fails_closed_when_repo_head_sha_is_unavailable(tmp_path: Path) -> None:
@@ -141,4 +141,46 @@ def test_run_fails_closed_when_repo_head_sha_is_unavailable(tmp_path: Path) -> N
     assert rc_init == 0
 
     rc_run = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-0"])
-    assert rc_run == 1
+    assert rc_run == 10
+
+
+def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    assert rc_run == 0
+    captured = capsys.readouterr()
+
+    first_line = captured.out.splitlines()[0]
+    machine = json.loads(first_line)
+    assert machine["ok"] is True
+    assert machine["verdict"] == "GO"
+    assert machine["tier_id"] == "tier-0"
+    assert isinstance(machine["run_key"], str) and len(machine["run_key"]) == 64
+    assert machine["attempt_id"] == "attempt-0001"
+
+
+def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    assert rc_run == 0
+    _ = capsys.readouterr()
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    captured = capsys.readouterr()
+
+    first_line = captured.out.splitlines()[0]
+    machine = json.loads(first_line)
+    assert machine["ok"] is True
+    assert machine["verdict"] == "GO"
+    assert machine["tier_id"] is None
+    assert isinstance(machine["run_key"], str) and len(machine["run_key"]) == 64
+    assert machine["attempt_id"] == "attempt-0001"
