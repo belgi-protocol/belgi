@@ -64,6 +64,22 @@ class _UserInputError(ValueError):
     """User-facing input/configuration issue (mapped to RC_USER_ERROR)."""
 
 
+class _CliUsageError(Exception):
+    """Argparse/usage-level error (mapped to RC_USER_ERROR)."""
+
+    def __init__(self, message: str, parser: argparse.ArgumentParser | None) -> None:
+        super().__init__(message)
+        self.message = str(message or "").strip()
+        self.parser = parser
+
+
+class _BelgiArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser variant that raises deterministic usage errors."""
+
+    def error(self, message: str) -> None:
+        raise _CliUsageError(message, self)
+
+
 def _emit_machine_result(
     *,
     ok: bool,
@@ -82,6 +98,33 @@ def _emit_machine_result(
         "attempt_id": attempt_id,
     }
     print(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
+
+
+def _emit_cli_user_error_result(
+    *,
+    primary_reason: str,
+    parser: argparse.ArgumentParser | None = None,
+    help_to_stderr: bool = False,
+) -> int:
+    _emit_machine_result(
+        ok=False,
+        verdict="NO-GO",
+        primary_reason=primary_reason,
+        tier_id=None,
+        run_key=None,
+        attempt_id=None,
+    )
+    if parser is not None:
+        usage = parser.format_usage()
+        if usage:
+            print(usage, file=sys.stderr, end="")
+        if help_to_stderr:
+            print(parser.format_help(), file=sys.stderr, end="")
+        prog = str(getattr(parser, "prog", "belgi") or "belgi")
+    else:
+        prog = "belgi"
+    print(f"{prog}: error: {primary_reason}", file=sys.stderr)
+    return RC_USER_ERROR
 
 
 # ---------------------------------------------------------------------------
@@ -2050,7 +2093,7 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
+    parser = _BelgiArgumentParser(
         prog="belgi",
         description="BELGI CLI — Protocol pack management and evidence generation tools",
     )
@@ -2230,55 +2273,90 @@ def main(argv: list[str] | None = None) -> int:
     p_adv.add_argument("--deterministic", action="store_true", help="Use fixed timestamps for deterministic output")
     p_adv.set_defaults(func=cmd_adversarial_scan)
 
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except _CliUsageError as e:
+        return _emit_cli_user_error_result(
+            primary_reason=e.message or "invalid CLI usage",
+            parser=e.parser if isinstance(e.parser, argparse.ArgumentParser) else parser,
+        )
+    except SystemExit as e:
+        # Keep argparse --help semantics as a non-error exit.
+        code = e.code if isinstance(e.code, int) else 1
+        if code == 0:
+            return RC_GO
+        return _emit_cli_user_error_result(
+            primary_reason=f"argument parsing failed (rc={code})",
+            parser=parser,
+        )
     
     if args.command == "about":
         return cmd_about(args)
     elif args.command == "pack":
         if args.pack_command == "build":
             if not args.input:
-                print("[belgi pack build] ERROR: --in required", file=sys.stderr)
-                return 3
+                return _emit_cli_user_error_result(
+                    primary_reason="--in required for `belgi pack build`",
+                    parser=p_pack_build,
+                )
             return cmd_pack_build(args)
         elif args.pack_command == "verify":
             return cmd_pack_verify(args)
         else:
-            p_pack.print_help()
-            return 3
+            return _emit_cli_user_error_result(
+                primary_reason="missing pack subcommand",
+                parser=p_pack,
+                help_to_stderr=True,
+            )
     elif args.command == "init":
         return cmd_init(args)
     elif args.command == "policy":
         if args.policy_command in ("stub", "check-overlay"):
             return int(args.func(args))
-        p_policy.print_help()
-        return 3
+        return _emit_cli_user_error_result(
+            primary_reason="missing policy subcommand",
+            parser=p_policy,
+            help_to_stderr=True,
+        )
     elif args.command == "run":
         if args.run_command == "new":
             return cmd_run_new(args)
         if getattr(args, "tier", None):
             return cmd_run(args)
-        p_run.print_help()
-        return 3
+        return _emit_cli_user_error_result(
+            primary_reason="missing run mode: provide `run new` or `run --tier`",
+            parser=p_run,
+            help_to_stderr=True,
+        )
     elif args.command == "verify":
         return cmd_verify(args)
     elif args.command == "manifest":
         if args.manifest_command == "add":
             return cmd_manifest_add(args)
-        p_manifest.print_help()
-        return 3
+        return _emit_cli_user_error_result(
+            primary_reason="missing manifest subcommand",
+            parser=p_manifest,
+            help_to_stderr=True,
+        )
     elif args.command == "bundle":
         if args.bundle_command == "check":
             return cmd_bundle_check(args)
         else:
-            p_bundle.print_help()
-            return 3
+            return _emit_cli_user_error_result(
+                primary_reason="missing bundle subcommand",
+                parser=p_bundle,
+                help_to_stderr=True,
+            )
     elif args.command == "supplychain-scan":
         return int(args.func(args))
     elif args.command == "adversarial-scan":
         return int(args.func(args))
     else:
-        parser.print_help()
-        return 3
+        return _emit_cli_user_error_result(
+            primary_reason="missing command",
+            parser=parser,
+            help_to_stderr=True,
+        )
 
 
 if __name__ == "__main__":
