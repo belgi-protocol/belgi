@@ -1977,10 +1977,11 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
         
         obj_hash = ref.get("hash")
         storage_ref = ref.get("storage_ref")
-        
-        if not is_hex_sha256(str(obj_hash) if obj_hash else ""):
+
+        if not isinstance(obj_hash, str) or not is_hex_sha256(obj_hash):
             failures.append(f"{field}.hash: invalid SHA-256 format")
             return False, ""
+        declared_hash = obj_hash.lower()
         
         if not isinstance(storage_ref, str) or not storage_ref:
             failures.append(f"{field}.storage_ref: missing or empty")
@@ -2003,14 +2004,14 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
             return False, ""
         
         computed = sha256_bytes(target_path.read_bytes())
-        if computed != obj_hash:
+        if computed != declared_hash:
             failures.append(
                 f"{field}: hash mismatch for {target_path.name} "
-                f"(declared={obj_hash[:16]}..., computed={computed[:16]}...)"
+                f"(declared={declared_hash[:16]}..., computed={computed[:16]}...)"
             )
             return False, ""
-        
-        return True, str(obj_hash)
+
+        return True, declared_hash
     
     # Collect hashes for seal_hash verification
     locked_spec_hash = ""
@@ -2045,25 +2046,27 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
         declared_seal_hash = seal_manifest.get("seal_hash")
         final_commit_sha = seal_manifest.get("final_commit_sha", "")
         run_id = seal_manifest.get("run_id", "")
-        
-        if not is_hex_sha256(str(declared_seal_hash) if declared_seal_hash else ""):
+
+        if not isinstance(declared_seal_hash, str) or not is_hex_sha256(declared_seal_hash):
             failures.append("SealManifest.seal_hash: invalid or missing SHA-256")
         elif not final_commit_sha:
             failures.append("SealManifest.final_commit_sha: missing or empty")
         elif not run_id:
             failures.append("SealManifest.run_id: missing or empty")
         else:
+            declared_seal_hash = declared_seal_hash.lower()
             try:
                 computed_seal = canonical_seal_hash(dict(seal_manifest))
             except Exception as e:
                 failures.append(f"seal_hash recomputation failed: {e}")
             else:
-                if computed_seal.lower() == str(declared_seal_hash).lower():
+                computed_seal_l = computed_seal.lower()
+                if computed_seal_l == declared_seal_hash:
                     checks_passed += 1
                 else:
                     failures.append(
-                        f"seal_hash mismatch: declared={str(declared_seal_hash)[:16]}..., "
-                        f"computed={computed_seal[:16]}..."
+                        f"seal_hash mismatch: declared={declared_seal_hash[:16]}..., "
+                        f"computed={computed_seal_l[:16]}..."
                     )
     else:
         failures.append("seal_hash check skipped: prerequisite ObjectRef checks failed")
