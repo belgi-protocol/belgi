@@ -25,7 +25,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from chain.logic.tier_packs import parse_tier_params
+from chain.logic.tier_packs import load_tier_params
 from belgi.core.jail import resolve_repo_rel_path
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import safe_relpath
@@ -528,7 +528,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("LockedSpec.tier.tier_id missing/invalid")
         tier_id = tier_id.strip()
 
-        tier_params = parse_tier_params(tiers_text, tier_id)
+        tier_params = load_tier_params(tiers_text, tier_id).to_legacy_map()
 
         if isinstance(args.policy_payload_schema, str) and args.policy_payload_schema:
             _require_dev_mode("--policy-payload-schema")

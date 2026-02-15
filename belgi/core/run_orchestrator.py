@@ -185,16 +185,16 @@ def _load_json_object(path: Path, *, label: str) -> dict[str, object]:
 
 def _command_log_mode_for_tier(*, protocol: Any, tier_id: str) -> str:
     try:
-        from chain.logic.tier_packs import parse_tier_params
+        from chain.logic.tier_packs import load_tier_params
     except Exception as e:
         raise ValueError(f"tier parser unavailable for run orchestration: {e}") from e
 
     tiers_text = protocol.read_text("tiers/tier-packs.json")
-    params = parse_tier_params(tiers_text, tier_id)
-    parse_err = params.get("_tier_parse_error")
-    if isinstance(parse_err, str) and parse_err:
+    loaded = load_tier_params(tiers_text, tier_id)
+    if loaded.params is None:
+        parse_err = loaded.parse_error or "unknown parse failure"
         raise ValueError(f"tier parameter parse failed: {parse_err}")
-    mode = params.get("command_log_mode")
+    mode = loaded.params.command_log_mode
     if mode not in ("strings", "structured"):
         raise ValueError(f"unsupported command_log_mode for tier {tier_id}: {mode!r}")
     return str(mode)

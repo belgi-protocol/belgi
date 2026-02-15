@@ -28,7 +28,7 @@ from belgi.core.hash import sha256_bytes
 from belgi.core.jail import safe_relpath
 from belgi.core.schema import validate_schema
 from chain.logic.base import CheckResult, load_json, verify_protocol_identity
-from chain.logic.tier_packs import parse_tier_params
+from chain.logic.tier_packs import load_tier_params
 from chain.logic.q_checks.context import QCheckContext
 from chain.logic.q_checks.registry import get_checks
 from chain.logic.q_checks.yaml_subset import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
@@ -311,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
 
         tier_params: dict[str, Any] = {}
         if isinstance(tier_id, str) and tier_id:
-            tier_params = parse_tier_params(tiers_text, tier_id)
+            tier_params = load_tier_params(tiers_text, tier_id).to_legacy_map()
         else:
             tier_params = {"_tier_parse_error": "LockedSpec.tier.tier_id missing/invalid"}
 
