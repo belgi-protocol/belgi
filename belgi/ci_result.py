@@ -34,7 +34,8 @@ def parse_belgi_result_file(path: Path) -> dict[str, Any]:
 
 
 def ensure_belgi_result_line(path: Path) -> dict[str, Any]:
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    current_text = path.read_text(encoding="utf-8", errors="replace")
+    lines = current_text.splitlines()
     try:
         return parse_belgi_result_lines(lines, source=path.as_posix())
     except ValueError as e:
@@ -54,6 +55,8 @@ def ensure_belgi_result_line(path: Path) -> dict[str, Any]:
             isinstance(parsed, dict)
             and isinstance(parsed.get("run_key"), str)
             and isinstance(parsed.get("attempt_id"), str)
+            and isinstance(parsed.get("verdict"), str)
+            and isinstance(parsed.get("ok"), bool)
         ):
             machine_obj = parsed
             break
@@ -62,12 +65,10 @@ def ensure_belgi_result_line(path: Path) -> dict[str, Any]:
         raise ValueError(f"missing BELGI_RESULT line in {path.as_posix()}")
 
     marker_payload = json.dumps(machine_obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    current_text = path.read_text(encoding="utf-8", errors="replace")
     suffix = "" if current_text.endswith("\n") or current_text == "" else "\n"
     path.write_text(
         current_text + suffix + f"{BELGI_RESULT_PREFIX} {marker_payload}\n",
         encoding="utf-8",
         errors="strict",
-        newline="\n",
     )
     return machine_obj
