@@ -43,7 +43,7 @@ def ensure_belgi_result_line(path: Path) -> dict[str, Any]:
             raise
 
     machine_obj: dict[str, Any] | None = None
-    for line in lines:
+    for line in reversed(lines):
         stripped = line.strip()
         if not stripped.startswith("{"):
             continue
