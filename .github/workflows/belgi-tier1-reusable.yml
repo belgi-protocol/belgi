@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   belgi-tier1:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       PYTHONUTF8: "1"
@@ -82,28 +82,32 @@ jobs:
             exit "${run_rc}"
           fi
 
+      - name: Ensure BELGI_RESULT line
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from belgi.ci_result import ensure_belgi_result_line
+
+          ensure_belgi_result_line(Path(".belgi/run.stdout.log"))
+          PY
+
       - name: Parse run machine result
         id: runmeta
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
           import os
           from pathlib import Path
+          from belgi.ci_result import parse_belgi_result_file
 
           run_log = Path(".belgi/run.stdout.log")
           if not run_log.is_file():
               raise SystemExit("missing .belgi/run.stdout.log")
 
-          lines = run_log.read_text(encoding="utf-8").splitlines()
-          if not lines:
-              raise SystemExit("belgi run produced empty stdout")
-
-          machine_line = lines[0].strip()
-          if machine_line.startswith("BELGI_RESULT"):
-              machine_line = machine_line[len("BELGI_RESULT"):].strip()
-          result = json.loads(machine_line)
+          result = parse_belgi_result_file(run_log)
 
           run_key = result.get("run_key")
           attempt_id = result.get("attempt_id")
