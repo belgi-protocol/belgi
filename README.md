@@ -141,7 +141,7 @@ Local CI proof (Docker + `act`) is recommended before pushing workflow changes:
 
 ```bash
 act push -W .github/workflows/demo_matrix.yml -j demo \
-  -P ubuntu-latest=catthehacker/ubuntu:full-latest \
+  -P ubuntu-24.04=catthehacker/ubuntu:full-latest \
   -P windows-latest=catthehacker/ubuntu:full-latest \
   --secret GITHUB_TOKEN="$(gh auth token)"
 ```
@@ -162,6 +162,15 @@ python -m tools.sweep fixtures-seal --repo .
 ```
 
 See [tools/README.md](tools/README.md) for dev tool documentation.
+
+### Commit Metadata Privacy
+
+If you do not want your personal email in public commit metadata, use your GitHub noreply address and update git config:
+
+```bash
+git config --global user.email "123456+username@users.noreply.github.com"
+git config --global user.name "Your Name"
+```
 
 ## License
 
