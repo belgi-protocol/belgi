@@ -10,7 +10,7 @@ BELGI_RESULT_PREFIX = "BELGI_RESULT"
 
 def parse_belgi_result_lines(lines: list[str], *, source: str) -> dict[str, Any]:
     payload: str | None = None
-    for line in lines:
+    for line in reversed(lines):
         stripped = line.strip()
         if stripped.startswith(BELGI_RESULT_PREFIX):
             payload = stripped[len(BELGI_RESULT_PREFIX) :].strip()
