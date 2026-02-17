@@ -6,10 +6,17 @@ on:
       belgi_ref:
         required: false
         type: string
+      belgi_repo_url:
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       belgi_ref:
-        description: "Pinned BELGI git ref (tag or full commit SHA)"
+        description: "Pinned BELGI git ref (full 40-hex commit SHA)"
+        required: false
+        type: string
+      belgi_repo_url:
+        description: "BELGI git repository URL (default: official repo)"
         required: false
         type: string
 
@@ -17,8 +24,24 @@ permissions:
   contents: read
 
 jobs:
-  belgi-tier1:
-    runs-on: ubuntu-24.04
+  belgi:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tier: tier-1
+            bundle_check: true
+          - os: ubuntu-latest
+            tier: tier-0
+            bundle_check: false
+          - os: macos-latest
+            tier: tier-0
+            bundle_check: false
+          - os: windows-latest
+            tier: tier-0
+            bundle_check: false
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
       PYTHONUTF8: "1"
@@ -33,127 +56,143 @@ jobs:
           cache: pip
 
       - name: Resolve BELGI_REF (fail-closed)
-        shell: bash
+        shell: python
         env:
           BELGI_REF_INPUT: ${{ inputs.belgi_ref }}
           BELGI_REF_VAR: ${{ vars.BELGI_REF }}
+          BELGI_REPO_URL_INPUT: ${{ inputs.belgi_repo_url }}
+          BELGI_REPO_URL_VAR: ${{ vars.BELGI_REPO_URL }}
         run: |
-          set -euo pipefail
-          BELGI_REF="${BELGI_REF_INPUT:-}"
-          if [ -z "${BELGI_REF}" ]; then
-            BELGI_REF="${BELGI_REF_VAR:-}"
-          fi
-          if [ -z "${BELGI_REF}" ]; then
-            echo "BELGI_REF is required. Set workflow input 'belgi_ref' or repository variable 'BELGI_REF'." >&2
-            exit 1
-          fi
-          echo "BELGI_REF=${BELGI_REF}" >> "${GITHUB_ENV}"
+          import os
+          import pathlib
+          import sys
+
+          ref = (os.environ.get("BELGI_REF_INPUT", "") or "").strip()
+          if not ref:
+              ref = (os.environ.get("BELGI_REF_VAR", "") or "").strip()
+          if not ref:
+              print(
+                  "BELGI_REF is required. Set workflow input 'belgi_ref' or repository variable 'BELGI_REF'.",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+
+          env_path = os.environ.get("GITHUB_ENV", "")
+          if not env_path:
+              print("GITHUB_ENV is not set", file=sys.stderr)
+              raise SystemExit(1)
+
+          with pathlib.Path(env_path).open("a", encoding="utf-8") as handle:
+              handle.write(f"BELGI_REF={ref}\n")
+              repo_url = (os.environ.get("BELGI_REPO_URL_INPUT", "") or "").strip()
+              if not repo_url:
+                  repo_url = (os.environ.get("BELGI_REPO_URL_VAR", "") or "").strip()
+              if not repo_url:
+                  repo_url = "https://github.com/belgi-protocol/belgi.git"
+              handle.write(f"BELGI_REPO_URL={repo_url}\n")
+
+      - name: Validate immutable BELGI_REF pin (fail-closed)
+        shell: python
+        env:
+          BELGI_REF: ${{ env.BELGI_REF }}
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          cmd = [
+              sys.executable,
+              ".github/scripts/validate_belgi_ref_pin.py",
+              "--ref",
+              os.environ.get("BELGI_REF", ""),
+          ]
+          raise SystemExit(subprocess.call(cmd))
 
       - name: Install pinned BELGI CLI
-        shell: bash
+        shell: python
+        env:
+          BELGI_REF: ${{ env.BELGI_REF }}
+          BELGI_REPO_URL: ${{ env.BELGI_REPO_URL }}
         run: |
-          set -euo pipefail
-          python -m pip install --upgrade pip
-          python -m pip install "git+https://github.com/belgi-protocol/belgi.git@${BELGI_REF}"
-          belgi about >/dev/null
+          import os
+          import subprocess
+          import sys
 
-      # Local parity commands:
+          ref = os.environ["BELGI_REF"]
+          repo_url = os.environ["BELGI_REPO_URL"]
+          install_target = f"git+{repo_url}@{ref}"
+          cmds = [
+              [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+              [sys.executable, "-m", "pip", "install", install_target],
+              ["belgi", "about"],
+          ]
+          for cmd in cmds:
+              cp = subprocess.run(cmd, check=False, shell=False)
+              if cp.returncode != 0:
+                  raise SystemExit(cp.returncode)
+
+      # Local parity command set:
       #   belgi init --repo .
-      #   belgi run --repo . --tier tier-1
+      #   belgi run --repo . --tier <tier>
       #   belgi verify --repo .
       #   belgi bundle check --in .belgi/runs/<run_key>/<attempt_id>/repo/out --demo --verbose
-      - name: BELGI init
-        shell: bash
+      - name: BELGI smoke (${{ matrix.tier }})
+        id: smoke
+        shell: python
+        env:
+          RUN_TIER: ${{ matrix.tier }}
+          BUNDLE_CHECK: ${{ matrix.bundle_check && 'true' || 'false' }}
         run: |
-          set -euo pipefail
-          belgi init --repo .
-
-      - name: BELGI run (tier-1)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p .belgi
-          set +e
-          belgi run --repo . --tier tier-1 | tee .belgi/run.stdout.log
-          run_rc=${PIPESTATUS[0]}
-          set -e
-          if [ "${run_rc}" -ne 0 ]; then
-            echo "belgi run failed rc=${run_rc}" >&2
-            exit "${run_rc}"
-          fi
-
-      - name: Ensure BELGI_RESULT line
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          from belgi.ci_result import ensure_belgi_result_line
-
-          ensure_belgi_result_line(Path(".belgi/run.stdout.log"))
-          PY
-
-      - name: Parse run machine result
-        id: runmeta
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
           import os
-          from pathlib import Path
-          from belgi.ci_result import parse_belgi_result_file
+          import subprocess
+          import sys
 
-          run_log = Path(".belgi/run.stdout.log")
-          if not run_log.is_file():
-              raise SystemExit("missing .belgi/run.stdout.log")
-
-          result = parse_belgi_result_file(run_log)
-
-          run_key = result.get("run_key")
-          attempt_id = result.get("attempt_id")
-          if not isinstance(run_key, str) or not run_key:
-              raise SystemExit(f"invalid run_key in machine result: {run_key!r}")
-          if not isinstance(attempt_id, str) or not attempt_id:
-              raise SystemExit(f"invalid attempt_id in machine result: {attempt_id!r}")
-
-          attempt_dir = Path(".belgi") / "runs" / run_key / attempt_id
-          if not attempt_dir.is_dir():
-              raise SystemExit(f"attempt directory not found: {attempt_dir.as_posix()}")
-
-          output_path = Path(os.environ["GITHUB_OUTPUT"])
-          with output_path.open("a", encoding="utf-8") as handle:
-              handle.write(f"run_key={run_key}\n")
-              handle.write(f"attempt_id={attempt_id}\n")
-              handle.write(f"attempt_dir={attempt_dir.as_posix()}\n")
-          PY
-
-      - name: BELGI verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          belgi verify --repo .
-
-      - name: BELGI bundle check
-        shell: bash
-        run: |
-          set -euo pipefail
-          belgi bundle check --in "${{ steps.runmeta.outputs.attempt_dir }}/repo/out" --demo --verbose
+          cmd = [
+              sys.executable,
+              ".github/scripts/run_belgi_smoke.py",
+              "--repo",
+              ".",
+              "--tier",
+              os.environ["RUN_TIER"],
+          ]
+          if os.environ.get("BUNDLE_CHECK", "false").lower() == "true":
+              cmd.append("--bundle-check")
+          cp = subprocess.run(cmd, check=False, shell=False)
+          raise SystemExit(cp.returncode)
 
       - name: Validate artifact paths
-        shell: bash
+        shell: python
+        env:
+          ATTEMPT_DIR: ${{ steps.smoke.outputs.attempt_dir }}
+          RUN_LOG: ${{ steps.smoke.outputs.run_log }}
         run: |
-          set -euo pipefail
-          test -f "${{ steps.runmeta.outputs.attempt_dir }}/run.summary.json"
-          test -d "${{ steps.runmeta.outputs.attempt_dir }}/repo/out"
-          mkdir -p "${{ steps.runmeta.outputs.attempt_dir }}/logs"
+          import os
+          import pathlib
+          import sys
+
+          attempt_dir = pathlib.Path(os.environ["ATTEMPT_DIR"])
+          run_log = pathlib.Path(os.environ["RUN_LOG"])
+          if not run_log.is_file():
+              print(f"missing run log: {run_log}", file=sys.stderr)
+              raise SystemExit(1)
+          if not attempt_dir.is_dir():
+              print(f"missing attempt dir: {attempt_dir}", file=sys.stderr)
+              raise SystemExit(1)
+          if not (attempt_dir / "run.summary.json").is_file():
+              print(f"missing run.summary.json under {attempt_dir}", file=sys.stderr)
+              raise SystemExit(1)
+          if not (attempt_dir / "repo" / "out").is_dir():
+              print(f"missing repo/out under {attempt_dir}", file=sys.stderr)
+              raise SystemExit(1)
+          (attempt_dir / "logs").mkdir(parents=True, exist_ok=True)
 
       - name: Upload BELGI run artifact
         uses: actions/upload-artifact@v4
         with:
-          name: belgi-run-${{ github.sha }}
+          name: belgi-run-${{ github.sha }}-${{ matrix.os }}-${{ matrix.tier }}
           if-no-files-found: error
           path: |
-            .belgi/run.stdout.log
-            ${{ steps.runmeta.outputs.attempt_dir }}/run.summary.json
-            ${{ steps.runmeta.outputs.attempt_dir }}/repo/out/**
-            ${{ steps.runmeta.outputs.attempt_dir }}/logs/**
+            ${{ steps.smoke.outputs.run_log }}
+            ${{ steps.smoke.outputs.attempt_dir }}/run.summary.json
+            ${{ steps.smoke.outputs.attempt_dir }}/repo/out/**
+            ${{ steps.smoke.outputs.attempt_dir }}/logs/**

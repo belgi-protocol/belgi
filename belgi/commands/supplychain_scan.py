@@ -15,6 +15,7 @@ def _run_git(repo: Path, args: list[str]) -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        shell=False,
     )
     if p.returncode != 0:
         raise RuntimeError(f"git failed: {' '.join(args)} :: {p.stderr.strip()}")

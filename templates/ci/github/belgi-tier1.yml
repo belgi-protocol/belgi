@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       belgi_ref:
-        description: "Pinned BELGI git ref (tag or full commit SHA)"
+        description: "Pinned BELGI git ref (full 40-hex commit SHA)"
+        required: false
+        type: string
+      belgi_repo_url:
+        description: "BELGI git repository URL override (optional)"
         required: false
         type: string
 
@@ -19,19 +23,27 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Fork PR variable policy (fail-closed)
-        shell: bash
+        shell: python
         env:
           IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
         run: |
-          set -euo pipefail
-          if [ "${IS_FORK_PR}" = "true" ]; then
-            echo "::error::Fork pull_request runs cannot access repository variables (BELGI_REF). Use workflow_dispatch with explicit BELGI_REF input or run in a branch within the same repository."
-            exit 1
-          fi
+          import os
+          import sys
+
+          if os.environ.get("IS_FORK_PR", "").strip().lower() == "true":
+              print(
+                  "::error::Fork pull_request runs cannot access repository variables (BELGI_REF). "
+                  "Use workflow_dispatch with explicit BELGI_REF input or run in a branch within the same repository."
+              )
+              raise SystemExit(1)
 
   belgi-tier1:
     needs: preflight
-    # Copy BELGI reusable workflow file into .github/workflows/ before using this stub.
+    # Copy BELGI reusable workflow file into .github/workflows/ and helper scripts into
+    # .github/scripts/ before using this stub:
+    #   - .github/workflows/belgi-tier1-reusable.yml
+    #   - .github/scripts/validate_belgi_ref_pin.py
+    #   - .github/scripts/run_belgi_smoke.py
     uses: ./.github/workflows/belgi-tier1-reusable.yml
     permissions:
       contents: read
@@ -40,3 +52,4 @@ jobs:
       # Set repository variable BELGI_REF for pull_request runs.
       # workflow_dispatch can override via input.
       belgi_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.belgi_ref || '' }}
+      belgi_repo_url: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.belgi_repo_url || '' }}

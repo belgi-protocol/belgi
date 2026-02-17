@@ -121,6 +121,7 @@ def _git_clone_at_commit(*, source_repo: Path, dest_repo: Path, commit_sha: str)
         capture_output=True,
         text=True,
         check=False,
+        shell=False,
     )
     if cp_clone.returncode != 0:
         msg = (cp_clone.stderr or cp_clone.stdout or "").strip()
@@ -131,6 +132,7 @@ def _git_clone_at_commit(*, source_repo: Path, dest_repo: Path, commit_sha: str)
         capture_output=True,
         text=True,
         check=False,
+        shell=False,
     )
     if cp_checkout.returncode != 0:
         msg = (cp_checkout.stderr or cp_checkout.stdout or "").strip()
@@ -156,6 +158,7 @@ def _git_diff_bytes(*, repo_root: Path, upstream: str, evaluated: str) -> bytes:
         ],
         capture_output=True,
         check=False,
+        shell=False,
     )
     if cp.returncode != 0:
         msg = cp.stderr.decode("utf-8", errors="replace").strip()
