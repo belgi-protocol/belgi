@@ -123,7 +123,7 @@ jobs:
           install_target = f"git+{repo_url}@{ref}"
           cmds = [
               [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-              [sys.executable, "-m", "pip", "install", install_target],
+              [sys.executable, "-m", "pip", "install", "--no-build-isolation", install_target],
               ["belgi", "about"],
           ]
           for cmd in cmds:
