@@ -68,6 +68,34 @@ def test_parse_belgi_result_ignores_later_json_noise_after_last_marker(tmp_path:
     assert parsed["primary_reason"] == "newer"
 
 
+def test_parse_belgi_result_accepts_whitespace_marker_with_crlf(tmp_path: Path) -> None:
+    log_path = tmp_path / "run.stdout.log"
+    log_path.write_bytes(
+        b"noise line\r\n"
+        b"  BELGI_RESULT {\"ok\":true,\"verdict\":\"GO\",\"tier_id\":\"tier-1\",\"run_key\":\"crlf\",\"attempt_id\":\"attempt-0003\",\"primary_reason\":\"\"}  \r\n"
+    )
+
+    parsed = parse_belgi_result_file(log_path)
+    assert parsed["run_key"] == "crlf"
+    assert parsed["attempt_id"] == "attempt-0003"
+
+
+def test_parse_belgi_result_uses_last_marker_with_whitespace_variants(tmp_path: Path) -> None:
+    log_path = tmp_path / "run.stdout.log"
+    log_path.write_text(
+        'BELGI_RESULT {"ok":true,"verdict":"NO-GO","tier_id":"tier-1","run_key":"older","attempt_id":"attempt-0001","primary_reason":"older"}\n'
+        '  BELGI_RESULT {"ok":true,"verdict":"GO","tier_id":"tier-1","run_key":"newer","attempt_id":"attempt-0002","primary_reason":"newer"}  \n'
+        '\tBELGI_RESULT {"ok":true,"verdict":"GO","tier_id":"tier-1","run_key":"newest","attempt_id":"attempt-0003","primary_reason":"newest"}\n',
+        encoding="utf-8",
+        errors="strict",
+    )
+
+    parsed = parse_belgi_result_file(log_path)
+    assert parsed["run_key"] == "newest"
+    assert parsed["attempt_id"] == "attempt-0003"
+    assert parsed["primary_reason"] == "newest"
+
+
 def test_ensure_belgi_result_line_appends_marker_from_json_line(tmp_path: Path) -> None:
     log_path = tmp_path / "run.stdout.log"
     machine = {
