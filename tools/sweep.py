@@ -646,6 +646,116 @@ def check_cs_can_003(root: Path) -> InvariantResult:
     )
 
 
+_TERM_GUARD_FIXED_FILES: set[str] = {
+    "README.md",
+    "CANONICALS.md",
+    "WHITEPAPER.md",
+    "terminology.md",
+    "trust-model.md",
+    "schemas/README.md",
+    "belgi/_protocol_packs/v1/schemas/README.md",
+}
+
+_TERM_GUARD_PREFIXES: tuple[str, ...] = (
+    "docs/",
+    "gates/",
+    "tiers/",
+    "belgi/_protocol_packs/v1/gates/",
+    "belgi/_protocol_packs/v1/tiers/",
+)
+
+_TERM_GUARD_ALLOWED_CONTEXTS: tuple[str, ...] = (
+    "schema",
+    "schema_validation",
+    ".schema.json",
+    "format validation",
+    "parse validation",
+    "input validation",
+)
+
+
+def _term_guard_scan_files(root: Path) -> list[str]:
+    """Deterministically enumerate tracked doc surfaces for CS-TERM-001."""
+
+    tracked = _run_git(root, ["ls-files"])
+    files: set[str] = set()
+    for raw in tracked.splitlines():
+        rel = raw.strip()
+        if not rel:
+            continue
+        rel = _validate_repo_rel(rel)
+        # This spec file contains forbidden token examples by design.
+        if rel == CONSISTENCY_SPEC_DOC:
+            continue
+        if rel in _TERM_GUARD_FIXED_FILES:
+            files.add(rel)
+            continue
+        if rel.endswith((".md", ".txt")) and any(rel.startswith(p) for p in _TERM_GUARD_PREFIXES):
+            files.add(rel)
+    return sorted(files)
+
+
+def check_cs_term_001(root: Path) -> InvariantResult:
+    """CS-TERM-001 — Terminology Drift Guard (Verification vs Validation)."""
+
+    try:
+        targets = _term_guard_scan_files(root)
+    except Exception as e:
+        return InvariantResult(
+            "CS-TERM-001",
+            "FAIL",
+            ["docs/operations/consistency-sweep.md#cs-term-001--terminology-drift-guard-verification-vs-validation"],
+            f"Failed to enumerate tracked doc surfaces for terminology drift guard ({e}).",
+        )
+
+    if not targets:
+        return InvariantResult(
+            "CS-TERM-001",
+            "FAIL",
+            ["docs/operations/consistency-sweep.md#cs-term-001--terminology-drift-guard-verification-vs-validation"],
+            "No tracked documentation files found for terminology drift guard scope.",
+        )
+
+    token_re = re.compile(r"(?i)\b(validation|validate|validated)\b")
+    offenders: list[tuple[str, int, str]] = []
+
+    for rel in targets:
+        p = _resolve_repo_path(root, rel, must_exist=True, must_be_file=True)
+        lines = read_text(p).splitlines()
+        for idx, line in enumerate(lines, start=1):
+            lower = line.lower()
+            reason = ""
+            if "deterministic validation" in lower:
+                reason = "contains banned phrase 'deterministic validation'"
+            elif "validation posture" in lower:
+                reason = "contains banned phrase 'validation posture'"
+            elif "probabilistic execution" in lower:
+                reason = "contains banned phrase 'probabilistic execution'"
+            elif token_re.search(line) and not any(ctx in lower for ctx in _TERM_GUARD_ALLOWED_CONTEXTS):
+                reason = "contains non-mechanical validation token"
+            if reason:
+                offenders.append((rel, idx, reason))
+
+    if offenders:
+        offenders.sort(key=lambda t: (t[0], t[1], t[2]))
+        listed = "; ".join(f"{rel}:{line} ({reason})" for rel, line, reason in offenders)
+        return InvariantResult(
+            "CS-TERM-001",
+            "FAIL",
+            ["CANONICALS.md#bounded-claim", "CANONICALS.md#terminology-boundaries"],
+            "Terminology drift detected at "
+            + listed
+            + ". Replace claim-level wording with 'verification'; use 'schema-validate'/'schema validation' only for mechanical conformance. See CANONICALS.md#terminology-boundaries.",
+        )
+
+    return InvariantResult(
+        "CS-TERM-001",
+        "PASS",
+        ["CANONICALS.md#bounded-claim", "CANONICALS.md#terminology-boundaries"],
+        "",
+    )
+
+
 def check_cs_can_001(root: Path) -> InvariantResult:
     """CS-CAN-001 — Terminology is pointers-only (best-effort)."""
 
@@ -3597,6 +3707,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-CAN-004": check_cs_can_004,
         "CS-CAN-002": check_cs_can_002,
         "CS-CAN-003": check_cs_can_003,
+        "CS-TERM-001": check_cs_term_001,
         # Gate-schema
         "CS-GS-001": check_cs_gs_001,
         "CS-GS-002": check_cs_gs_002,

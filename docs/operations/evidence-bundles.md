@@ -144,8 +144,8 @@ This section defines the chain of custody between Gate R and Seal (S) in a way t
 ### Replay Integrity Rule
 To claim Audit-Grade Replay, a replay MUST confirm that artifacts verified by Gate R are present and unmodified within the final (larger) sealed evidence set:
 
-1) Resolve and validate the R-Snapshot EvidenceManifest from `GateVerdict (R).evidence_manifest_ref`.
-2) Resolve and validate the Final EvidenceManifest from `SealManifest.evidence_manifest_ref`.
+1) Resolve and verify the R-Snapshot EvidenceManifest from `GateVerdict (R).evidence_manifest_ref`.
+2) Resolve and verify the Final EvidenceManifest from `SealManifest.evidence_manifest_ref`.
 3) Verify the Final EvidenceManifest is a superset of the R-Snapshot EvidenceManifest:
    - For every entry in `R_snapshot.artifacts[]`, there MUST exist an entry in `final.artifacts[]` with the same `id`, `kind`, `hash`, `media_type`, `storage_ref`, and `produced_by`.
    - `final.envelope_attestation` MUST equal `R_snapshot.envelope_attestation`.

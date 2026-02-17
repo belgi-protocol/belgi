@@ -160,6 +160,37 @@ Canonical trigger:
   - PASS if all confirmations hold.
   - FAIL if any public-safe doc includes bypass-oriented rule details or lacks the prohibition.
 
+#### CS-TERM-001 — Terminology Drift Guard (Verification vs Validation)
+- invariant_id: CS-TERM-001
+- statement: Public/normative docs MUST keep BELGI umbrella language as **verification**; `validation` terms are reserved for mechanical conformance only.
+- source-of-truth (file/section):
+  - CANONICALS.md#bounded-claim
+  - CANONICALS.md#terminology-boundaries
+- check procedure (deterministic):
+  1) Enumerate tracked files in this sweep scope:
+     - `README.md`, `CANONICALS.md`, `WHITEPAPER.md`, `terminology.md`, `trust-model.md`
+     - `docs/**/*.md`
+     - `gates/**/*.md`
+     - `tiers/**/*.md`
+     - `schemas/README.md`
+     - `belgi/_protocol_packs/v1/gates/**/*.md`
+     - `belgi/_protocol_packs/v1/tiers/**/*.md`
+     - `belgi/_protocol_packs/v1/schemas/README.md`
+  2) Scan in deterministic order (path asc, line asc).
+  3) FAIL if any line contains:
+     - `deterministic validation`
+     - `validation posture`
+     - `probabilistic execution`
+  4) For tokens `validation|validate|validated`, FAIL unless the same line contains one of the allowed mechanical contexts:
+     - `schema` or `schema_validation` or `.schema.json`
+     - `format validation`
+     - `parse validation`
+     - `input validation`
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if all checks above hold.
+  - FAIL with deterministic, sorted `file:line` entries and remediation pointing to canonical boundaries.
+
 ### 2) Gate-schema invariants
 
 #### CS-GS-001 — GateVerdict GO/NO-GO semantics match schema and gate specs
@@ -278,7 +309,7 @@ Canonical trigger:
   - PASS if steps 1–3 hold.
   - FAIL otherwise.
 
-#### CS-IS-003 — Gate Q enforces IntentSpec parse/validate/compile deterministically
+#### CS-IS-003 — Gate Q enforces IntentSpec parse/schema-validate/compile deterministically
 - invariant_id: CS-IS-003
 - statement: Gate Q MUST define deterministic checks for IntentSpec presence/parseability, schema validation, and deterministic compilation into LockedSpec inputs, without inventing new LockedSpec fields.
 - source-of-truth (file/section):
@@ -763,7 +794,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - source-of-truth (file/section):
   - `belgi/_protocol_packs/v1/ProtocolPackManifest.json` (pack_id + manifest bytes hash)
 - check procedure (deterministic):
-  1) Load and validate `belgi/_protocol_packs/v1/ProtocolPackManifest.json` against its pack tree.
+  1) Load and verify `belgi/_protocol_packs/v1/ProtocolPackManifest.json` against its pack tree.
   2) Compute `manifest_sha256 = sha256(bytes(manifest))`.
   3) Enumerate all `policy/fixtures/**/LockedSpec.json` (fail-closed on symlinks).
   4) For each LockedSpec, require `protocol_pack.pack_id == manifest.pack_id` and `protocol_pack.manifest_sha256 == manifest_sha256`.
@@ -890,6 +921,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-CAN-001: terminology.md is pointers-only to CANONICALS anchors.
 - [ ] CS-CAN-002: canonical chain string matches everywhere.
 - [ ] CS-CAN-003: publication posture prohibition present and respected.
+- [ ] CS-TERM-001: verification/validation boundaries are enforced across public docs.
 - [ ] CS-BYTE-001: Byte Guard passes (no CRLF / byte drift).
 - [ ] CS-GS-001: GateVerdict GO/NO-GO semantics match schema and gate specs.
 - [ ] CS-GS-002: remediation instruction format matches schema + taxonomy.
