@@ -2,6 +2,17 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.1.1 — 2026-02-17
+
+### Summary
+Terminology hardening for verification-first protocol language and deterministic drift enforcement.
+
+### Changed
+- Clarified the bounded claim in canonicals to: `Deterministic verification of probabilistic proposals within a declared Environment Envelope.`
+- Added canonical terminology boundaries for Verification vs Validation vs Auditability and usage rules for `audited` language.
+- Propagated terminology updates across key docs (runbook, tiers, schemas, and mirrored protocol-pack docs), including Stage Q heading normalization (`Lock & Verify`) and schema-specific wording (`schema-validate`) where appropriate.
+- Integrated `CS-TERM-001` (Terminology Drift Guard) into the existing consistency sweep path (no separate CI job), with fail-closed sorted `file:line` remediation.
+
 ## 1.1.0 — 2026-02-13
 
 ### Summary

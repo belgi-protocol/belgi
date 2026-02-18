@@ -1,4 +1,4 @@
-# BELGI Research & Validation
+# BELGI Research & Verification
 
 This directory contains the theoretical framework and planned experiments for verifying BELGI's efficacy in reducing semantic drift in Large Language Models.
 
