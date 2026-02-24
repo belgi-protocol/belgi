@@ -76,7 +76,7 @@ python -m chain.compiler_c1_intent \
   --toolchain-ref tc-001=bundle/toolchains/toolchain-001.json
 ```
 
-### Stage Q — Verify/Lock
+### Stage Q — Lock & Verify
 
 ```bash
 python -m chain.gate_q_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --intent-spec IntentSpec.core.md --locked-spec LockedSpec.json --evidence-manifest EvidenceManifest.json --out GateVerdict.Q.json
@@ -225,7 +225,7 @@ Before running, ensure:
 - You can produce/retain all required run artifacts as schema-valid JSON (see schemas list below).
 
 ### 2.2 Environment Envelope expectations (bounded trust)
-BELGI’s bounded claim is: “Deterministic validation of probabilistic execution within a declared environment envelope.” (see `../../CANONICALS.md#bounded-claim`).
+BELGI’s bounded claim is: “Deterministic verification of probabilistic proposals within a declared Environment Envelope.” (see `../../CANONICALS.md#bounded-claim`).
 
 **MUST be pinned (required by schema/gates):**
 - `LockedSpec.environment_envelope.pinned_toolchain_refs[]` is required and must be non-empty (see `../../schemas/LockedSpec.schema.json`, check Q5 in `../../gates/GATE_Q.md`).
@@ -238,7 +238,7 @@ BELGI’s bounded claim is: “Deterministic validation of probabilistic executi
 - CLI/CI execution is trusted only insofar as it stays inside the declared envelope and produces reproducible evidence; anything outside is treated as untrusted (`../../CANONICALS.md#bounded-trust`).
 
 ### 2.3 doc_impact (operator requirement for Tier 2–3)
-`doc_impact` is the LockedSpec field that declares whether documentation updates are required by the validated change set.
+`doc_impact` is the LockedSpec field that declares whether documentation updates are required by the verified change set.
 
 Rules (v1):
 - Tier 2–3: `LockedSpec.doc_impact` MUST be present.
@@ -310,7 +310,7 @@ Failure handling:
   - `GateVerdict.json` with `gate_id == "Q"` (validates against `../../schemas/GateVerdict.schema.json`)
   - Q-Snapshot `EvidenceManifest.json` (validates against `../../schemas/EvidenceManifest.schema.json`, and is referenced by `GateVerdict.evidence_manifest_ref`)
 - Evidence kinds to record (minimum required at Q; see `../../gates/GATE_Q.md`):
-  - `command_log` (C1 compilation/validation transcript)
+  - `command_log` (C1 compilation transcript)
   - `policy_report` (category-level compilation outputs)
   - `schema_validation` (schema validation outputs for LockedSpec and any waiver docs)
 - Gate checks satisfied:
@@ -361,7 +361,7 @@ Failure handling:
 Deterministic verifier (MUST-level enforcement):
 - Run the canonical verifier and write a deterministic JSON report:
   - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision HEAD --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
-  - If you need to validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
+  - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
 
 Verifier ordered-results contract (hardening note):
 - `chain/gate_r_verify.py` MUST emit an ordered `results[]` list in its report.
