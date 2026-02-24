@@ -46,8 +46,7 @@ Documentation = "https://github.com/belgi-protocol/belgi/blob/main/README.md"
 belgi = "belgi.cli:main"
 
 # Note: Development/operator tools (sweep, rehash, normalize, report, etc.)
-# are NOT exposed as console_scripts because they depend on repo-local modules
-# (chain/, wrapper/, tools/) which are development dependencies.
+# are intentionally NOT exposed as console_scripts.
 # Use `python -m tools.sweep`, `python -m tools.rehash`, etc. from the repo.
 
 # Gate/compiler entrypoints are also repo-local development tools.
@@ -61,9 +60,8 @@ version = { file = ["VERSION"] }
 
 [tool.setuptools.packages.find]
 where = ["."]
-# Only include the belgi package in the published wheel.
-# chain/, tools/, wrapper/ are development/operator modules that remain repo-local.
-include = ["belgi*"]
+# Include runtime modules required by `belgi run` / `belgi verify` orchestration.
+include = ["belgi*", "chain*", "wrapper*", "tools*"]
 exclude = ["tests*", "temp*", "demo*"]
 
 [tool.setuptools.package-data]

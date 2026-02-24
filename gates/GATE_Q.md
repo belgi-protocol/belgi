@@ -99,14 +99,14 @@ Deterministic selection rule for `GateVerdict.failure_category`:
 
 ### 3.2 LockedSpec (locked)
 Gate Q MUST emit (or reference) the locked, immutable LockedSpec used for later stages.
-- Output artifact: the validated `LockedSpec.json` (identical bytes to the candidate LockedSpec that passed Q).
+- Output artifact: the verified `LockedSpec.json` (identical bytes to the candidate LockedSpec that passed Q).
 
 ### 3.3 EvidenceManifest reference
 Gate Q MUST output `GateVerdict.evidence_manifest_ref` (ObjectRef shape) pointing to an EvidenceManifest.
 - EvidenceManifest MUST validate against: [../schemas/EvidenceManifest.schema.json](../schemas/EvidenceManifest.schema.json)
 
 **Minimum required evidence kinds at Q** (EvidenceManifest.artifacts[].kind enum):
-- `command_log` (C1): compilation/validation command transcript for Q inputs
+- `command_log` (C1): compilation command transcript for Q inputs
 - `policy_report` (C1): category-level summary of policy compilation inputs/outputs (no bypass details)
 - `schema_validation` (C1): schema validation outputs for LockedSpec and waiver docs
 
@@ -170,7 +170,7 @@ Each check specifies: `check_id`, required inputs, deterministic procedure, fail
   - Schema: [../schemas/IntentSpec.schema.json](../schemas/IntentSpec.schema.json)
 - deterministic procedure (v1, deterministic):
   1) Validate the parsed YAML object against the IntentSpec schema.
-  2) FAIL if validation errors exist.
+  2) FAIL if schema validation errors exist.
 - failure category: `FQ-INTENT-INSUFFICIENT`
 - required evidence kinds: `schema_validation`, `policy_report`
 - remediation.next_instruction template: `Do fix IntentSpec schema validation errors for missing_field then re-run Q.`
@@ -241,7 +241,7 @@ Note (deterministic tokenization):
   - Candidate LockedSpec: [../schemas/LockedSpec.schema.json](../schemas/LockedSpec.schema.json)
 - deterministic procedure:
   1) Validate the candidate LockedSpec JSON against the LockedSpec schema (Draft 2020-12).
-  2) Fail if validation errors exist.
+  2) Fail if schema validation errors exist.
 - failure category: `FQ-SCHEMA-LOCKEDSPEC-INVALID`
 - required evidence kinds: `schema_validation`, `command_log`
 - remediation.next_instruction template: `Do fix LockedSpec schema validation errors for missing_field then re-run Q.`
@@ -268,7 +268,7 @@ Note (deterministic tokenization):
   - EvidenceManifest: [../schemas/EvidenceManifest.schema.json](../schemas/EvidenceManifest.schema.json)
 - deterministic procedure:
   1) Validate the EvidenceManifest JSON against the EvidenceManifest schema (Draft 2020-12).
-  2) Fail if validation errors exist.
+  2) Fail if schema validation errors exist.
 - failure category: `FQ-SCHEMA-EVIDENCEMANIFEST-INVALID`
 - required evidence kinds: `schema_validation`, `policy_report`
 - remediation.next_instruction template: `Do fix EvidenceManifest schema validation errors for missing_field then re-run Q.`

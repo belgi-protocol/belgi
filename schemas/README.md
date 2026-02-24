@@ -338,7 +338,7 @@ HOTLApproval artifacts enforce **human-on-the-loop (HOTL) approvals** for audit-
 | GenesisSealPayload | CANONICALS.md#evidence-bundle, CANONICALS.md#bounded-trust | Signed genesis root-of-trust payload required for Tier-3 runs (enforced by Gate R R4). |
 | Waiver | CANONICALS.md#waivers, CANONICALS.md#hotl, CANONICALS.md#no-go | Waivers are explicitly human-authored and time-bounded. |
 | HOTLApproval | CANONICALS.md#hotl, CANONICALS.md#role-confusion | Human-on-the-loop approvals prevent role confusion (LLM/agent ↔ human) in audit-grade runs. Enforced by Gate Q (Q-HOTL-001). |
-| EnvAttestationPayload | CANONICALS.md#environment-envelope, CANONICALS.md#bounded-trust | Payload for env_attestation evidence; validated and bound at Gate R (R6) to prevent hollow or unbound attestations. |
+| EnvAttestationPayload | CANONICALS.md#environment-envelope, CANONICALS.md#bounded-trust | Payload for env_attestation evidence; verified and bound at Gate R (R6) to prevent hollow or unbound attestations. |
 | DocsCompilationLogPayload | CANONICALS.md#c3-docs-compiler, CANONICALS.md#publication-posture, CANONICALS.md#evidence-bundle | Payload for docs_compilation_log evidence (C3). Public-safe disclosure surface for prompt block hashes; Gate R validates when present. |
 
 ## Known gaps (canonicalization pending)

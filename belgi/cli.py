@@ -343,6 +343,7 @@ def _repo_head_sha(repo_root: Path) -> str:
             check=True,
             capture_output=True,
             text=True,
+            shell=False,
         )
     except Exception as e:
         raise ValueError(

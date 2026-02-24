@@ -165,7 +165,7 @@ Where a check requires a policy report, Gate R requires an EvidenceManifest arti
 - `kind == "policy_report"`
 - `id` equal to the required report id (examples below)
 
-### 5.2.1 Required report artifact integrity + payload validation (REQUIRED)
+### 5.2.1 Required report artifact integrity + payload schema validation (REQUIRED)
 For any evidence artifact that is **required** by Gate R by specific `(kind,id)` (including required `policy_report` and tier-required `test_report`), Gate R MUST enforce all of the following deterministically:
 
 **Uniqueness rule (MANDATORY):**
@@ -216,7 +216,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
      - Require a successful command record for `belgi invariant-eval` (see command matching rule).
      - Require a `policy_report` artifact with `id == "policy.invariant_eval"`.
   3) If either obligation is missing => fail.
-  4) Apply the Required report artifact integrity + payload validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.invariant_eval")`.
+  4) Apply the Required report artifact integrity + payload schema validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.invariant_eval")`.
      - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
      - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-INVARIANT-FAILED`.
 - tier params used: `command_log_mode`
@@ -342,9 +342,9 @@ Optional binding check (when GateVerdict is provided to the verifier):
      - `docs_compilation_log`: allowed producers `{C3}`
     - `genesis_seal`: allowed producers `{C1, R}`
   4) Verify each EvidenceManifest artifact has a valid ObjectRef (`id`, `hash`, `storage_ref`) and permitted enum values.
-  5) For each Gate R **required** report artifact (required by `(kind,id)`), apply the Required report artifact integrity + payload validation procedure (see §5.2.1), including the uniqueness rule.
+  5) For each Gate R **required** report artifact (required by `(kind,id)`), apply the Required report artifact integrity + payload schema validation procedure (see §5.2.1), including the uniqueness rule.
   6) Verify `command_log` artifact exists and passes bytes→hash integrity check.
-  7) Optional post-R evidence validation (defense-in-depth):
+  7) Optional post-R evidence verification (defense-in-depth):
      - Gate R MUST NOT require `docs_compilation_log` (it is produced by C3 post-R).
      - If EvidenceManifest includes a `docs_compilation_log` artifact:
        - Verify bytes→hash integrity and validate payload against [../schemas/DocsCompilationLogPayload.schema.json](../schemas/DocsCompilationLogPayload.schema.json).
@@ -367,7 +367,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
     - Otherwise pass.
   2) If `test_policy.required == yes`:
     - Require a `test_report` artifact with `(kind,id) == ("test_report", "tests.report")`.
-    - Apply the Required report artifact integrity + payload validation procedure (see §5.2.1) for that required test report.
+    - Apply the Required report artifact integrity + payload schema validation procedure (see §5.2.1) for that required test report.
     - For tiers where `command_log_mode == "structured"` (tiers >= 1), require `test_report.summary` is present.
     - Extract `test_summary` from `test_report.json` payload (SSOT source).
     - If `test_summary` is present, require `failed == 0`.
@@ -427,7 +427,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
 - deterministic procedure (v1, deterministic):
   1) Require required command `belgi supplychain-scan` is present and successful (per command matching rule).
   2) Require a `policy_report` artifact with `id == "policy.supplychain"`.
-  3) Apply the Required report artifact integrity + payload validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.supplychain")`.
+  3) Apply the Required report artifact integrity + payload schema validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.supplychain")`.
      - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
      - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED`.
   4) Gate R does not publish path classification lists or signatures; it treats the scan command + policy report as the authoritative, deterministic evidence obligation.
@@ -452,7 +452,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
 - deterministic procedure (v1, deterministic):
   1) Require required command `belgi adversarial-scan` is present and successful (per command matching rule).
   2) Require a `policy_report` artifact with `id == "policy.adversarial_scan"`.
-  3) Apply the Required report artifact integrity + payload validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.adversarial_scan")`.
+  3) Apply the Required report artifact integrity + payload schema validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.adversarial_scan")`.
      - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
      - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`.
   4) Gate R does not publish signatures, patterns, regexes, or thresholds; it treats the scan command + policy report as the deterministic evidence obligation.

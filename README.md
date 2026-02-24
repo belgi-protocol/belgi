@@ -42,7 +42,7 @@ No vibes. No “trust me.” Just artifacts.
 - **Deterministic gates**: fail-closed checks for intent, evidence, and verifier obligations.
 - **Evidence by bytes**: artifacts are indexed by `sha256(bytes)` — newline drift is a real failure mode, treated as such.
 - **Schema-first contracts**: `LockedSpec`, `GateVerdict`, `EvidenceManifest`, `SealManifest`, `Waiver` are strict JSON schema artifacts.
-- **Two-phase validation posture**: Gate Q (lock & verify) and Gate R (verify bundle) separate “spec correctness” from “execution correctness.”
+- **Two-gate verification posture**: Gate Q (lock & verify) and Gate R (verify bundle) separate “spec correctness” from “execution correctness.”
 - **Tier packs**: parameterized tolerances and required evidence sets (no hidden bypasses).
 - **Repro + audit trail**: deterministic reports and a stable failure taxonomy to prevent expectation-gaming.
 

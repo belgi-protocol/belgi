@@ -75,8 +75,8 @@ Operational meaning:
 This table is an operator-facing summary of how `doc_impact` is treated per tier.
 
 Notes:
-- `IntentSpec.doc_impact` is always present (schema-required by [../schemas/IntentSpec.schema.json](../schemas/IntentSpec.schema.json) and validated by Gate Q).
-- `LockedSpec.doc_impact` presence is tier-controlled via `doc_impact_required` and validated by Gate Q `Q-DOC-002`.
+- `IntentSpec.doc_impact` is always present (schema-required by [../schemas/IntentSpec.schema.json](../schemas/IntentSpec.schema.json) and verified by Gate Q).
+- `LockedSpec.doc_impact` presence is tier-controlled via `doc_impact_required` and enforced by Gate Q `Q-DOC-002`.
 
 {{TP_DOC_IMPACT_POLICY_MAP_TABLE}}
 

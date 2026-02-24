@@ -9,6 +9,7 @@ used `if not <missing_list>:` and accidentally failed/passed the wrong way.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -106,3 +107,48 @@ def test_abuse_no_boolean_truthiness_of_seal_payload_list_helpers() -> None:
     for name in helpers:
         assert f"if not {name}(" not in txt
         assert re.search(rf"\bif\s+{re.escape(name)}\(", txt) is None
+
+
+def _init_tracked_temp_repo(root: Path, files: dict[str, str]) -> None:
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "sweep-tests@local"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.name", "Sweep Tests"], cwd=root, check=True)
+    for rel, content in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8", errors="strict", newline="\n")
+    subprocess.run(["git", "add", "--all"], cwd=root, check=True)
+
+
+def test_cs_term_001_fails_on_validation_posture_phrase(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "README.md": "Two-phase validation posture\n",
+            "CANONICALS.md": "Deterministic verification of probabilistic proposals.\n",
+        },
+    )
+
+    res = sweep_mod.check_cs_term_001(tmp_path)
+    assert res.invariant_id == "CS-TERM-001"
+    assert res.status == "FAIL"
+    assert "README.md:1" in res.remediation
+    assert "validation posture" in res.remediation
+
+
+def test_cs_term_001_allows_schema_validation_context(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "README.md": "schema validation for EvidenceManifest.schema.json\n",
+            "CANONICALS.md": "Deterministic verification of probabilistic proposals.\n",
+        },
+    )
+
+    res = sweep_mod.check_cs_term_001(tmp_path)
+    assert res.invariant_id == "CS-TERM-001"
+    assert res.status == "PASS"

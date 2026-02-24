@@ -6,15 +6,27 @@ BELGI is a protocol for development under probabilistic cognition.
 
 <a id="bounded-claim"></a>
 ## 1. Bounded Claim (Canonical)
-“Deterministic validation of probabilistic execution within a declared environment envelope.”
+“Deterministic verification of probabilistic proposals within a declared Environment Envelope.”
 
-This claim is scoped: deterministic validation holds ONLY within the declared Environment Envelope and LockedSpec inputs, and MUST NOT be interpreted as a claim of universal determinism across environments, toolchains, or unstated conditions.
+This claim is scoped: deterministic verification holds ONLY within the declared Environment Envelope and LockedSpec inputs, and MUST NOT be interpreted as a claim of universal determinism across proposals, environments, toolchains, or unstated conditions.
+
+<a id="terminology-boundaries"></a>
+## 1.1 Terminology Boundaries (Canonical)
+- Verification (BELGI): deterministic reproducibility of gate verdicts for the same locked inputs and declared Environment Envelope.
+- Validation: mechanical conformance checks only (schema/format/parse/input); this term MUST NOT be used as the umbrella protocol guarantee.
+- Auditability (BELGI): independent replayability of the same gate verdicts using the Evidence Bundle within the declared Environment Envelope.
+
+Usage rules:
+- The protocol umbrella claim MUST use verification language.
+- The term `audited` MUST be used only when a specific replay was executed and recorded.
+- When replay has not yet been executed, prefer `audit-grade replay eligible`.
 
 ## Anchor Registry (Stable IDs)
 This section is a mechanical registry of stable anchor IDs for downstream references.
 
 - purpose
 - bounded-claim
+- terminology-boundaries
 - canonical-chain
 - canonical-stages
 - p-intent
@@ -169,7 +181,7 @@ failure.next_instruction: "Do <ACTION> then re-run <GATE_ID>."
 
 <a id="environment-envelope"></a>
 ### Environment Envelope (Canonical)
-The Environment Envelope is the declared, lockable description of the execution context (toolchain, dependencies, platform, and configuration surface) within which deterministic verification is claimed to hold, and outside of which results MUST NOT be considered validated.
+The Environment Envelope is the declared, lockable description of the execution context (toolchain, dependencies, platform, and configuration surface) within which deterministic verification is claimed to hold, and outside of which results MUST be treated as out-of-scope for verification.
 
 <a id="bounded-trust-execution-envelope"></a>
 <a id="bounded-trust"></a>
@@ -198,7 +210,7 @@ For a GO verdict, evidence MUST exist (as applicable under the selected Tier Pac
 - Policy checks summary (what policy categories were checked and pass/fail outcomes).
 - Cryptographic hashes for key artifacts (inputs, outputs, evidence files) sufficient to detect tampering.
 
-This evidence supports deterministic validation inside the declared envelope and MUST NOT be interpreted as proving universal determinism or program semantic correctness outside the protocol scope.
+This evidence supports deterministic verification inside the declared envelope and MUST NOT be interpreted as proving universal determinism or program semantic correctness outside the protocol scope.
 
 <a id="lockedspec"></a>
 ### LockedSpec (Canonical)
@@ -249,7 +261,7 @@ The `manifest_sha256` is the SHA-256 of the raw `ProtocolPackManifest.json` byte
 
 <a id="protocol-pack-symlink-policy"></a>
 ### Protocol Pack Symlink Policy (Canonical)
-No symlinks are permitted anywhere under the pack root (even inside excluded directories like `__pycache__`). This is enforced fail-closed during pack scanning, building, and validation. Symlinks are rejected because they can escape the pack boundary, break deterministic traversal, and create replay/audit inconsistencies.
+No symlinks are permitted anywhere under the pack root (even inside excluded directories like `__pycache__`). This is enforced fail-closed during pack scanning, building, and verification. Symlinks are rejected because they can escape the pack boundary, break deterministic traversal, and create replay/audit inconsistencies.
 
 <a id="evaluated-revision"></a>
 ### evaluated_revision (Canonical)
