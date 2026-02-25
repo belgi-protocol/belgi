@@ -18,6 +18,7 @@ Note: Some payload-style schemas intentionally allow extension fields (`addition
 - ReplayInstructionsPayload: ReplayInstructionsPayload.schema.json
 - SealManifest: SealManifest.schema.json
 - TestReportPayload: TestReportPayload.schema.json
+- TierPacks: TierPacks.schema.json
 - Waiver: Waiver.schema.json
 
 ## Shared conventions

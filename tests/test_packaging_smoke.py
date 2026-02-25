@@ -101,6 +101,7 @@ def test_all_schemas_loadable() -> None:
         "schemas/EnvAttestationPayload.schema.json",
         "schemas/DocsCompilationLogPayload.schema.json",
         "schemas/GenesisSealPayload.schema.json",
+        "schemas/TierPacks.schema.json",
     ]
     
     for schema_path in schema_files:
