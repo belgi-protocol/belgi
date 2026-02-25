@@ -1,7 +1,7 @@
 {
   "$schema": "../schemas/TierPacks.schema.json",
   "format_version": 1,
-  "source_md_sha256": "84ed539cbf6d578dbcd6e234ba9353be5736775c664fac00ad3b1d94c2dbf3ec",
+  "source_md_sha256": "c876fed3eba108d1b5ea9485bf5ec85d7413f80be396a2a1847f1b75bd4f3dfb",
   "_migration_note": "This JSON is the canonical SSOT for tier packs. The file tiers/tier-packs.md is now a generated view. Regenerate with: python -m tools.render tier-packs --repo .",
   "tier_ids": ["tier-0", "tier-1", "tier-2", "tier-3"],
   "parameter_definitions": {
@@ -125,7 +125,7 @@
       },
       "waiver_policy": {
         "allowed": true,
-        "max_active_waivers": 3,
+        "max_active_waivers": 20,
         "requires_HOTL": false
       },
       "adversarial_policy": {
@@ -155,7 +155,7 @@
       },
       "waiver_policy": {
         "allowed": true,
-        "max_active_waivers": 2,
+        "max_active_waivers": 10,
         "requires_HOTL": true
       },
       "adversarial_policy": {

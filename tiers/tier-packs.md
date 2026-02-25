@@ -112,7 +112,7 @@ Notes:
   - forbidden_paths_enforcement: `relaxed`
 - waiver_policy:
   - allowed: `yes`
-  - max_active_waivers: `3`
+  - max_active_waivers: `20`
   - requires_HOTL: `no`
 - adversarial_policy:
   - findings_mode: `warn`
@@ -136,7 +136,7 @@ Notes:
   - forbidden_paths_enforcement: `strict`
 - waiver_policy:
   - allowed: `yes`
-  - max_active_waivers: `2`
+  - max_active_waivers: `10`
   - requires_HOTL: `yes`
 - adversarial_policy:
   - findings_mode: `fail`
