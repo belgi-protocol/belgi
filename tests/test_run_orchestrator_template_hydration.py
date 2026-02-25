@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from belgi.core import run_orchestrator
 from belgi.core.run_orchestrator import ensure_chain_templates
 
 
@@ -46,3 +47,49 @@ def test_ensure_chain_templates_fail_closed_on_mismatch(tmp_path: Path) -> None:
     message = str(exc.value)
     assert "CHAIN_TEMPLATE_MISMATCH: belgi/templates/PromptBundle.blocks.md" in message
     assert "adopter overrides are not allowed" in message
+
+
+def test_orchestrate_runs_supplychain_before_template_hydration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+
+    class _StopAfterEnsure(RuntimeError):
+        pass
+
+    def _fake_clone_at_commit(*, source_repo: Path, dest_repo: Path, commit_sha: str) -> None:
+        source_repo.mkdir(parents=True, exist_ok=True)
+        dest_repo.mkdir(parents=True, exist_ok=True)
+
+    def _fake_supplychain_scan(
+        *,
+        repo: Path,
+        evaluated_revision: str,
+        out_path: Path,
+        deterministic: bool,
+        run_id: str = "unknown",
+    ) -> int:
+        events.append("supplychain")
+        return 0
+
+    def _fake_ensure_chain_templates(*, chain_repo_root: Path) -> None:
+        events.append("hydrate")
+        raise _StopAfterEnsure("stop after hydration")
+
+    monkeypatch.setattr(run_orchestrator, "_command_log_mode_for_tier", lambda **_: "strings")
+    monkeypatch.setattr(run_orchestrator, "_git_clone_at_commit", _fake_clone_at_commit)
+    monkeypatch.setattr(run_orchestrator, "run_supplychain_scan", _fake_supplychain_scan)
+    monkeypatch.setattr(run_orchestrator, "ensure_chain_templates", _fake_ensure_chain_templates)
+
+    with pytest.raises(_StopAfterEnsure, match="stop after hydration"):
+        run_orchestrator.orchestrate_chain_run(
+            source_repo_root=tmp_path / "src",
+            chain_repo_dir=tmp_path / "chain",
+            run_key="run-key",
+            tier_id="tier-0",
+            repo_head_sha="0123456789abcdef0123456789abcdef01234567",
+            intent_bytes=b"intent",
+            protocol=object(),
+        )
+
+    assert events == ["supplychain", "hydrate"]
