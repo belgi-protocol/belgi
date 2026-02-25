@@ -51,8 +51,8 @@
     "storage_ref": "policy/fixtures/public/seal/s_pass_tier2/prompt.json"
   },
   "protocol_pack": {
-    "manifest_sha256": "85dd5c96caa40985329b1333c5c3396c58469afecbdb4856abb125046198f212",
-    "pack_id": "d88c14502971a476b2c6f5b25fe7448733348826f5c26f2bf0a1ccdf3c0e840d",
+    "manifest_sha256": "5c94bf5146e0b8f9d93a83f70b3017d1cbcb7d34be4564530e86dde36cd55b7a",
+    "pack_id": "2f49084253d302c3417ac96bb6bfe5a2e5f9b89b49bab4784688f3919dd907a6",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },
