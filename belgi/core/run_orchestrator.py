@@ -391,7 +391,6 @@ def orchestrate_chain_run(
     rel_gate_s = f"{CHAIN_OUT_DIRNAME}/GateVerdict.S.json"
 
     _git_clone_at_commit(source_repo=source_repo_root, dest_repo=chain_repo_dir, commit_sha=repo_head_sha)
-    ensure_chain_templates(chain_repo_root=chain_repo_dir)
 
     commands_executed: list[Any] = []
     rc_supply = run_supplychain_scan(
@@ -409,6 +408,8 @@ def orchestrate_chain_run(
         subcommand="supplychain-scan",
         exit_code=rc_supply,
     )
+
+    ensure_chain_templates(chain_repo_root=chain_repo_dir)
 
     chain_out_dir.mkdir(parents=True, exist_ok=True)
     chain_artifacts_dir.mkdir(parents=True, exist_ok=True)
