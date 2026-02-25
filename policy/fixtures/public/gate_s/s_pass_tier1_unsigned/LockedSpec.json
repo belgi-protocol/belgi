@@ -46,8 +46,8 @@
     "storage_ref": "policy/fixtures/public/gate_s/s_pass_tier1_unsigned/prompt.json"
   },
   "protocol_pack": {
-    "manifest_sha256": "80234c553f4a59ba81b79e639fd4e795b3542204cd29f967c5d02fb9f2f8aa54",
-    "pack_id": "b4266f2fc9b9a906a6dc34e4cf363f7b6e49c77a6b30c984888d57ee14e6785e",
+    "manifest_sha256": "34ad4ed93a06d991cd30ed1f17b75a54da9ac468b058dda5f5cce2aa3d9793e8",
+    "pack_id": "2a1c6926566b58370ae7d8faa46b02779acad0acd8c060029af5f51bf263facf",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },
