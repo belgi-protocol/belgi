@@ -483,3 +483,49 @@ def test_tier1_fails_with_expired_or_mismatched_applied_waiver(
     assert "chain.gate_" in str(machine["primary_reason"])
     assert "NO-GO:" in str(machine["primary_reason"])
     assert expected_reason in str(machine["primary_reason"])
+
+
+def test_run_summary_exists_on_run_tests_failure(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    original_run_tools = run_orchestrator._run_tools_belgi
+
+    def _patched_run_tools(repo_root: Path, argv: list[str], *, allowed: tuple[int, ...] = (0,)) -> int:
+        if argv and argv[0] == "run-tests":
+            raise ValueError(
+                "tools.belgi_tools run-tests --run-id run-test-001 --out out/artifacts/tests.report.json --deterministic returned rc=1"
+            )
+        return original_run_tools(repo_root, argv, allowed=allowed)
+
+    monkeypatch.setattr(run_orchestrator, "_run_tools_belgi", _patched_run_tools)
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    assert rc_run == 10
+    captured_run = capsys.readouterr()
+    machine_run = json.loads(captured_run.out.splitlines()[0])
+    run_key = str(machine_run["run_key"])
+    attempt_id = str(machine_run["attempt_id"])
+    assert "run-tests" in str(machine_run["primary_reason"])
+    assert "rc=1" in str(machine_run["primary_reason"])
+
+    summary_path = repo / ".belgi" / "runs" / run_key / attempt_id / "run.summary.json"
+    assert summary_path.is_file()
+    summary = json.loads(summary_path.read_text(encoding="utf-8", errors="strict"))
+    assert summary.get("verdict") == "NO-GO"
+    assert "run-tests" in str(summary.get("primary_reason"))
+    assert "rc=1" in str(summary.get("primary_reason"))
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 10
+    captured_verify = capsys.readouterr()
+    machine_verify = json.loads(captured_verify.out.splitlines()[0])
+    verify_reason = str(machine_verify.get("primary_reason") or "")
+    assert "run-tests" in verify_reason
+    assert "rc=1" in verify_reason
+    assert "missing run summary" not in verify_reason

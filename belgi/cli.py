@@ -963,6 +963,65 @@ def _validate_paths_within_attempt(*, attempt_dir: Path, paths: list[Path]) -> N
             raise ValueError(f"artifact escapes attempt directory: {p}")
 
 
+def _write_run_summary_if_ready(
+    *,
+    repo_root: Path,
+    summary_path: Path | None,
+    run_key: str | None,
+    attempt_id: str | None,
+    tier_id: str | None,
+    workspace_rel: str | None,
+    run_key_dir: Path | None,
+    attempt_dir: Path | None,
+    run_key_preimage: dict[str, object] | None,
+    chain_repo_dir: Path | None,
+    chain_out_dir: Path | None,
+    chain_paths: list[Path],
+    adversarial_findings_present: bool,
+    adversarial_findings_count: int,
+    waivers_applied_count: int,
+    waivers_applied_refs: list[str],
+    verdict: str,
+    primary_reason: str,
+) -> bool:
+    from belgi.core.jail import safe_relpath
+
+    if summary_path is None:
+        return False
+    if not run_key or not attempt_id:
+        return False
+    if workspace_rel is None or run_key_dir is None or attempt_dir is None:
+        return False
+
+    artifacts = _build_artifact_entries(repo_root, paths=chain_paths) if chain_paths else []
+    summary_obj: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "summary_kind": "belgi_run_attempt",
+        "run_key": run_key,
+        "attempt_id": attempt_id,
+        "tier_id": tier_id,
+        "workspace_root": workspace_rel,
+        "run_root": safe_relpath(repo_root, run_key_dir),
+        "attempt_root": safe_relpath(repo_root, attempt_dir),
+        "run_key_preimage": run_key_preimage if isinstance(run_key_preimage, dict) else {},
+        "chain_repo_root": safe_relpath(repo_root, chain_repo_dir) if chain_repo_dir is not None else None,
+        "chain_output_root": safe_relpath(repo_root, chain_out_dir) if chain_out_dir is not None else None,
+        "adversarial_scan": {
+            "findings_present": adversarial_findings_present,
+            "finding_count": adversarial_findings_count,
+        },
+        "waivers_applied": {
+            "count": int(waivers_applied_count),
+            "storage_refs": list(waivers_applied_refs),
+        },
+        "verdict": verdict,
+        "primary_reason": str(primary_reason),
+        "artifacts": artifacts,
+    }
+    _write_json(summary_path, summary_obj)
+    return True
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     from belgi.core.hash import sha256_bytes
     from belgi.core.jail import resolve_repo_rel_path, safe_relpath
@@ -972,6 +1031,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     tier_id: str | None = str(getattr(args, "tier", "") or "").strip() or None
     run_key: str | None = None
     attempt_id: str | None = None
+    workspace_rel: str | None = None
+    run_key_dir: Path | None = None
+    attempt_dir: Path | None = None
+    summary_path: Path | None = None
+    preimage: dict[str, object] | None = None
+    chain_repo_dir: Path | None = None
+    chain_out_dir: Path | None = None
+    chain_paths: list[Path] = []
+    adversarial_findings_present = False
+    adversarial_findings_count = 0
     waivers_applied_count: int | None = None
     waivers_applied_refs: list[str] | None = None
 
@@ -1050,6 +1119,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         if attempt_dir.exists():
             raise ValueError(f"attempt directory already exists: {attempt_dir}")
         attempt_dir.mkdir(parents=False, exist_ok=False)
+        summary_path = attempt_dir / RUN_SUMMARY_FILENAME
 
         with contextlib.redirect_stdout(sys.stderr):
             chain_result = orchestrate_chain_run(
@@ -1064,67 +1134,138 @@ def cmd_run(args: argparse.Namespace) -> int:
         chain_repo_dir = chain_result.chain_repo_dir
         chain_out_dir = chain_result.chain_out_dir
         chain_paths = chain_result.chain_paths
+        adversarial_findings_present = chain_result.adversarial_findings_present
+        adversarial_findings_count = chain_result.adversarial_findings_count
         waivers_applied_refs = list(chain_result.applied_waiver_refs)
         waivers_applied_count = len(waivers_applied_refs)
         _validate_paths_within_attempt(attempt_dir=attempt_dir, paths=chain_paths)
-
-        summary_obj = {
-            "schema_version": "1.0.0",
-            "summary_kind": "belgi_run_attempt",
-            "run_key": run_key,
-            "attempt_id": attempt_id,
-            "tier_id": tier_id,
-            "workspace_root": workspace_rel,
-            "run_root": safe_relpath(repo_root, run_key_dir),
-            "attempt_root": safe_relpath(repo_root, attempt_dir),
-            "run_key_preimage": preimage,
-            "chain_repo_root": safe_relpath(repo_root, chain_repo_dir),
-            "chain_output_root": safe_relpath(repo_root, chain_out_dir),
-            "adversarial_scan": {
-                "findings_present": chain_result.adversarial_findings_present,
-                "finding_count": chain_result.adversarial_findings_count,
-            },
-            "waivers_applied": {
-                "count": waivers_applied_count,
-                "storage_refs": waivers_applied_refs,
-            },
-            "artifacts": _build_artifact_entries(repo_root, paths=chain_paths),
-        }
-        summary_path = attempt_dir / RUN_SUMMARY_FILENAME
-        _write_json(summary_path, summary_obj)
+        wrote_summary = _write_run_summary_if_ready(
+            repo_root=repo_root,
+            summary_path=summary_path,
+            run_key=run_key,
+            attempt_id=attempt_id,
+            tier_id=tier_id,
+            workspace_rel=workspace_rel,
+            run_key_dir=run_key_dir,
+            attempt_dir=attempt_dir,
+            run_key_preimage=preimage,
+            chain_repo_dir=chain_repo_dir,
+            chain_out_dir=chain_out_dir,
+            chain_paths=chain_paths,
+            adversarial_findings_present=adversarial_findings_present,
+            adversarial_findings_count=adversarial_findings_count,
+            waivers_applied_count=waivers_applied_count or 0,
+            waivers_applied_refs=waivers_applied_refs or [],
+            verdict="GO",
+            primary_reason="",
+        )
+        if not wrote_summary:
+            raise ValueError("internal error: failed to finalize run summary for attempt")
 
     except _UserInputError as e:
+        reason = str(e)
+        try:
+            _write_run_summary_if_ready(
+                repo_root=repo_root,
+                summary_path=summary_path,
+                run_key=run_key,
+                attempt_id=attempt_id,
+                tier_id=tier_id,
+                workspace_rel=workspace_rel,
+                run_key_dir=run_key_dir,
+                attempt_dir=attempt_dir,
+                run_key_preimage=preimage,
+                chain_repo_dir=chain_repo_dir,
+                chain_out_dir=chain_out_dir,
+                chain_paths=chain_paths,
+                adversarial_findings_present=adversarial_findings_present,
+                adversarial_findings_count=adversarial_findings_count,
+                waivers_applied_count=waivers_applied_count or 0,
+                waivers_applied_refs=waivers_applied_refs or [],
+                verdict="NO-GO",
+                primary_reason=reason,
+            )
+        except Exception as summary_err:
+            reason = f"{reason}; summary_finalize_error={summary_err}"
         _emit_machine_result(
             ok=False,
             verdict="NO-GO",
-            primary_reason=str(e),
+            primary_reason=reason,
             tier_id=tier_id,
             run_key=run_key,
             attempt_id=attempt_id,
         )
-        print(f"[belgi run] USER_ERROR: {e}", file=sys.stderr)
+        print(f"[belgi run] USER_ERROR: {reason}", file=sys.stderr)
         return RC_USER_ERROR
     except ValueError as e:
+        reason = str(e)
+        try:
+            _write_run_summary_if_ready(
+                repo_root=repo_root,
+                summary_path=summary_path,
+                run_key=run_key,
+                attempt_id=attempt_id,
+                tier_id=tier_id,
+                workspace_rel=workspace_rel,
+                run_key_dir=run_key_dir,
+                attempt_dir=attempt_dir,
+                run_key_preimage=preimage,
+                chain_repo_dir=chain_repo_dir,
+                chain_out_dir=chain_out_dir,
+                chain_paths=chain_paths,
+                adversarial_findings_present=adversarial_findings_present,
+                adversarial_findings_count=adversarial_findings_count,
+                waivers_applied_count=waivers_applied_count or 0,
+                waivers_applied_refs=waivers_applied_refs or [],
+                verdict="NO-GO",
+                primary_reason=reason,
+            )
+        except Exception as summary_err:
+            reason = f"{reason}; summary_finalize_error={summary_err}"
         _emit_machine_result(
             ok=False,
             verdict="NO-GO",
-            primary_reason=str(e),
+            primary_reason=reason,
             tier_id=tier_id,
             run_key=run_key,
             attempt_id=attempt_id,
         )
-        print(f"[belgi run] NO-GO: {e}", file=sys.stderr)
+        print(f"[belgi run] NO-GO: {reason}", file=sys.stderr)
         return RC_NO_GO
     except Exception as e:
+        reason = str(e)
+        try:
+            _write_run_summary_if_ready(
+                repo_root=repo_root,
+                summary_path=summary_path,
+                run_key=run_key,
+                attempt_id=attempt_id,
+                tier_id=tier_id,
+                workspace_rel=workspace_rel,
+                run_key_dir=run_key_dir,
+                attempt_dir=attempt_dir,
+                run_key_preimage=preimage,
+                chain_repo_dir=chain_repo_dir,
+                chain_out_dir=chain_out_dir,
+                chain_paths=chain_paths,
+                adversarial_findings_present=adversarial_findings_present,
+                adversarial_findings_count=adversarial_findings_count,
+                waivers_applied_count=waivers_applied_count or 0,
+                waivers_applied_refs=waivers_applied_refs or [],
+                verdict="NO-GO",
+                primary_reason=reason,
+            )
+        except Exception as summary_err:
+            reason = f"{reason}; summary_finalize_error={summary_err}"
         _emit_machine_result(
             ok=False,
             verdict="NO-GO",
-            primary_reason=str(e),
+            primary_reason=reason,
             tier_id=tier_id,
             run_key=run_key,
             attempt_id=attempt_id,
         )
-        print(f"[belgi run] ERROR: {e}", file=sys.stderr)
+        print(f"[belgi run] ERROR: {reason}", file=sys.stderr)
         return RC_INTERNAL_ERROR
 
     _emit_machine_result(
@@ -1242,6 +1383,17 @@ def _verify_attempt_dir(repo_root: Path, attempt_dir: Path) -> tuple[str, str]:
         raise ValueError("run_key does not match directory layout")
     if attempt_id != attempt_dir.name:
         raise ValueError("attempt_id does not match directory layout")
+
+    verdict_raw = summary.get("verdict")
+    if verdict_raw is not None:
+        if not isinstance(verdict_raw, str) or verdict_raw not in ("GO", "NO-GO"):
+            raise ValueError("run.summary.json verdict missing/invalid")
+        if verdict_raw == "NO-GO":
+            reason_raw = summary.get("primary_reason")
+            reason = str(reason_raw).strip() if isinstance(reason_raw, str) else ""
+            if not reason:
+                reason = "attempt finalized as NO-GO"
+            raise ValueError(f"attempt {run_key}/{attempt_id} is NO-GO: {reason}")
 
     preimage = summary.get("run_key_preimage")
     if not isinstance(preimage, dict):
