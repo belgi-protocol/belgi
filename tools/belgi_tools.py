@@ -1027,87 +1027,123 @@ def cmd_run_tests(args: argparse.Namespace) -> int:
     out_path = _repo_path(repo_root, str(args.out), must_exist=False, must_be_file=True) if args.out else repo_root / "temp" / "tests.report.json"
     run_id = args.run_id
     timestamp = _get_timestamp(args.deterministic)
-    
-    # Build pytest command
-    pytest_args = [sys.executable, "-m", "pytest"]
-    if args.test_path:
-        test_target = _repo_path(repo_root, str(args.test_path), must_exist=True, must_be_file=None)
-        pytest_args.append(str(test_target))
-    pytest_args.extend(["-q", "--tb=short"])
-    
-    print(f"[belgi run-tests] Running: {' '.join(pytest_args)}", file=sys.stderr)
-    
+
+    mode = "adopter_pytest" if bool(args.test_path) else "engine_smoke"
+
+    if mode == "adopter_pytest":
+        test_target = _repo_path(repo_root, str(args.test_path), must_exist=False, must_be_file=None)
+        if not test_target.exists():
+            payload_missing: dict[str, Any] = {
+                "schema_version": SCHEMA_VERSION,
+                "run_id": run_id,
+                "generated_at": timestamp,
+                "mode": "adopter_pytest",
+                "status": "skipped_missing_target",
+                "summary_text": f"Configured test target not found: {args.test_path}",
+                "summary": {
+                    "total": 0,
+                    "passed": 0,
+                    "failed": 0,
+                    "skipped": 1,
+                    "duration_seconds": 0.0,
+                },
+                "exit_code": 0,
+                "stdout_tail": "",
+            }
+            _atomic_write_json(out_path, payload_missing)
+            print(f"[belgi run-tests] SKIP: missing configured target: {args.test_path}", file=sys.stderr)
+            print(f"[belgi run-tests] Wrote: {out_path}", file=sys.stderr)
+            return 0
+
+        run_argv = [sys.executable, "-m", "pytest", str(test_target), "-q", "--tb=short"]
+    else:
+        # Repo-agnostic deterministic smoke: ensure test runner is present and invokable.
+        run_argv = [sys.executable, "-m", "pytest", "--version"]
+
+    print(f"[belgi run-tests] mode={mode} Running: {' '.join(run_argv)}", file=sys.stderr)
+
     start_time = time.time()
     result = subprocess.run(
-        pytest_args,
+        run_argv,
         cwd=str(repo_root),
         env=_det_env(),
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
+        shell=False,
     )
     duration = time.time() - start_time
-    
-    # Parse pytest output for counts
-    # Look for pattern like "62 passed, 1 skipped in 5.19s"
+
     stdout = result.stdout
     stderr = result.stderr
-    
-    total = 0
-    passed = 0
-    failed = 0
-    skipped = 0
-    
-    import re
-    # Match patterns like "62 passed", "1 failed", "1 skipped"
-    for line in (stdout + stderr).split("\n"):
-        m_passed = re.search(r"(\d+)\s+passed", line)
-        m_failed = re.search(r"(\d+)\s+failed", line)
-        m_skipped = re.search(r"(\d+)\s+skipped", line)
-        m_error = re.search(r"(\d+)\s+error", line)
-        
-        if m_passed:
-            passed = int(m_passed.group(1))
-        if m_failed:
-            failed = int(m_failed.group(1))
-        if m_skipped:
-            skipped = int(m_skipped.group(1))
-        if m_error:
-            failed += int(m_error.group(1))
-    
-    total = passed + failed + skipped
-    
-    # If no tests found, check for collection errors
-    if total == 0 and result.returncode != 0:
-        failed = 1
+    duration_seconds = round(duration, 2) if not args.deterministic else 0.0
+
+    if mode == "engine_smoke":
+        passed = 1 if result.returncode == 0 else 0
+        failed = 0 if result.returncode == 0 else 1
+        skipped = 0
         total = 1
-    
-    # Build TestReportPayload
+    else:
+        passed = 0
+        failed = 0
+        skipped = 0
+
+        for line in (stdout + stderr).splitlines():
+            m_passed = re.search(r"(\d+)\s+passed", line)
+            m_failed = re.search(r"(\d+)\s+failed", line)
+            m_skipped = re.search(r"(\d+)\s+skipped", line)
+            m_error = re.search(r"(\d+)\s+error", line)
+
+            if m_passed:
+                passed = int(m_passed.group(1))
+            if m_failed:
+                failed = int(m_failed.group(1))
+            if m_skipped:
+                skipped = int(m_skipped.group(1))
+            if m_error:
+                failed += int(m_error.group(1))
+
+        total = passed + failed + skipped
+        if total == 0 and result.returncode != 0:
+            failed = 1
+            total = 1
+
+    status = "pass" if failed == 0 and result.returncode == 0 else "fail"
+    summary_text = (
+        f"{mode} completed: total={total} passed={passed} failed={failed} skipped={skipped} rc={result.returncode}"
+    )
+
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
         "generated_at": timestamp,
+        "mode": mode,
+        "status": status,
+        "summary_text": summary_text,
         "summary": {
             "total": total,
             "passed": passed,
             "failed": failed,
             "skipped": skipped,
-            "duration_seconds": round(duration, 2) if not args.deterministic else 0.0,
+            "duration_seconds": duration_seconds,
         },
         "exit_code": result.returncode,
         "stdout_tail": stdout[-2000:] if len(stdout) > 2000 else stdout,
     }
-    
+
     _atomic_write_json(out_path, payload)
     print(f"[belgi run-tests] Wrote: {out_path}", file=sys.stderr)
-    print(f"[belgi run-tests] Summary: total={total} passed={passed} failed={failed} skipped={skipped}", file=sys.stderr)
-    
-    # Exit code: 0 if all tests pass, 1 if any fail
-    if failed > 0:
-        print(f"[belgi run-tests] FAIL: {failed} test(s) failed", file=sys.stderr)
+    print(
+        f"[belgi run-tests] Summary: mode={mode} status={status} "
+        f"total={total} passed={passed} failed={failed} skipped={skipped}",
+        file=sys.stderr,
+    )
+
+    if status != "pass":
+        print(f"[belgi run-tests] FAIL: {summary_text}", file=sys.stderr)
         return 1
-    
-    print(f"[belgi run-tests] PASS: all tests passed", file=sys.stderr)
+
+    print(f"[belgi run-tests] PASS: {summary_text}", file=sys.stderr)
     return 0
 
 

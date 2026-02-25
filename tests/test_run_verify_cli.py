@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -15,6 +17,7 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.cli import main as belgi_main
+from belgi.core import run_orchestrator
 
 
 def _list_dirs(path: Path) -> list[Path]:
@@ -65,6 +68,38 @@ def _commit_file(repo: Path, rel: str, content: str, msg: str) -> None:
         check=False,
     )
     assert cp_commit.returncode == 0, cp_commit.stderr
+
+
+def _run_git(repo: Path, args: list[str]) -> None:
+    cp = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp.returncode == 0, cp.stderr
+
+
+def _remove_tests_tree_and_commit(repo: Path) -> None:
+    _run_git(repo, ["rm", "-r", "--quiet", "--ignore-unmatch", "tests"])
+    _run_git(repo, ["commit", "-m", "remove tests tree"])
+
+
+def _run_tier1_and_get_attempt(repo: Path, capsys: object) -> tuple[dict[str, object], Path]:
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    assert rc_run == 0
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+    attempt_dir = repo / ".belgi" / "runs" / run_key / attempt_id
+    assert attempt_dir.is_dir()
+    return machine, attempt_dir
 
 
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
@@ -249,3 +284,59 @@ def test_tier0_passes_with_findings_and_records_signal(tmp_path: Path, capsys: o
     )
     assert adv_report.get("findings_present") is True
     assert isinstance(adv_report.get("finding_count"), int) and int(adv_report["finding_count"]) > 0
+
+
+def test_tier1_adopter_like_repo_without_tests_produces_test_report(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _remove_tests_tree_and_commit(repo)
+
+    _, attempt_dir = _run_tier1_and_get_attempt(repo, capsys)
+    test_report_path = attempt_dir / "repo" / "out" / "artifacts" / "tests.report.json"
+    assert test_report_path.is_file()
+    verify_report = json.loads((attempt_dir / "repo" / "out" / "verify_report.R.json").read_text(encoding="utf-8", errors="strict"))
+    results = verify_report.get("results")
+    assert isinstance(results, list)
+    assert any(isinstance(entry, dict) and entry.get("check_id") == "R8" for entry in results)
+
+
+def test_tier1_test_report_includes_mode_status_and_exit_code(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _remove_tests_tree_and_commit(repo)
+
+    _, attempt_dir = _run_tier1_and_get_attempt(repo, capsys)
+    test_report_path = attempt_dir / "repo" / "out" / "artifacts" / "tests.report.json"
+    report = json.loads(test_report_path.read_text(encoding="utf-8", errors="strict"))
+
+    assert report.get("mode") == "engine_smoke"
+    assert report.get("status") == "pass"
+    assert isinstance(report.get("exit_code"), int)
+    assert isinstance(report.get("summary_text"), str) and bool(str(report["summary_text"]).strip())
+
+
+def test_tier1_adopter_pytest_missing_target_skips_and_reaches_r8(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _remove_tests_tree_and_commit(repo)
+
+    monkeypatch.setattr(
+        run_orchestrator,
+        "_tier_test_plan_for_tier",
+        lambda **_: run_orchestrator.TierTestPlan(
+            mode="adopter_pytest",
+            test_path="tests/does_not_exist.py",
+        ),
+    )
+
+    _, attempt_dir = _run_tier1_and_get_attempt(repo, capsys)
+
+    test_report_path = attempt_dir / "repo" / "out" / "artifacts" / "tests.report.json"
+    report = json.loads(test_report_path.read_text(encoding="utf-8", errors="strict"))
+    assert report.get("mode") == "adopter_pytest"
+    assert report.get("status") == "skipped_missing_target"
+    assert report.get("exit_code") == 0
+
+    verify_report = json.loads((attempt_dir / "repo" / "out" / "verify_report.R.json").read_text(encoding="utf-8", errors="strict"))
+    results = verify_report.get("results")
+    assert isinstance(results, list)
+    assert any(isinstance(entry, dict) and entry.get("check_id") == "R8" for entry in results)
