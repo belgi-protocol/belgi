@@ -23,6 +23,7 @@ class TierParams:
     waiver_policy_allowed: bool
     waiver_policy_max_active_waivers: int
     waiver_policy_requires_hotl: str
+    adversarial_policy_findings_mode: str
     envelope_policy_requires_attestation: str
     envelope_policy_attestation_signature_required: str
     envelope_policy_pinned_toolchain_refs_required: str
@@ -42,6 +43,7 @@ class TierParams:
             "waiver_policy.allowed": self.waiver_policy_allowed,
             "waiver_policy.max_active_waivers": self.waiver_policy_max_active_waivers,
             "waiver_policy.requires_HOTL": self.waiver_policy_requires_hotl,
+            "adversarial_policy.findings_mode": self.adversarial_policy_findings_mode,
             "envelope_policy.requires_attestation": self.envelope_policy_requires_attestation,
             "envelope_policy.attestation_signature_required": self.envelope_policy_attestation_signature_required,
             "envelope_policy.pinned_toolchain_refs_required": self.envelope_policy_pinned_toolchain_refs_required,
@@ -155,6 +157,13 @@ def _parse_tier_params_from_json(tier_packs_json: str, tier_id: str) -> dict[str
             params["waiver_policy.max_active_waivers"] = max_active
         if isinstance(requires_hotl, bool):
             params["waiver_policy.requires_HOTL"] = "yes" if requires_hotl else "no"
+
+    # adversarial_policy
+    ap = tier_obj.get("adversarial_policy")
+    if isinstance(ap, dict):
+        findings_mode = ap.get("findings_mode")
+        if isinstance(findings_mode, str) and findings_mode in ("warn", "fail"):
+            params["adversarial_policy.findings_mode"] = findings_mode
 
     # envelope_policy
     ep = tier_obj.get("envelope_policy")
@@ -286,6 +295,16 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
     if rht:
         params["waiver_policy.requires_HOTL"] = rht.group(1)
 
+    # adversarial_policy.findings_mode:
+    afm = re.search(r"\s*-\s+findings_mode:\s+`(warn|fail)`", block)
+    if afm:
+        params["adversarial_policy.findings_mode"] = afm.group(1)
+    else:
+        # Legacy generated markdown may not carry this key yet.
+        # Deterministic fallback preserves tier gradient:
+        # strings => warn (tier-0), structured => fail (tier-1+)
+        params["adversarial_policy.findings_mode"] = "warn" if params.get("command_log_mode") == "strings" else "fail"
+
     # envelope_policy.requires_attestation: mandatory.
     ra = re.search(
         r"-\s+envelope_policy:\s*\n\s*-\s+requires_attestation:\s+`?([a-z]+)`?",
@@ -400,6 +419,7 @@ def _build_validated_tier_params(raw: dict[str, Any], tier_id: str) -> TierParam
         waiver_policy_allowed=_require_bool(raw, "waiver_policy.allowed"),
         waiver_policy_max_active_waivers=_require_int_nonneg(raw, "waiver_policy.max_active_waivers"),
         waiver_policy_requires_hotl=_require_enum(raw, "waiver_policy.requires_HOTL", allowed=("yes", "no")),
+        adversarial_policy_findings_mode=_require_enum(raw, "adversarial_policy.findings_mode", allowed=("warn", "fail")),
         envelope_policy_requires_attestation=_require_enum(
             raw,
             "envelope_policy.requires_attestation",

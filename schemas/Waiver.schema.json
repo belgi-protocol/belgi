@@ -12,6 +12,7 @@
     "rule_id",
     "scope",
     "justification",
+    "mitigation",
     "approver",
     "created_at",
     "expires_at",
@@ -41,6 +42,11 @@
       "description": "Scope description for the waiver. Use 'path:<prefix>' for path-based scopes with deterministic prefix matching."
     },
     "justification": { "type": "string", "minLength": 1 },
+    "mitigation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concrete mitigation plan that accompanies the temporary waiver."
+    },
     "approver": {
       "type": "string",
       "minLength": 1,
