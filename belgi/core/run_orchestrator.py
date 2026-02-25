@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,10 @@ FIXED_SEALED_AT = "2000-01-01T00:30:00Z"
 FIXED_SIGNER = "human:belgi-run"
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_CHAIN_TEMPLATE_BINDINGS: tuple[tuple[str, str], ...] = (
+    ("templates/PromptBundle.blocks.md", "belgi/templates/PromptBundle.blocks.md"),
+    ("templates/DocsCompiler.template.md", "belgi/templates/DocsCompiler.template.md"),
+)
 
 
 @dataclass(frozen=True)
@@ -219,6 +224,35 @@ def _append_command(
     )
 
 
+def _load_builtin_template_bytes(*, resource_rel: str) -> bytes:
+    try:
+        node = resource_files("belgi").joinpath(*resource_rel.split("/"))
+        return node.read_bytes()
+    except Exception as e:
+        raise ValueError(f"missing builtin chain template resource: {resource_rel}") from e
+
+
+def ensure_chain_templates(*, chain_repo_root: Path) -> None:
+    for resource_rel, target_rel in _CHAIN_TEMPLATE_BINDINGS:
+        builtin_bytes = _load_builtin_template_bytes(resource_rel=resource_rel)
+        target_path = chain_repo_root.joinpath(*target_rel.split("/"))
+        if target_path.exists():
+            if target_path.is_symlink() or not target_path.is_file():
+                raise ValueError(
+                    f"CHAIN_TEMPLATE_MISMATCH: {target_rel}; adopter overrides are not allowed; "
+                    "delete file or match builtin."
+                )
+            current_bytes = target_path.read_bytes()
+            if current_bytes != builtin_bytes:
+                raise ValueError(
+                    f"CHAIN_TEMPLATE_MISMATCH: {target_rel}; adopter overrides are not allowed; "
+                    "delete file or match builtin."
+                )
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(builtin_bytes)
+
+
 def _parse_registry_block_ids(registry_text: str) -> list[str]:
     ids = sorted(set(re.findall(r"\bPB-\d{3}\b", registry_text)))
     if not ids:
@@ -357,6 +391,7 @@ def orchestrate_chain_run(
     rel_gate_s = f"{CHAIN_OUT_DIRNAME}/GateVerdict.S.json"
 
     _git_clone_at_commit(source_repo=source_repo_root, dest_repo=chain_repo_dir, commit_sha=repo_head_sha)
+    ensure_chain_templates(chain_repo_root=chain_repo_dir)
 
     commands_executed: list[Any] = []
     rc_supply = run_supplychain_scan(
