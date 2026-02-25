@@ -340,3 +340,32 @@ def test_tier1_adopter_pytest_missing_target_skips_and_reaches_r8(
     results = verify_report.get("results")
     assert isinstance(results, list)
     assert any(isinstance(entry, dict) and entry.get("check_id") == "R8" for entry in results)
+
+
+def test_tier1_adopter_pytest_existing_target_passes_and_records_report_fields(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(
+        repo,
+        "tests/test_adopter_target_smoke.py",
+        "def test_adopter_target_smoke() -> None:\n    assert 1 == 1\n",
+        "add adopter pytest target",
+    )
+
+    monkeypatch.setattr(
+        run_orchestrator,
+        "_tier_test_plan_for_tier",
+        lambda **_: run_orchestrator.TierTestPlan(
+            mode="adopter_pytest",
+            test_path="tests/test_adopter_target_smoke.py",
+        ),
+    )
+
+    _, attempt_dir = _run_tier1_and_get_attempt(repo, capsys)
+
+    test_report_path = attempt_dir / "repo" / "out" / "artifacts" / "tests.report.json"
+    report = json.loads(test_report_path.read_text(encoding="utf-8", errors="strict"))
+    assert report.get("mode") == "adopter_pytest"
+    assert report.get("status") == "pass"
+    assert isinstance(report.get("exit_code"), int)
