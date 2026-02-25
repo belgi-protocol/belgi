@@ -352,6 +352,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help="(tier-2/3 required) Seal public key ref in ID=repo/relative/path form",
     )
+    ap.add_argument(
+        "--waiver-applied",
+        action="append",
+        default=[],
+        help="Repo-relative waiver JSON path to bind into LockedSpec.waivers_applied (repeatable)",
+    )
     return ap.parse_args(argv)
 
 
@@ -614,6 +620,18 @@ def main(argv: list[str] | None = None) -> int:
             seen_toolchain_ids.add(tc_id)
             toolchain_refs.append(_object_ref(repo_root, object_id=tc_id, storage_ref=tc_ref))
 
+        waiver_pairs = [str(x) for x in (args.waiver_applied or [])]
+        waivers_applied: list[str] = []
+        seen_waivers: set[str] = set()
+        for raw in waiver_pairs:
+            waiver_path = _resolve_repo_path(repo_root, raw, must_exist=True, must_be_file=True)
+            waiver_rel = _validate_repo_rel(_safe_relpath(repo_root, waiver_path))
+            if waiver_rel in seen_waivers:
+                raise _UserInputError(f"duplicate --waiver-applied ref: {waiver_rel}")
+            seen_waivers.add(waiver_rel)
+            waivers_applied.append(waiver_rel)
+        waivers_applied.sort()
+
         env_envelope: dict[str, Any] = {
             "id": str(args.envelope_id),
             "description": str(args.envelope_description),
@@ -703,6 +721,8 @@ def main(argv: list[str] | None = None) -> int:
         pub_intent = parsed.get("publication_intent")
         if pub_intent is not None:
             locked_spec["publication_intent"] = pub_intent
+        if waivers_applied:
+            locked_spec["waivers_applied"] = waivers_applied
 
         if pb_out_path is not None:
             # Bind prompt bundle to LockedSpec preimage (excluding prompt_bundle_ref) to prevent self-reference.

@@ -32,6 +32,8 @@ _CHAIN_TEMPLATE_BINDINGS: tuple[tuple[str, str], ...] = (
     ("templates/DocsCompiler.template.md", "belgi/templates/DocsCompiler.template.md"),
 )
 _C3_CANONICAL_STAGE_ROOT_REPO_REL = ".belgi/engine/c3_canonicals"
+_APPLIED_WAIVERS_SOURCE_REPO_REL = ".belgi/waivers_applied"
+_APPLIED_WAIVERS_STAGE_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/waivers_applied"
 _C3_CANONICAL_PACKAGE_BINDINGS: tuple[tuple[str, str], ...] = (
     ("canonicals/CANONICALS.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/CANONICALS.md"),
     ("canonicals/terminology.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/terminology.md"),
@@ -148,6 +150,7 @@ class RunOrchestrationResult:
     chain_paths: list[Path]
     adversarial_findings_count: int
     adversarial_findings_present: bool
+    applied_waiver_refs: list[str]
 
 
 @dataclass(frozen=True)
@@ -436,6 +439,48 @@ def ensure_chain_c3_canonicals(*, chain_repo_root: Path) -> None:
         target_path.write_bytes(builtin_bytes)
 
 
+def _discover_applied_waiver_files(*, source_repo_root: Path) -> list[Path]:
+    waivers_dir = source_repo_root.joinpath(*_APPLIED_WAIVERS_SOURCE_REPO_REL.split("/"))
+    if not waivers_dir.exists():
+        return []
+    if waivers_dir.is_symlink() or not waivers_dir.is_dir():
+        raise ValueError(f"invalid applied waivers directory: {_APPLIED_WAIVERS_SOURCE_REPO_REL}")
+
+    waiver_files: list[Path] = []
+    for child in sorted(waivers_dir.iterdir(), key=lambda p: p.name):
+        if child.name.startswith("."):
+            continue
+        if child.is_symlink() or child.is_dir() or not child.is_file():
+            raise ValueError(f"invalid waiver entry: {_APPLIED_WAIVERS_SOURCE_REPO_REL}/{child.name}")
+        if child.suffix.lower() != ".json":
+            continue
+        waiver_files.append(child)
+    return waiver_files
+
+
+def stage_applied_waivers(*, source_repo_root: Path, chain_repo_root: Path) -> list[str]:
+    source_files = _discover_applied_waiver_files(source_repo_root=source_repo_root)
+    if not source_files:
+        return []
+
+    staged_dir = chain_repo_root.joinpath(*_APPLIED_WAIVERS_STAGE_REPO_REL.split("/"))
+    staged_dir.mkdir(parents=True, exist_ok=True)
+
+    staged_refs: list[str] = []
+    seen_names: set[str] = set()
+    for source_file in source_files:
+        file_name = source_file.name
+        if file_name in seen_names:
+            raise ValueError(f"duplicate waiver filename: {file_name}")
+        seen_names.add(file_name)
+        target_file = staged_dir / file_name
+        target_file.write_bytes(source_file.read_bytes())
+        staged_refs.append(safe_relpath(chain_repo_root, target_file))
+
+    staged_refs.sort()
+    return staged_refs
+
+
 def _parse_registry_block_ids(registry_text: str) -> list[str]:
     ids = sorted(set(re.findall(r"\bPB-\d{3}\b", registry_text)))
     if not ids:
@@ -488,6 +533,29 @@ def _ensure_complete_prompt_block_hashes(
     if changed:
         ordered = {k: mapping[k] for k in sorted(mapping.keys())}
         _write_json(prompt_hashes_path, ordered)
+
+
+def _raise_gate_failure(
+    *,
+    module_name: str,
+    rc: int,
+    chain_repo_root: Path,
+    gate_verdict_rel: str,
+) -> None:
+    if rc == 2:
+        verdict_path = chain_repo_root / gate_verdict_rel
+        if verdict_path.exists() and not verdict_path.is_symlink() and verdict_path.is_file():
+            verdict_obj = _load_json_object(verdict_path, label=f"{module_name} GateVerdict")
+            failure_category = verdict_obj.get("failure_category")
+            category = str(failure_category).strip() if isinstance(failure_category, str) else ""
+            failures = verdict_obj.get("failures")
+            if isinstance(failures, list) and len(failures) > 0 and isinstance(failures[0], dict):
+                message = failures[0].get("message")
+                if isinstance(message, str) and message.strip():
+                    if category:
+                        raise ValueError(f"{module_name} NO-GO: {category}: {message.strip()}")
+                    raise ValueError(f"{module_name} NO-GO: {message.strip()}")
+    raise ValueError(f"{module_name} returned rc={rc}")
 
 
 def _make_evidence_artifact(
@@ -598,6 +666,10 @@ def orchestrate_chain_run(
 
     chain_out_dir.mkdir(parents=True, exist_ok=True)
     chain_artifacts_dir.mkdir(parents=True, exist_ok=True)
+    applied_waiver_refs = stage_applied_waivers(
+        source_repo_root=source_repo_root,
+        chain_repo_root=chain_repo_dir,
+    )
 
     intent_in_chain = chain_repo_dir / "IntentSpec.core.md"
     intent_in_chain.write_bytes(intent_bytes)
@@ -644,6 +716,8 @@ def orchestrate_chain_run(
         "--toolchain-ref",
         f"toolchain.main={safe_relpath(chain_repo_dir, toolchain_path)}",
     ]
+    for waiver_ref in applied_waiver_refs:
+        c1_argv.extend(["--waiver-applied", waiver_ref])
 
     ci_prev = os.environ.pop("CI", None)
     try:
@@ -892,43 +966,53 @@ def orchestrate_chain_run(
         raise ValueError(f"initial EvidenceManifest invalid at {first.path}: {first.message}")
     _write_json(chain_repo_dir / rel_evidence_input, evidence_input)
 
-    _run_module_expect_rc(
-        "chain.gate_q_verify",
-        [
-            "--repo",
-            str(chain_repo_dir),
-            "--intent-spec",
-            "IntentSpec.core.md",
-            "--locked-spec",
-            rel_locked,
-            "--evidence-manifest",
-            rel_evidence_input,
-            "--out",
-            rel_gate_q,
-        ],
-    )
+    gate_q_argv = [
+        "--repo",
+        str(chain_repo_dir),
+        "--intent-spec",
+        "IntentSpec.core.md",
+        "--locked-spec",
+        rel_locked,
+        "--evidence-manifest",
+        rel_evidence_input,
+        "--out",
+        rel_gate_q,
+    ]
+    rc_gate_q = _invoke_module_main("chain.gate_q_verify", gate_q_argv)
+    if rc_gate_q != 0:
+        _raise_gate_failure(
+            module_name="chain.gate_q_verify",
+            rc=rc_gate_q,
+            chain_repo_root=chain_repo_dir,
+            gate_verdict_rel=rel_gate_q,
+        )
 
-    _run_module_expect_rc(
-        "chain.gate_r_verify",
-        [
-            "--repo",
-            str(chain_repo_dir),
-            "--locked-spec",
-            rel_locked,
-            "--gate-q-verdict",
-            rel_gate_q,
-            "--evidence-manifest",
-            rel_evidence_input,
-            "--r-snapshot-manifest-out",
-            rel_r_snapshot,
-            "--gate-verdict-out",
-            rel_gate_r,
-            "--out",
-            rel_verify_report,
-            "--evaluated-revision",
-            repo_head_sha,
-        ],
-    )
+    gate_r_argv = [
+        "--repo",
+        str(chain_repo_dir),
+        "--locked-spec",
+        rel_locked,
+        "--gate-q-verdict",
+        rel_gate_q,
+        "--evidence-manifest",
+        rel_evidence_input,
+        "--r-snapshot-manifest-out",
+        rel_r_snapshot,
+        "--gate-verdict-out",
+        rel_gate_r,
+        "--out",
+        rel_verify_report,
+        "--evaluated-revision",
+        repo_head_sha,
+    ]
+    rc_gate_r = _invoke_module_main("chain.gate_r_verify", gate_r_argv)
+    if rc_gate_r != 0:
+        _raise_gate_failure(
+            module_name="chain.gate_r_verify",
+            rc=rc_gate_r,
+            chain_repo_root=chain_repo_dir,
+            gate_verdict_rel=rel_gate_r,
+        )
 
     profile = "public"
     pub_intent = locked_spec.get("publication_intent")
@@ -967,28 +1051,32 @@ def orchestrate_chain_run(
         ],
     )
 
+    seal_argv = [
+        "--repo",
+        str(chain_repo_dir),
+        "--locked-spec",
+        rel_locked,
+        "--gate-q-verdict",
+        rel_gate_q,
+        "--gate-r-verdict",
+        rel_gate_r,
+        "--evidence-manifest",
+        rel_evidence_final,
+        "--final-commit-sha",
+        repo_head_sha,
+        "--sealed-at",
+        FIXED_SEALED_AT,
+        "--signer",
+        FIXED_SIGNER,
+        "--out",
+        rel_seal,
+    ]
+    for waiver_ref in applied_waiver_refs:
+        seal_argv.extend(["--waiver", waiver_ref])
+
     _run_module_expect_rc(
         "chain.seal_bundle",
-        [
-            "--repo",
-            str(chain_repo_dir),
-            "--locked-spec",
-            rel_locked,
-            "--gate-q-verdict",
-            rel_gate_q,
-            "--gate-r-verdict",
-            rel_gate_r,
-            "--evidence-manifest",
-            rel_evidence_final,
-            "--final-commit-sha",
-            repo_head_sha,
-            "--sealed-at",
-            FIXED_SEALED_AT,
-            "--signer",
-            FIXED_SIGNER,
-            "--out",
-            rel_seal,
-        ],
+        seal_argv,
     )
 
     _run_module_expect_rc(
@@ -1029,4 +1117,5 @@ def orchestrate_chain_run(
         chain_paths=chain_paths,
         adversarial_findings_count=findings_count_raw,
         adversarial_findings_present=findings_present,
+        applied_waiver_refs=applied_waiver_refs,
     )

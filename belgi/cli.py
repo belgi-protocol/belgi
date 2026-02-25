@@ -88,6 +88,8 @@ def _emit_machine_result(
     tier_id: str | None,
     run_key: str | None,
     attempt_id: str | None,
+    waivers_applied_count: int | None = None,
+    waivers_applied_refs: list[str] | None = None,
 ) -> None:
     payload = {
         "ok": bool(ok),
@@ -97,6 +99,10 @@ def _emit_machine_result(
         "run_key": run_key,
         "attempt_id": attempt_id,
     }
+    if waivers_applied_count is not None:
+        payload["waivers_applied_count"] = int(waivers_applied_count)
+    if waivers_applied_refs is not None:
+        payload["waivers_applied_refs"] = list(waivers_applied_refs)
     print(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
 
 
@@ -966,6 +972,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     tier_id: str | None = str(getattr(args, "tier", "") or "").strip() or None
     run_key: str | None = None
     attempt_id: str | None = None
+    waivers_applied_count: int | None = None
+    waivers_applied_refs: list[str] | None = None
 
     try:
         if not repo_root.exists():
@@ -1056,6 +1064,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         chain_repo_dir = chain_result.chain_repo_dir
         chain_out_dir = chain_result.chain_out_dir
         chain_paths = chain_result.chain_paths
+        waivers_applied_refs = list(chain_result.applied_waiver_refs)
+        waivers_applied_count = len(waivers_applied_refs)
         _validate_paths_within_attempt(attempt_dir=attempt_dir, paths=chain_paths)
 
         summary_obj = {
@@ -1073,6 +1083,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             "adversarial_scan": {
                 "findings_present": chain_result.adversarial_findings_present,
                 "finding_count": chain_result.adversarial_findings_count,
+            },
+            "waivers_applied": {
+                "count": waivers_applied_count,
+                "storage_refs": waivers_applied_refs,
             },
             "artifacts": _build_artifact_entries(repo_root, paths=chain_paths),
         }
@@ -1120,6 +1134,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         tier_id=tier_id,
         run_key=run_key,
         attempt_id=attempt_id,
+        waivers_applied_count=waivers_applied_count,
+        waivers_applied_refs=waivers_applied_refs,
     )
     print(f"[belgi run] repo: {repo_root}", file=sys.stderr)
     print(f"[belgi run] workspace: {workspace_rel}", file=sys.stderr)
