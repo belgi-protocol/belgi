@@ -102,6 +102,39 @@ def _run_tier1_and_get_attempt(repo: Path, capsys: object) -> tuple[dict[str, ob
     return machine, attempt_dir
 
 
+def _write_applied_waiver(
+    repo: Path,
+    *,
+    file_name: str,
+    rule_id: str,
+    scope_path: str,
+    expires_at: str,
+) -> Path:
+    waivers_dir = repo / ".belgi" / "waivers_applied"
+    waivers_dir.mkdir(parents=True, exist_ok=True)
+    waiver_path = waivers_dir / file_name
+    waiver_doc = {
+        "schema_version": "1.0.0",
+        "waiver_id": "waiver-tier1-r8",
+        "gate_id": "R",
+        "rule_id": rule_id,
+        "scope": f"path:{scope_path}",
+        "justification": "Deterministic waiver for tier-1 integration test.",
+        "mitigation": "Follow-up patch removes risky primitive.",
+        "approver": "human:test@example.com",
+        "created_at": "1970-01-01T00:00:00Z",
+        "expires_at": expires_at,
+        "audit_trail_ref": {"id": "audit-001", "storage_ref": "waivers/audit.log"},
+        "status": "active",
+    }
+    waiver_path.write_text(
+        json.dumps(waiver_doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+    return waiver_path
+
+
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
 
@@ -369,3 +402,84 @@ def test_tier1_adopter_pytest_existing_target_passes_and_records_report_fields(
     assert report.get("mode") == "adopter_pytest"
     assert report.get("status") == "pass"
     assert isinstance(report.get("exit_code"), int)
+
+
+def test_tier1_passes_with_valid_applied_waiver(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    _write_applied_waiver(
+        repo,
+        file_name="r8_exec.json",
+        rule_id="ADV-EXEC-001",
+        scope_path="src/risky_exec.py",
+        expires_at="2100-01-01T00:00:00Z",
+    )
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    assert rc_run == 0
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is True
+    assert machine["verdict"] == "GO"
+    assert machine["waivers_applied_count"] == 1
+    assert machine["waivers_applied_refs"] == ["out/inputs/waivers_applied/r8_exec.json"]
+
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+    attempt_dir = repo / ".belgi" / "runs" / run_key / attempt_id
+
+    summary_obj = json.loads((attempt_dir / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
+    waivers_summary = summary_obj.get("waivers_applied")
+    assert waivers_summary == {"count": 1, "storage_refs": ["out/inputs/waivers_applied/r8_exec.json"]}
+
+    locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    assert locked_spec.get("waivers_applied") == ["out/inputs/waivers_applied/r8_exec.json"]
+
+    gate_r = json.loads((attempt_dir / "repo" / "out" / "GateVerdict.R.json").read_text(encoding="utf-8", errors="strict"))
+    assert gate_r.get("verdict") == "GO"
+
+
+@pytest.mark.parametrize(
+    ("scope_path", "expires_at", "expected_reason"),
+    [
+        ("src/risky_exec.py", "1960-01-01T00:00:00Z", "expires_at is not after evaluated_at"),
+        ("src/mismatch.py", "2100-01-01T00:00:00Z", "does not match any finding by rule_id+path"),
+    ],
+)
+def test_tier1_fails_with_expired_or_mismatched_applied_waiver(
+    tmp_path: Path,
+    capsys: object,
+    scope_path: str,
+    expires_at: str,
+    expected_reason: str,
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    _write_applied_waiver(
+        repo,
+        file_name="r8_invalid.json",
+        rule_id="ADV-EXEC-001",
+        scope_path=scope_path,
+        expires_at=expires_at,
+    )
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert "chain.gate_" in str(machine["primary_reason"])
+    assert "NO-GO:" in str(machine["primary_reason"])
+    assert expected_reason in str(machine["primary_reason"])
