@@ -30,7 +30,41 @@ def _fresh_repo_clone(tmp_path: Path) -> Path:
         check=False,
     )
     assert cp.returncode == 0, cp.stderr
+    cp_cfg_email = subprocess.run(
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp_cfg_email.returncode == 0, cp_cfg_email.stderr
+    cp_cfg_name = subprocess.run(
+        ["git", "-C", str(repo), "config", "user.name", "Test User"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp_cfg_name.returncode == 0, cp_cfg_name.stderr
     return repo
+
+
+def _commit_file(repo: Path, rel: str, content: str, msg: str) -> None:
+    path = repo / Path(*rel.split("/"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8", errors="strict")
+    cp_add = subprocess.run(
+        ["git", "-C", str(repo), "add", rel],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp_add.returncode == 0, cp_add.stderr
+    cp_commit = subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", msg],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp_commit.returncode == 0, cp_commit.stderr
 
 
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
@@ -184,3 +218,34 @@ def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> Non
     assert machine["tier_id"] is None
     assert isinstance(machine["run_key"], str) and len(machine["run_key"]) == 64
     assert machine["attempt_id"] == "attempt-0001"
+
+
+def test_tier0_passes_with_findings_and_records_signal(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    assert rc_run == 0
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = machine["run_key"]
+    attempt_dir = repo / ".belgi" / "runs" / run_key / "attempt-0001"
+
+    summary_obj = json.loads((attempt_dir / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
+    adv = summary_obj.get("adversarial_scan")
+    assert isinstance(adv, dict)
+    assert adv.get("findings_present") is True
+    assert isinstance(adv.get("finding_count"), int) and int(adv["finding_count"]) > 0
+
+    adv_report = json.loads(
+        (attempt_dir / "repo" / "out" / "artifacts" / "policy.adversarial_scan.json").read_text(
+            encoding="utf-8", errors="strict"
+        )
+    )
+    assert adv_report.get("findings_present") is True
+    assert isinstance(adv_report.get("finding_count"), int) and int(adv_report["finding_count"]) > 0
