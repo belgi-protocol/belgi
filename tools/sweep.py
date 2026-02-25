@@ -1575,6 +1575,19 @@ def check_cs_tier_002(root: Path) -> InvariantResult:
     def doc_mentions_all(doc: str, toks: list[str]) -> bool:
         return all(f"`{t}`" in doc or t in doc for t in toks)
 
+    def extract_tier_block(doc: str, tier_id: str) -> str | None:
+        header_re = re.compile(
+            rf"^###\s+(?:\d+(?:\.\d+)*\s+)?Tier\s+\d+\s+\({re.escape(tier_id)}\)\s*$",
+            re.MULTILINE,
+        )
+        m = header_re.search(doc)
+        if not m:
+            return None
+        start = m.end()
+        next_m = re.search(r"^###\s+(?:\d+(?:\.\d+)*\s+)?Tier\s+\d+\s+\(tier-\d\)\s*$", doc[start:], re.MULTILINE)
+        end = start + next_m.start() if next_m else len(doc)
+        return doc[start:end]
+
     if not doc_mentions_all(t_txt, tier0) or not doc_mentions_all(t_txt, tier1):
         return InvariantResult(
             "CS-TIER-002",
@@ -1582,6 +1595,32 @@ def check_cs_tier_002(root: Path) -> InvariantResult:
             ["tiers/tier-packs.md#3-tier-parameter-sets"],
             "Ensure tier-packs.md lists required_evidence_kinds for tier-0 and tier-1..3 exactly as specified.",
         )
+
+    tier0_block = extract_tier_block(t_txt, "tier-0")
+    if tier0_block is None or "- adversarial_policy:" not in tier0_block or "findings_mode: `warn`" not in tier0_block:
+        return InvariantResult(
+            "CS-TIER-002",
+            "FAIL",
+            ["tiers/tier-packs.md#3-tier-parameter-sets"],
+            "Ensure tier-0 documents adversarial_policy.findings_mode as warn.",
+        )
+    for tid in ("tier-1", "tier-2", "tier-3"):
+        block = extract_tier_block(t_txt, tid)
+        if block is None or "- adversarial_policy:" not in block or "findings_mode: `fail`" not in block:
+            return InvariantResult(
+                "CS-TIER-002",
+                "FAIL",
+                ["tiers/tier-packs.md#3-tier-parameter-sets"],
+                "Ensure tier-1..tier-3 document adversarial_policy.findings_mode as fail.",
+            )
+    if "| R8 |" not in t_txt or "adversarial_policy.findings_mode" not in t_txt:
+        return InvariantResult(
+            "CS-TIER-002",
+            "FAIL",
+            ["tiers/tier-packs.md#4-tier--gate-parameter-map"],
+            "Ensure R8 gate parameter map includes adversarial_policy.findings_mode.",
+        )
+
     if not doc_mentions_all(eb_txt, tier0) or not doc_mentions_all(eb_txt, tier1):
         return InvariantResult(
             "CS-TIER-002",
