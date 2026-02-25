@@ -25,6 +25,7 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes
+from belgi.core.run_orchestrator import ensure_chain_c3_canonicals
 from chain.logic.s_checks.context import SCheckContext
 from chain.logic.s_checks import s2_objectref_binding
 
@@ -439,6 +440,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
         "docs/research",
     ]:
         _copy_rel(rel)
+    ensure_chain_c3_canonicals(chain_repo_root=fake_root)
 
     # Inputs (in fake repo): LockedSpec, GateVerdicts, and snapshot EvidenceManifests.
     locked_rel = "inputs/LockedSpec.json"
