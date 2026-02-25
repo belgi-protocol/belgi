@@ -128,6 +128,9 @@
         "max_active_waivers": 3,
         "requires_HOTL": false
       },
+      "adversarial_policy": {
+        "findings_mode": "warn"
+      },
       "envelope_policy": {
         "requires_attestation": false,
         "attestation_signature_required": false,
@@ -154,6 +157,9 @@
         "allowed": true,
         "max_active_waivers": 2,
         "requires_HOTL": true
+      },
+      "adversarial_policy": {
+        "findings_mode": "fail"
       },
       "envelope_policy": {
         "requires_attestation": true,
@@ -182,6 +188,9 @@
         "max_active_waivers": 1,
         "requires_HOTL": true
       },
+      "adversarial_policy": {
+        "findings_mode": "fail"
+      },
       "envelope_policy": {
         "requires_attestation": true,
         "attestation_signature_required": true,
@@ -207,6 +216,9 @@
         "allowed": false,
         "max_active_waivers": 0,
         "requires_HOTL": true
+      },
+      "adversarial_policy": {
+        "findings_mode": "fail"
       },
       "envelope_policy": {
         "requires_attestation": true,

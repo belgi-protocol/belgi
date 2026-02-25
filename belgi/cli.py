@@ -1070,6 +1070,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             "run_key_preimage": preimage,
             "chain_repo_root": safe_relpath(repo_root, chain_repo_dir),
             "chain_output_root": safe_relpath(repo_root, chain_out_dir),
+            "adversarial_scan": {
+                "findings_present": chain_result.adversarial_findings_present,
+                "finding_count": chain_result.adversarial_findings_count,
+            },
             "artifacts": _build_artifact_entries(repo_root, paths=chain_paths),
         }
         summary_path = attempt_dir / RUN_SUMMARY_FILENAME

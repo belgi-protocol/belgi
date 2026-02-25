@@ -41,6 +41,8 @@ class RunOrchestrationResult:
     rel_seal: str
     rel_gate_s: str
     chain_paths: list[Path]
+    adversarial_findings_count: int
+    adversarial_findings_present: bool
 
 
 def render_default_intent_spec(*, tier_id: str) -> bytes:
@@ -500,8 +502,21 @@ def orchestrate_chain_run(
         deterministic=True,
         run_id=run_key,
     )
-    if rc_adv != 0:
+    if rc_adv not in (0, 2):
         raise ValueError(f"adversarial scan failed (rc={rc_adv})")
+    adv_policy_obj = _load_json_object(chain_repo_dir / rel_policy_adv, label="policy.adversarial_scan.json")
+    findings_count_raw = adv_policy_obj.get("finding_count")
+    if not isinstance(findings_count_raw, int) or isinstance(findings_count_raw, bool) or findings_count_raw < 0:
+        raise ValueError("policy.adversarial_scan finding_count missing/invalid")
+    findings_present_raw = adv_policy_obj.get("findings_present")
+    if findings_present_raw is None:
+        findings_present = findings_count_raw > 0
+    elif isinstance(findings_present_raw, bool):
+        findings_present = findings_present_raw
+    else:
+        raise ValueError("policy.adversarial_scan findings_present missing/invalid")
+    if findings_present != (findings_count_raw > 0):
+        raise ValueError("policy.adversarial_scan findings_present inconsistent with finding_count")
     commands_executed = _append_command(
         commands_executed=commands_executed,
         command_log_mode=command_log_mode,
@@ -821,4 +836,6 @@ def orchestrate_chain_run(
         rel_seal=rel_seal,
         rel_gate_s=rel_gate_s,
         chain_paths=chain_paths,
+        adversarial_findings_count=findings_count_raw,
+        adversarial_findings_present=findings_present,
     )

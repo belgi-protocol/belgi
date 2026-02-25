@@ -148,6 +148,7 @@ def run_adversarial_scan(
         },
         "checks": checks,
         # Extension fields (allowed by PolicyReportPayload.additionalProperties).
+        "findings_present": len(findings) > 0,
         "finding_count": len(findings),
         "findings": [
             {"path": f.path, "lineno": f.lineno, "rule_id": f.rule_id, "snippet": f.snippet}
