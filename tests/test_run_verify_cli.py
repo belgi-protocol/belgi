@@ -16,6 +16,7 @@ for _k in list(sys.modules.keys()):
     if _k == "belgi" or _k.startswith("belgi."):
         del sys.modules[_k]
 
+import belgi.cli as belgi_cli
 from belgi.cli import main as belgi_main
 from belgi.core import run_orchestrator
 
@@ -264,6 +265,8 @@ def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     assert machine["tier_id"] == "tier-0"
     assert isinstance(machine["run_key"], str) and len(machine["run_key"]) == 64
     assert machine["attempt_id"] == "attempt-0001"
+    assert machine["findings_present"] is False
+    assert machine["finding_count"] == 0
 
 
 def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
@@ -288,7 +291,7 @@ def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> Non
     assert machine["attempt_id"] == "attempt-0001"
 
 
-def test_tier0_passes_with_findings_and_records_signal(tmp_path: Path, capsys: object) -> None:
+def test_tier0_emits_findings_signal_in_summary_and_machine_json(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
     _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
 
@@ -309,6 +312,8 @@ def test_tier0_passes_with_findings_and_records_signal(tmp_path: Path, capsys: o
     assert isinstance(adv, dict)
     assert adv.get("findings_present") is True
     assert isinstance(adv.get("finding_count"), int) and int(adv["finding_count"]) > 0
+    assert machine.get("findings_present") is adv["findings_present"]
+    assert machine.get("finding_count") == adv["finding_count"]
 
     adv_report = json.loads(
         (attempt_dir / "repo" / "out" / "artifacts" / "policy.adversarial_scan.json").read_text(
@@ -317,6 +322,47 @@ def test_tier0_passes_with_findings_and_records_signal(tmp_path: Path, capsys: o
     )
     assert adv_report.get("findings_present") is True
     assert isinstance(adv_report.get("finding_count"), int) and int(adv_report["finding_count"]) > 0
+    assert machine.get("findings_present") is adv_report["findings_present"]
+    assert machine.get("finding_count") == adv_report["finding_count"]
+
+
+def test_tier0_fails_closed_if_policy_scan_exists_but_signal_missing(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    original_orchestrate_chain_run = belgi_cli.orchestrate_chain_run
+
+    def _patched_orchestrate_chain_run(*args: object, **kwargs: object) -> run_orchestrator.RunOrchestrationResult:
+        result = original_orchestrate_chain_run(*args, **kwargs)
+        return run_orchestrator.RunOrchestrationResult(
+            chain_repo_dir=result.chain_repo_dir,
+            chain_out_dir=result.chain_out_dir,
+            rel_evidence_final=result.rel_evidence_final,
+            rel_seal=result.rel_seal,
+            rel_gate_s=result.rel_gate_s,
+            chain_paths=result.chain_paths,
+            adversarial_findings_count=0,
+            adversarial_findings_present=False,
+            applied_waiver_refs=result.applied_waiver_refs,
+        )
+
+    monkeypatch.setattr(belgi_cli, "orchestrate_chain_run", _patched_orchestrate_chain_run)
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert machine.get("findings_present") is True
+    assert isinstance(machine.get("finding_count"), int) and int(machine["finding_count"]) > 0
+    assert "adversarial findings signal mismatch with policy.adversarial_scan" in str(machine.get("primary_reason"))
 
 
 def test_tier1_adopter_like_repo_without_tests_produces_test_report(tmp_path: Path, capsys: object) -> None:
