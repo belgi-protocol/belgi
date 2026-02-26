@@ -90,6 +90,8 @@ def _emit_machine_result(
     attempt_id: str | None,
     waivers_applied_count: int | None = None,
     waivers_applied_refs: list[str] | None = None,
+    findings_present: bool | None = None,
+    finding_count: int | None = None,
 ) -> None:
     payload = {
         "ok": bool(ok),
@@ -103,6 +105,10 @@ def _emit_machine_result(
         payload["waivers_applied_count"] = int(waivers_applied_count)
     if waivers_applied_refs is not None:
         payload["waivers_applied_refs"] = list(waivers_applied_refs)
+    if findings_present is not None:
+        payload["findings_present"] = bool(findings_present)
+    if finding_count is not None:
+        payload["finding_count"] = int(finding_count)
     print(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
 
 
@@ -963,6 +969,29 @@ def _validate_paths_within_attempt(*, attempt_dir: Path, paths: list[Path]) -> N
             raise ValueError(f"artifact escapes attempt directory: {p}")
 
 
+def _load_adversarial_signal_from_policy_report(policy_report_path: Path) -> tuple[bool, int]:
+    try:
+        payload = json.loads(policy_report_path.read_text(encoding="utf-8", errors="strict"))
+    except Exception as e:
+        raise ValueError(f"policy.adversarial_scan.json is not valid UTF-8 JSON: {e}") from e
+    if not isinstance(payload, dict):
+        raise ValueError("policy.adversarial_scan.json must be a JSON object")
+
+    finding_count_raw = payload.get("finding_count")
+    if not isinstance(finding_count_raw, int) or isinstance(finding_count_raw, bool) or finding_count_raw < 0:
+        raise ValueError("policy.adversarial_scan finding_count missing/invalid")
+    findings_present_raw = payload.get("findings_present")
+    if findings_present_raw is None:
+        findings_present = finding_count_raw > 0
+    elif isinstance(findings_present_raw, bool):
+        findings_present = findings_present_raw
+    else:
+        raise ValueError("policy.adversarial_scan findings_present missing/invalid")
+    if findings_present != (finding_count_raw > 0):
+        raise ValueError("policy.adversarial_scan findings_present inconsistent with finding_count")
+    return findings_present, finding_count_raw
+
+
 def _write_run_summary_if_ready(
     *,
     repo_root: Path,
@@ -1041,6 +1070,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     chain_paths: list[Path] = []
     adversarial_findings_present = False
     adversarial_findings_count = 0
+    findings_signal_emittable = False
     waivers_applied_count: int | None = None
     waivers_applied_refs: list[str] | None = None
 
@@ -1136,6 +1166,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         chain_paths = chain_result.chain_paths
         adversarial_findings_present = chain_result.adversarial_findings_present
         adversarial_findings_count = chain_result.adversarial_findings_count
+        policy_adv_path = chain_out_dir / "artifacts" / "policy.adversarial_scan.json"
+        if policy_adv_path.is_file():
+            policy_findings_present, policy_finding_count = _load_adversarial_signal_from_policy_report(
+                policy_adv_path
+            )
+            findings_signal_emittable = True
+            raw_findings_present = adversarial_findings_present
+            raw_finding_count = adversarial_findings_count
+            adversarial_findings_present = policy_findings_present
+            adversarial_findings_count = policy_finding_count
+            valid_runtime_count = (
+                isinstance(raw_finding_count, int)
+                and not isinstance(raw_finding_count, bool)
+                and raw_finding_count >= 0
+            )
+            if not isinstance(raw_findings_present, bool) or not valid_runtime_count:
+                raise ValueError("adversarial findings signal missing/invalid from orchestration output")
+            if raw_findings_present != policy_findings_present or raw_finding_count != policy_finding_count:
+                raise ValueError("adversarial findings signal mismatch with policy.adversarial_scan")
         waivers_applied_refs = list(chain_result.applied_waiver_refs)
         waivers_applied_count = len(waivers_applied_refs)
         _validate_paths_within_attempt(attempt_dir=attempt_dir, paths=chain_paths)
@@ -1194,6 +1243,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             tier_id=tier_id,
             run_key=run_key,
             attempt_id=attempt_id,
+            findings_present=adversarial_findings_present if findings_signal_emittable else None,
+            finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
         print(f"[belgi run] USER_ERROR: {reason}", file=sys.stderr)
         return RC_USER_ERROR
@@ -1229,6 +1280,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             tier_id=tier_id,
             run_key=run_key,
             attempt_id=attempt_id,
+            findings_present=adversarial_findings_present if findings_signal_emittable else None,
+            finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
         print(f"[belgi run] NO-GO: {reason}", file=sys.stderr)
         return RC_NO_GO
@@ -1264,6 +1317,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             tier_id=tier_id,
             run_key=run_key,
             attempt_id=attempt_id,
+            findings_present=adversarial_findings_present if findings_signal_emittable else None,
+            finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
         print(f"[belgi run] ERROR: {reason}", file=sys.stderr)
         return RC_INTERNAL_ERROR
@@ -1277,6 +1332,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         attempt_id=attempt_id,
         waivers_applied_count=waivers_applied_count,
         waivers_applied_refs=waivers_applied_refs,
+        findings_present=adversarial_findings_present if findings_signal_emittable else None,
+        finding_count=adversarial_findings_count if findings_signal_emittable else None,
     )
     print(f"[belgi run] repo: {repo_root}", file=sys.stderr)
     print(f"[belgi run] workspace: {workspace_rel}", file=sys.stderr)
