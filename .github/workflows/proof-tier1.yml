@@ -1,0 +1,155 @@
+name: Proof Tier1 (PR Opt-in)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proof-tier1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'proof:full') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      pr_sha: ${{ steps.sha.outputs.pr_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - uses: ./.github/actions/belgi-python-setup
+        with:
+          python-version: "3.11"
+
+      - name: Resolve PR head SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR_SHA="${{ github.event.pull_request.head.sha }}"
+          echo "pr_sha=${PR_SHA}" >> "$GITHUB_OUTPUT"
+          mkdir -p proof_preflight
+          echo "${PR_SHA}" > proof_preflight/pr_sha.txt
+
+      - name: Validate immutable SHA pin (NIT-5)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/validate_belgi_ref_pin.py --ref "${{ steps.sha.outputs.pr_sha }}" \
+            2>&1 | tee proof_preflight/pin_check.log
+
+      - name: Upload preflight logs
+        if: ${{ always() && !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-preflight-${{ steps.sha.outputs.pr_sha }}
+          if-no-files-found: error
+          path: proof_preflight/
+
+  smoke:
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'proof:full') }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.pr_sha }}
+          fetch-depth: 1
+
+      - uses: ./.github/actions/belgi-python-setup
+        with:
+          python-version: "3.11"
+          editable: "true"
+
+      - name: Tier-0 smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof_smoke
+          python .github/scripts/run_belgi_smoke.py --repo . --tier tier-0 \
+            2>&1 | tee "proof_smoke/tier0-${{ matrix.os }}.log"
+
+      - name: Tier-1 smoke (ubuntu)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/run_belgi_smoke.py --repo . --tier tier-1 \
+            2>&1 | tee "proof_smoke/tier1-${{ matrix.os }}.log"
+
+      - name: Upload smoke artifacts
+        if: ${{ always() && !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-smoke-${{ matrix.os }}-${{ needs.preflight.outputs.pr_sha }}
+          if-no-files-found: warn
+          path: |
+            proof_smoke/
+            .belgi/run.stdout.log
+            .belgi/runs/**/run.summary.json
+            .belgi/runs/**/repo/out/**
+
+  wheel-smoke:
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'proof:full') }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
+      TZ: "UTC"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.pr_sha }}
+          fetch-depth: 1
+
+      - uses: ./.github/actions/belgi-python-setup
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel from PR SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof_wheel
+          python -m pip install --upgrade build
+          python -m build --wheel 2>&1 | tee proof_wheel/build.log
+
+      - name: Fresh venv install + CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          VENV="${RUNNER_TEMP}/proof-wheel-venv"
+          python -m venv "${VENV}"
+          "${VENV}/bin/pip" install --upgrade pip
+          "${VENV}/bin/pip" install dist/*.whl 2>&1 | tee proof_wheel/install.log
+          "${VENV}/bin/belgi" --help > proof_wheel/belgi-help.log
+          "${VENV}/bin/belgi" pack verify --builtin > proof_wheel/builtin-verify.log 2>&1
+
+      - name: Upload wheel artifact
+        if: ${{ always() && !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-wheel-${{ needs.preflight.outputs.pr_sha }}
+          if-no-files-found: error
+          path: dist/*.whl
+
+      - name: Upload wheel logs
+        if: ${{ always() && !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-wheel-logs-${{ needs.preflight.outputs.pr_sha }}
+          if-no-files-found: error
+          path: proof_wheel/
