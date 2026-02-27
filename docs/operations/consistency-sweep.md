@@ -31,12 +31,16 @@ Canonical trigger:
 - CANONICALS.md
 - README.md
 - CHANGELOG.md
+- WHITEPAPER.md
+- TRADEMARK.md
 - VERSION
 - terminology.md
 - trust-model.md
 - gates/GATE_Q.md
 - gates/GATE_R.md
 - gates/failure-taxonomy.md
+- .github/scripts/run_belgi_smoke.py
+- .github/scripts/validate_belgi_ref_pin.py
 - .github/workflows/belgi-tier1-reusable.yml
 - .github/workflows/ci.yml
 - .github/workflows/proof-tier1.yml
@@ -73,8 +77,14 @@ Canonical trigger:
 - docs/operations/workflows.md
 - belgi/templates/PromptBundle.blocks.md
 - belgi/templates/DocsCompiler.template.md
+- scripts/belgi_latest_run.ps1
+- scripts/belgi_latest_run.py
+- scripts/belgi_latest_run.sh
+- scripts/belgi_wip_commit_run_reset.ps1
+- templates/ci/github/belgi-tier1.yml
 - schemas/*.schema.json
 - schemas/README.md
+- tools/README.md
 - chain/logic/r_checks/context.py
 - chain/logic/r_checks/registry.py
 - chain/logic/r_checks/r0_evidence_sufficiency.py
@@ -851,6 +861,28 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
   - PASS if the dynamic schema surface and tool entrypoints are included.
   - FAIL otherwise.
 
+### CS-SWEEP-002 — Managed Surface Coverage
+- invariant_id: CS-SWEEP-002
+- statement: Managed operational surfaces MUST be explicitly listed in sweep authority inputs to prevent silent scope drift.
+- source-of-truth (file/section):
+  - This document’s Inputs list (Section A)
+  - tools/sweep.py (`_canonical_inputs`)
+- check procedure (deterministic):
+  1) Enumerate tracked files in these managed surfaces:
+     - repo-root `*.md`
+     - `docs/operations/*.md`
+     - `.github/workflows/*.{yml,yaml}`
+     - `.github/scripts/*.py`
+     - `scripts/belgi_*.{py,sh,ps1}`
+     - `templates/ci/github/*.{yml,yaml}`
+     - `tools/README.md`
+  2) Confirm every enumerated path is explicitly present in sweep canonical inputs.
+  3) FAIL if any managed path is missing.
+- required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
+- pass/fail criteria:
+  - PASS if every managed surface path is explicitly covered.
+  - FAIL otherwise.
+
 ### CS-GV-001 — GateVerdict schema requires run_id
 - invariant_id: CS-GV-001
 - statement: schemas/GateVerdict.schema.json MUST require a non-empty `run_id`.
@@ -960,6 +992,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-GATE_R-MANDATES-VERIFY_BUNDLE-001: Gate R mandates chain/gate_r_verify.py and the MUST-level enforcement obligations.
 - [ ] CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001: Gate R specifies GateVerdict.evidence_manifest_ref binding when GateVerdict is used.
 - [ ] CS-SWEEP-001: sweep inputs reflect current schemas/tools.
+- [ ] CS-SWEEP-002: managed ops/workflow/script surfaces are explicitly covered in sweep inputs.
 - [ ] CS-GV-001: GateVerdict schema requires run_id.
 - [ ] CS-LS-001: LockedSpec path prefix patterns are normalized + traversal-safe.
 - [ ] CS-REF-001: ObjectRef storage_ref is constrained in all schemas.

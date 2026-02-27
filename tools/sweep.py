@@ -2645,12 +2645,16 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "CANONICALS.md",
         "README.md",
         "CHANGELOG.md",
+        "WHITEPAPER.md",
+        "TRADEMARK.md",
         "VERSION",
         "terminology.md",
         "trust-model.md",
         "gates/GATE_Q.md",
         "gates/GATE_R.md",
         "gates/failure-taxonomy.md",
+        ".github/scripts/run_belgi_smoke.py",
+        ".github/scripts/validate_belgi_ref_pin.py",
         ".github/workflows/belgi-tier1-reusable.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/proof-tier1.yml",
@@ -2678,6 +2682,13 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "docs/operations/waivers.md",
         "docs/operations/workflows.md",
         "docs/research/experiment-design.md",
+        # Operator convenience scripts (public ergonomics surface)
+        "scripts/belgi_latest_run.ps1",
+        "scripts/belgi_latest_run.py",
+        "scripts/belgi_latest_run.sh",
+        "scripts/belgi_wip_commit_run_reset.ps1",
+        # CI template surface
+        "templates/ci/github/belgi-tier1.yml",
         # Canonical deterministic verifier entrypoints
         "chain/gate_q_verify.py",
         "chain/gate_r_verify.py",
@@ -2685,6 +2696,7 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "chain/seal_bundle.py",
         "chain/compiler_c3_docs.py",
         # Canonical tools
+        "tools/README.md",
         "tools/render.py",
         "tools/normalize.py",
         "tools/rehash.py",
@@ -3352,6 +3364,80 @@ def check_cs_sweep_001(root: Path) -> InvariantResult:
     return InvariantResult("CS-SWEEP-001", "PASS", ["schemas/README.md", "tools/normalize.py"], "")
 
 
+def _sweep_managed_surface_files(root: Path) -> list[str]:
+    """Enumerate tracked managed surfaces that require explicit sweep listing.
+
+    These surfaces change frequently across ops/workflow ergonomics work and
+    must remain explicitly present in _canonical_inputs to avoid silent drift.
+    """
+
+    tracked = _run_git(root, ["ls-files"])
+    out: set[str] = set()
+    for raw in tracked.splitlines():
+        rel = raw.strip()
+        if not rel:
+            continue
+        rel = _validate_repo_rel(rel)
+        if "/" not in rel and rel.endswith(".md"):
+            out.add(rel)
+            continue
+        if rel.startswith("docs/operations/") and rel.endswith(".md"):
+            out.add(rel)
+            continue
+        if rel.startswith(".github/workflows/") and rel.endswith((".yml", ".yaml")):
+            out.add(rel)
+            continue
+        if rel.startswith(".github/scripts/") and rel.endswith(".py"):
+            out.add(rel)
+            continue
+        if rel.startswith("scripts/belgi_") and rel.endswith((".py", ".sh", ".ps1")):
+            out.add(rel)
+            continue
+        if rel.startswith("templates/ci/github/") and rel.endswith((".yml", ".yaml")):
+            out.add(rel)
+            continue
+        if rel == "tools/README.md":
+            out.add(rel)
+    return sorted(out)
+
+
+def check_cs_sweep_002(root: Path) -> InvariantResult:
+    """CS-SWEEP-002 — Managed surfaces are explicitly listed in sweep inputs."""
+
+    try:
+        canon = set(_canonical_inputs(root))
+        required = _sweep_managed_surface_files(root)
+    except Exception as e:
+        return InvariantResult(
+            "CS-SWEEP-002",
+            "FAIL",
+            [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage"],
+            f"Failed to enumerate managed sweep surfaces ({e}).",
+        )
+
+    missing = sorted([rel for rel in required if rel not in canon])
+    if missing:
+        sample = ", ".join(missing[:8])
+        suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+        return InvariantResult(
+            "CS-SWEEP-002",
+            "FAIL",
+            [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage", "tools/sweep.py"],
+            (
+                "Add missing managed surface path(s) to _canonical_inputs and synchronize "
+                "docs/operations/consistency-sweep.md Inputs list. Missing: "
+                f"{sample}{suffix}."
+            ),
+        )
+
+    return InvariantResult(
+        "CS-SWEEP-002",
+        "PASS",
+        [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage", "tools/sweep.py"],
+        "",
+    )
+
+
 def _remediation_for_message(msg: str) -> str:
     """Map failure message to human-readable remediation hint."""
     m = (msg or "").lower()
@@ -3804,6 +3890,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-PACK-IDENTITY-001": check_cs_pack_identity_001,
         "CS-SEAL-KEYPAIR-001": check_cs_seal_keypair_001,
         "CS-SWEEP-001": check_cs_sweep_001,
+        "CS-SWEEP-002": check_cs_sweep_002,
         "CS-GV-001": check_cs_gv_001,
         "CS-LS-001": check_cs_ls_001,
         "CS-REF-001": check_cs_ref_001,
