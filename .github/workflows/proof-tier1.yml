@@ -45,6 +45,21 @@ jobs:
           python .github/scripts/validate_belgi_ref_pin.py --ref "${{ steps.sha.outputs.pr_sha }}" \
             2>&1 | tee proof_preflight/pin_check.log
 
+      - name: Validate floating refs are rejected (NIT-5 negative cases)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bad_ref in main HEAD; do
+            if python .github/scripts/validate_belgi_ref_pin.py --ref "${bad_ref}" \
+              >"proof_preflight/pin_check_negative_${bad_ref}.log" 2>&1; then
+              echo "NO-GO: floating ref was accepted: ${bad_ref}" \
+                | tee -a "proof_preflight/pin_check_negative_${bad_ref}.log"
+              exit 1
+            fi
+            echo "PASS: floating ref rejected as expected: ${bad_ref}" \
+              | tee -a "proof_preflight/pin_check_negative_${bad_ref}.log"
+          done
+
       - name: Upload preflight logs
         if: ${{ always() && !env.ACT }}
         uses: actions/upload-artifact@v4
