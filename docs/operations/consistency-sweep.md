@@ -37,7 +37,9 @@ Canonical trigger:
 - gates/GATE_Q.md
 - gates/GATE_R.md
 - gates/failure-taxonomy.md
+- .github/workflows/belgi-tier1-reusable.yml
 - .github/workflows/ci.yml
+- .github/workflows/proof-tier1.yml
 - tiers/tier-packs.json
 - tiers/tier-packs.template.md
 - tiers/tier-packs.md (generated view, MUST match canonical)
@@ -62,8 +64,13 @@ Canonical trigger:
 - docs/research/experiment-design.md
 - docs/operations/running-belgi.md
 - docs/operations/evidence-bundles.md
+- docs/operations/evidence-ownership.md
+- docs/operations/exit-codes.md
+- docs/operations/runbook_dev_tier.md
+- docs/operations/triage.md
 - docs/operations/waivers.md
 - docs/operations/security.md
+- docs/operations/workflows.md
 - belgi/templates/PromptBundle.blocks.md
 - belgi/templates/DocsCompiler.template.md
 - schemas/*.schema.json
