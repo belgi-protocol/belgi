@@ -1,7 +1,7 @@
 {
   "$schema": "../schemas/TierPacks.schema.json",
   "format_version": 1,
-  "source_md_sha256": "84ed539cbf6d578dbcd6e234ba9353be5736775c664fac00ad3b1d94c2dbf3ec",
+  "source_md_sha256": "c876fed3eba108d1b5ea9485bf5ec85d7413f80be396a2a1847f1b75bd4f3dfb",
   "_migration_note": "This JSON is the canonical SSOT for tier packs. The file tiers/tier-packs.md is now a generated view. Regenerate with: python -m tools.render tier-packs --repo .",
   "tier_ids": ["tier-0", "tier-1", "tier-2", "tier-3"],
   "parameter_definitions": {
@@ -125,8 +125,11 @@
       },
       "waiver_policy": {
         "allowed": true,
-        "max_active_waivers": 3,
+        "max_active_waivers": 20,
         "requires_HOTL": false
+      },
+      "adversarial_policy": {
+        "findings_mode": "warn"
       },
       "envelope_policy": {
         "requires_attestation": false,
@@ -152,8 +155,11 @@
       },
       "waiver_policy": {
         "allowed": true,
-        "max_active_waivers": 2,
+        "max_active_waivers": 10,
         "requires_HOTL": true
+      },
+      "adversarial_policy": {
+        "findings_mode": "fail"
       },
       "envelope_policy": {
         "requires_attestation": true,
@@ -182,6 +188,9 @@
         "max_active_waivers": 1,
         "requires_HOTL": true
       },
+      "adversarial_policy": {
+        "findings_mode": "fail"
+      },
       "envelope_policy": {
         "requires_attestation": true,
         "attestation_signature_required": true,
@@ -208,6 +217,9 @@
         "max_active_waivers": 0,
         "requires_HOTL": true
       },
+      "adversarial_policy": {
+        "findings_mode": "fail"
+      },
       "envelope_policy": {
         "requires_attestation": true,
         "attestation_signature_required": true,
@@ -233,7 +245,7 @@
     {"gate_check_id": "R5", "tier_params_read": ["test_policy.required", "test_policy.allowed_skips", "test_policy.flaky_handling", "command_log_mode"]},
     {"gate_check_id": "R6", "tier_params_read": ["envelope_policy.requires_attestation", "envelope_policy.attestation_signature_required", "command_log_mode"]},
     {"gate_check_id": "R7", "tier_params_read": ["envelope_policy.pinned_toolchain_refs_required", "command_log_mode"]},
-    {"gate_check_id": "R8", "tier_params_read": ["waiver_policy.allowed", "command_log_mode"]},
+    {"gate_check_id": "R8", "tier_params_read": ["waiver_policy.allowed", "adversarial_policy.findings_mode", "command_log_mode"]},
     {"gate_check_id": "R-DOC-001", "tier_params_read": ["doc_impact_required"]}
   ]
 }

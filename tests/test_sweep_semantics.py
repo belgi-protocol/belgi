@@ -152,3 +152,99 @@ def test_cs_term_001_allows_schema_validation_context(tmp_path: Path) -> None:
     res = sweep_mod.check_cs_term_001(tmp_path)
     assert res.invariant_id == "CS-TERM-001"
     assert res.status == "PASS"
+
+
+def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "docs/operations/workflows.md": "# workflows\n",
+            ".github/workflows/proof-tier1.yml": "name: proof\n",
+            ".github/scripts/validate_belgi_ref_pin.py": "print('ok')\n",
+            "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
+            "templates/ci/github/belgi-tier1.yml": "name: template\n",
+            "tools/README.md": "# tools\n",
+        },
+    )
+
+    monkeypatch.setattr(
+        sweep_mod,
+        "_canonical_inputs",
+        lambda _root: ["tools/normalize.py", "tools/rehash.py", "tools/sweep.py"],
+    )
+
+    res = sweep_mod.check_cs_sweep_002(tmp_path)
+    assert res.invariant_id == "CS-SWEEP-002"
+    assert res.status == "FAIL"
+    assert "docs/operations/workflows.md" in res.remediation
+
+
+def test_cs_sweep_002_passes_when_managed_surface_is_listed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "docs/operations/workflows.md": "# workflows\n",
+            ".github/workflows/proof-tier1.yml": "name: proof\n",
+            ".github/scripts/validate_belgi_ref_pin.py": "print('ok')\n",
+            "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
+            "templates/ci/github/belgi-tier1.yml": "name: template\n",
+            "tools/README.md": "# tools\n",
+        },
+    )
+
+    managed = sweep_mod._sweep_managed_surface_files(tmp_path)
+    monkeypatch.setattr(
+        sweep_mod,
+        "_canonical_inputs",
+        lambda _root: sorted(set(managed + ["tools/normalize.py", "tools/rehash.py", "tools/sweep.py"])),
+    )
+
+    res = sweep_mod.check_cs_sweep_002(tmp_path)
+    assert res.invariant_id == "CS-SWEEP-002"
+    assert res.status == "PASS"
+
+
+def test_cs_sweep_002_fails_when_repo_root_markdown_is_unlisted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "CANONICALS.md": "# canon\n",
+            "README.md": "# readme\n",
+            "NEW_CANONICAL.md": "# new\n",
+        },
+    )
+
+    monkeypatch.setattr(
+        sweep_mod,
+        "_canonical_inputs",
+        lambda _root: [
+            "CANONICALS.md",
+            "README.md",
+            "tools/normalize.py",
+            "tools/rehash.py",
+            "tools/sweep.py",
+        ],
+    )
+
+    res = sweep_mod.check_cs_sweep_002(tmp_path)
+    assert res.invariant_id == "CS-SWEEP-002"
+    assert res.status == "FAIL"
+    assert "NEW_CANONICAL.md" in res.remediation
+
+
+def test_managed_sweep_surfaces_are_covered_in_repo() -> None:
+    from tools import sweep as sweep_mod
+
+    managed = sweep_mod._sweep_managed_surface_files(REPO_ROOT)
+    canon = set(sweep_mod._canonical_inputs(REPO_ROOT))
+    missing = sorted(set(managed) - canon)
+    assert missing == []

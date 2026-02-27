@@ -2,6 +2,56 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.2.0 — 2026-02-27
+
+### Summary
+Artifact-backed release in capability buckets: infra orchestration/verify, tier+waiver realism, CI proof surfaces, sweep hardening, operator ergonomics, and exit-code SSOT stabilization.
+
+### Added
+- Deterministic run workspace orchestration and verification surfaces:
+  - run-keyed attempt layout under `.belgi/runs/<run_key>/<attempt_id>/`
+  - `belgi verify` integrity checks over run summary/manifests
+- Tier-1 CI/template proof surfaces:
+  - reusable workflow and template wiring for BELGI checks
+  - immutable BELGI ref pin validator (`BELGI_REF` must be 40-hex SHA)
+  - cross-platform smoke helper used by workflows
+  - PR label-gated proof workflow (`proof-tier1.yml`) with downloadable audit artifacts
+- Sweep managed-surface hardening:
+  - expanded authoritative sweep input coverage for managed docs/workflows/scripts/templates
+  - `CS-SWEEP-002` invariant + regression lock to fail on unlisted managed surfaces
+- Operator ergonomics helpers:
+  - `scripts/belgi_latest_run.py`
+  - `scripts/belgi_latest_run.ps1`
+  - `scripts/belgi_latest_run.sh`
+  - `scripts/belgi_wip_commit_run_reset.ps1`
+  - `docs/operations/triage.md`
+
+### Changed
+- Run/verify contract hardening:
+  - stabilized machine-readable first-line result and classed exit-code model for infra usage
+  - tier obligations sourced from tier packs (SSOT) and enforced across gate/orchestrator paths
+  - legacy `rc=3` normalization aligned to `USER_ERROR (20)` and exit-code SSOT centralized under `docs/operations/exit-codes.md`
+- Tier policy and waiver realism:
+  - Tier-0 findings signal surfaced in machine/run-summary outputs
+  - tier-driven adversarial findings policy (`warn` tier-0, `fail` tier-1+)
+  - Tier-1 applied waiver ingestion wired into `LockedSpec.waivers_applied` with seal binding and deterministic reporting
+- Pack/mirror and drift protections:
+  - protocol-pack mirrors updated for tier/waiver policy surfaces
+  - consistency/render guardrails strengthened for deterministic drift detection
+- Engine smoke and packaging reliability:
+  - CI smoke/pin flows hardened for reproducible install/runner behavior
+  - template/canonical hydration fixes to prevent repo-layout coupling in run execution
+- Portability follow-up:
+  - `scripts/belgi_latest_run.sh` now prefers `python3`, then `python`, else fail-closed with exit code `2`
+
+### Fixed
+- Tier-1 test evidence production no longer depends on adopter-specific test path assumptions.
+- Tier-1 adopter-pytest existing-target runtime path corrected with regression coverage.
+- Template hydration ordering corrected to preserve scan-first execution contract.
+
+### Notes
+- Public entry intentionally omits private pack paths; authoritative proof artifacts remain in private evidence packs.
+
 ## 1.1.1 — 2026-02-17
 
 ### Summary

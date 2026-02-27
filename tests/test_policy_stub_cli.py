@@ -146,7 +146,7 @@ def test_policy_check_overlay_cli_fail_then_pass(tmp_path: Path) -> None:
             "belgi_pack",
         ]
     )
-    assert rc_fail == 2
+    assert rc_fail == 10
 
     artifact_path = tmp_path / "artifacts" / "policy.overlay.json"
     rc_stub = belgi_main(

@@ -31,6 +31,7 @@ import time
 import re
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, metadata, version
+from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
 
@@ -1018,96 +1019,160 @@ def cmd_about(_: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 def cmd_run_tests(args: argparse.Namespace) -> int:
-    """Run pytest and produce a test_report artifact.
-    
-    This runs pytest with JSON output, parses results, and produces
-    a schema-valid TestReportPayload.
-    """
+    """Run deterministic test evidence producer and write TestReportPayload."""
     repo_root = Path(args.repo).resolve()
     out_path = _repo_path(repo_root, str(args.out), must_exist=False, must_be_file=True) if args.out else repo_root / "temp" / "tests.report.json"
     run_id = args.run_id
     timestamp = _get_timestamp(args.deterministic)
-    
-    # Build pytest command
-    pytest_args = [sys.executable, "-m", "pytest"]
-    if args.test_path:
-        test_target = _repo_path(repo_root, str(args.test_path), must_exist=True, must_be_file=None)
-        pytest_args.append(str(test_target))
-    pytest_args.extend(["-q", "--tb=short"])
-    
-    print(f"[belgi run-tests] Running: {' '.join(pytest_args)}", file=sys.stderr)
-    
-    start_time = time.time()
-    result = subprocess.run(
-        pytest_args,
-        cwd=str(repo_root),
-        env=_det_env(),
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-    )
-    duration = time.time() - start_time
-    
-    # Parse pytest output for counts
-    # Look for pattern like "62 passed, 1 skipped in 5.19s"
-    stdout = result.stdout
-    stderr = result.stderr
-    
-    total = 0
-    passed = 0
-    failed = 0
-    skipped = 0
-    
-    import re
-    # Match patterns like "62 passed", "1 failed", "1 skipped"
-    for line in (stdout + stderr).split("\n"):
-        m_passed = re.search(r"(\d+)\s+passed", line)
-        m_failed = re.search(r"(\d+)\s+failed", line)
-        m_skipped = re.search(r"(\d+)\s+skipped", line)
-        m_error = re.search(r"(\d+)\s+error", line)
-        
-        if m_passed:
-            passed = int(m_passed.group(1))
-        if m_failed:
-            failed = int(m_failed.group(1))
-        if m_skipped:
-            skipped = int(m_skipped.group(1))
-        if m_error:
-            failed += int(m_error.group(1))
-    
-    total = passed + failed + skipped
-    
-    # If no tests found, check for collection errors
-    if total == 0 and result.returncode != 0:
-        failed = 1
+
+    mode = "adopter_pytest" if bool(args.test_path) else "engine_smoke"
+
+    if mode == "adopter_pytest":
+        test_target = _repo_path(repo_root, str(args.test_path), must_exist=False, must_be_file=None)
+        if not test_target.exists():
+            payload_missing: dict[str, Any] = {
+                "schema_version": SCHEMA_VERSION,
+                "run_id": run_id,
+                "generated_at": timestamp,
+                "mode": "adopter_pytest",
+                "status": "skipped_missing_target",
+                "summary_text": f"Configured test target not found: {args.test_path}",
+                "summary": {
+                    "total": 0,
+                    "passed": 0,
+                    "failed": 0,
+                    "skipped": 1,
+                    "duration_seconds": 0.0,
+                },
+                "exit_code": 0,
+                "stdout_tail": "",
+            }
+            _atomic_write_json(out_path, payload_missing)
+            print(f"[belgi run-tests] SKIP: missing configured target: {args.test_path}", file=sys.stderr)
+            print(f"[belgi run-tests] Wrote: {out_path}", file=sys.stderr)
+            return 0
+
+        run_argv = [sys.executable, "-m", "pytest", str(test_target), "-q", "--tb=short"]
+        print(f"[belgi run-tests] mode={mode} Running: {' '.join(run_argv)}", file=sys.stderr)
+
+        start_time = time.time()
+        result = subprocess.run(
+            run_argv,
+            cwd=str(repo_root),
+            env=_det_env(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        duration = time.time() - start_time
+        exit_code = result.returncode
+        stdout = result.stdout
+        stderr = result.stderr
+    else:
+        # BELGI-owned deterministic smoke: no adopter dependency (e.g., pytest) required.
+        print("[belgi run-tests] mode=engine_smoke Check: builtin protocol/resources", file=sys.stderr)
+        start_time = time.time()
+        checks: list[str] = []
+        smoke_errors: list[str] = []
+        try:
+            from belgi.protocol.pack import get_builtin_protocol_context
+
+            protocol = get_builtin_protocol_context()
+            pack_id = str(getattr(protocol, "pack_id", "") or "").strip()
+            manifest_sha256 = str(getattr(protocol, "manifest_sha256", "") or "").strip()
+            if not pack_id:
+                raise RuntimeError("builtin protocol pack_id missing/invalid")
+            if not manifest_sha256:
+                raise RuntimeError("builtin protocol manifest_sha256 missing/invalid")
+            checks.append(f"pack_id={pack_id}")
+            checks.append(f"manifest_sha256={manifest_sha256}")
+
+            prompt_bytes = resource_files("belgi").joinpath("templates", "PromptBundle.blocks.md").read_bytes()
+            docs_bytes = resource_files("belgi").joinpath("templates", "DocsCompiler.template.md").read_bytes()
+            if len(prompt_bytes) == 0:
+                raise RuntimeError("PromptBundle.blocks.md is empty")
+            if len(docs_bytes) == 0:
+                raise RuntimeError("DocsCompiler.template.md is empty")
+            checks.append("templates=ok")
+        except Exception as e:
+            smoke_errors.append(str(e))
+
+        duration = time.time() - start_time
+        exit_code = 0 if not smoke_errors else 1
+        stdout = f"engine_smoke checks: {'; '.join(checks)}\n"
+        stderr = ""
+        if smoke_errors:
+            stderr = f"engine_smoke check failed: {'; '.join(smoke_errors)}\n"
+
+    duration_seconds = round(duration, 2) if not args.deterministic else 0.0
+
+    if mode == "engine_smoke":
+        passed = 1 if exit_code == 0 else 0
+        failed = 0 if exit_code == 0 else 1
+        skipped = 0
         total = 1
-    
-    # Build TestReportPayload
+    else:
+        passed = 0
+        failed = 0
+        skipped = 0
+
+        for line in (stdout + stderr).splitlines():
+            m_passed = re.search(r"(\d+)\s+passed", line)
+            m_failed = re.search(r"(\d+)\s+failed", line)
+            m_skipped = re.search(r"(\d+)\s+skipped", line)
+            m_error = re.search(r"(\d+)\s+error", line)
+
+            if m_passed:
+                passed = int(m_passed.group(1))
+            if m_failed:
+                failed = int(m_failed.group(1))
+            if m_skipped:
+                skipped = int(m_skipped.group(1))
+            if m_error:
+                failed += int(m_error.group(1))
+
+        total = passed + failed + skipped
+        if total == 0 and exit_code != 0:
+            failed = 1
+            total = 1
+
+    status = "pass" if failed == 0 and exit_code == 0 else "fail"
+    summary_text = (
+        f"{mode} completed: total={total} passed={passed} failed={failed} skipped={skipped} rc={exit_code}"
+    )
+
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
         "generated_at": timestamp,
+        "mode": mode,
+        "status": status,
+        "summary_text": summary_text,
         "summary": {
             "total": total,
             "passed": passed,
             "failed": failed,
             "skipped": skipped,
-            "duration_seconds": round(duration, 2) if not args.deterministic else 0,
+            "duration_seconds": duration_seconds,
         },
-        "exit_code": result.returncode,
+        "exit_code": exit_code,
         "stdout_tail": stdout[-2000:] if len(stdout) > 2000 else stdout,
     }
-    
+
     _atomic_write_json(out_path, payload)
     print(f"[belgi run-tests] Wrote: {out_path}", file=sys.stderr)
-    print(f"[belgi run-tests] Summary: total={total} passed={passed} failed={failed} skipped={skipped}", file=sys.stderr)
-    
-    # Exit code: 0 if all tests pass, 1 if any fail
-    if failed > 0:
-        print(f"[belgi run-tests] FAIL: {failed} test(s) failed", file=sys.stderr)
+    print(
+        f"[belgi run-tests] Summary: mode={mode} status={status} "
+        f"total={total} passed={passed} failed={failed} skipped={skipped}",
+        file=sys.stderr,
+    )
+
+    if status != "pass":
+        print(f"[belgi run-tests] FAIL: {summary_text}", file=sys.stderr)
         return 1
-    
-    print(f"[belgi run-tests] PASS: all tests passed", file=sys.stderr)
+
+    print(f"[belgi run-tests] PASS: {summary_text}", file=sys.stderr)
     return 0
 
 

@@ -1,0 +1,198 @@
+name: BELGI Tier-1 Reusable
+
+on:
+  workflow_call:
+    inputs:
+      belgi_ref:
+        required: false
+        type: string
+      belgi_repo_url:
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      belgi_ref:
+        description: "Pinned BELGI git ref (full 40-hex commit SHA)"
+        required: false
+        type: string
+      belgi_repo_url:
+        description: "BELGI git repository URL (default: official repo)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  belgi:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tier: tier-1
+            bundle_check: true
+          - os: ubuntu-latest
+            tier: tier-0
+            bundle_check: false
+          - os: macos-latest
+            tier: tier-0
+            bundle_check: false
+          - os: windows-latest
+            tier: tier-0
+            bundle_check: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+      TZ: "UTC"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Resolve BELGI_REF (fail-closed)
+        shell: python
+        env:
+          BELGI_REF_INPUT: ${{ inputs.belgi_ref }}
+          BELGI_REF_VAR: ${{ vars.BELGI_REF }}
+          BELGI_REPO_URL_INPUT: ${{ inputs.belgi_repo_url }}
+          BELGI_REPO_URL_VAR: ${{ vars.BELGI_REPO_URL }}
+        run: |
+          import os
+          import pathlib
+          import sys
+
+          ref = (os.environ.get("BELGI_REF_INPUT", "") or "").strip()
+          if not ref:
+              ref = (os.environ.get("BELGI_REF_VAR", "") or "").strip()
+          if not ref:
+              print(
+                  "BELGI_REF is required. Set workflow input 'belgi_ref' or repository variable 'BELGI_REF'.",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+
+          env_path = os.environ.get("GITHUB_ENV", "")
+          if not env_path:
+              print("GITHUB_ENV is not set", file=sys.stderr)
+              raise SystemExit(1)
+
+          with pathlib.Path(env_path).open("a", encoding="utf-8") as handle:
+              handle.write(f"BELGI_REF={ref}\n")
+              repo_url = (os.environ.get("BELGI_REPO_URL_INPUT", "") or "").strip()
+              if not repo_url:
+                  repo_url = (os.environ.get("BELGI_REPO_URL_VAR", "") or "").strip()
+              if not repo_url:
+                  repo_url = "https://github.com/belgi-protocol/belgi.git"
+              handle.write(f"BELGI_REPO_URL={repo_url}\n")
+
+      - name: Validate immutable BELGI_REF pin (fail-closed)
+        shell: python
+        env:
+          BELGI_REF: ${{ env.BELGI_REF }}
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          cmd = [
+              sys.executable,
+              ".github/scripts/validate_belgi_ref_pin.py",
+              "--ref",
+              os.environ.get("BELGI_REF", ""),
+          ]
+          raise SystemExit(subprocess.call(cmd))
+
+      - name: Install pinned BELGI CLI
+        shell: python
+        env:
+          BELGI_REF: ${{ env.BELGI_REF }}
+          BELGI_REPO_URL: ${{ env.BELGI_REPO_URL }}
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          ref = os.environ["BELGI_REF"]
+          repo_url = os.environ["BELGI_REPO_URL"]
+          install_target = f"git+{repo_url}@{ref}"
+          cmds = [
+              [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+              [sys.executable, "-m", "pip", "install", "--no-build-isolation", install_target],
+              ["belgi", "about"],
+          ]
+          for cmd in cmds:
+              cp = subprocess.run(cmd, check=False, shell=False)
+              if cp.returncode != 0:
+                  raise SystemExit(cp.returncode)
+
+      # Local parity command set:
+      #   belgi init --repo .
+      #   belgi run --repo . --tier <tier>
+      #   belgi verify --repo .
+      #   belgi bundle check --in .belgi/runs/<run_key>/<attempt_id>/repo/out --demo --verbose
+      - name: BELGI smoke (${{ matrix.tier }})
+        id: smoke
+        shell: python
+        env:
+          RUN_TIER: ${{ matrix.tier }}
+          BUNDLE_CHECK: ${{ matrix.bundle_check && 'true' || 'false' }}
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          cmd = [
+              sys.executable,
+              ".github/scripts/run_belgi_smoke.py",
+              "--repo",
+              ".",
+              "--tier",
+              os.environ["RUN_TIER"],
+          ]
+          if os.environ.get("BUNDLE_CHECK", "false").lower() == "true":
+              cmd.append("--bundle-check")
+          cp = subprocess.run(cmd, check=False, shell=False)
+          raise SystemExit(cp.returncode)
+
+      - name: Validate artifact paths
+        shell: python
+        env:
+          ATTEMPT_DIR: ${{ steps.smoke.outputs.attempt_dir }}
+          RUN_LOG: ${{ steps.smoke.outputs.run_log }}
+        run: |
+          import os
+          import pathlib
+          import sys
+
+          attempt_dir = pathlib.Path(os.environ["ATTEMPT_DIR"])
+          run_log = pathlib.Path(os.environ["RUN_LOG"])
+          if not run_log.is_file():
+              print(f"missing run log: {run_log}", file=sys.stderr)
+              raise SystemExit(1)
+          if not attempt_dir.is_dir():
+              print(f"missing attempt dir: {attempt_dir}", file=sys.stderr)
+              raise SystemExit(1)
+          if not (attempt_dir / "run.summary.json").is_file():
+              print(f"missing run.summary.json under {attempt_dir}", file=sys.stderr)
+              raise SystemExit(1)
+          if not (attempt_dir / "repo" / "out").is_dir():
+              print(f"missing repo/out under {attempt_dir}", file=sys.stderr)
+              raise SystemExit(1)
+          (attempt_dir / "logs").mkdir(parents=True, exist_ok=True)
+
+      - name: Upload BELGI run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: belgi-run-${{ github.sha }}-${{ matrix.os }}-${{ matrix.tier }}
+          if-no-files-found: error
+          path: |
+            ${{ steps.smoke.outputs.run_log }}
+            ${{ steps.smoke.outputs.attempt_dir }}/run.summary.json
+            ${{ steps.smoke.outputs.attempt_dir }}/repo/out/**
+            ${{ steps.smoke.outputs.attempt_dir }}/logs/**

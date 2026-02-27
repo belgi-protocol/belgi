@@ -29,6 +29,7 @@ COMPILER_VERSION = "1.0"
 
 BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL = "belgi/templates/PromptBundle.blocks.md"
 BUILTIN_DOCS_TEMPLATE_REPO_REL = "belgi/templates/DocsCompiler.template.md"
+ENGINE_CANONICALS_REPO_REL = ".belgi/engine/c3_canonicals"
 
 class _UserInputError(RuntimeError):
     pass
@@ -73,8 +74,8 @@ def _decode_utf8_strict(raw: bytes, *, source_label: str) -> str:
         raise _UserInputError(f"non-UTF8 content not allowed: {source_label}") from e
 
 
-def _iter_repo_files(repo_root: Path, root_rel: str) -> list[str]:
-    root_path = _resolve_repo_path(repo_root, root_rel, must_exist=True, must_be_file=False)
+def _iter_scope_files(scope_root: Path, root_rel: str) -> list[str]:
+    root_path = _resolve_repo_path(scope_root, root_rel, must_exist=True, must_be_file=False)
     if not root_path.is_dir():
         raise _UserInputError(f"expected directory but found file: {root_rel}")
 
@@ -84,7 +85,7 @@ def _iter_repo_files(repo_root: Path, root_rel: str) -> list[str]:
         filenames.sort()
         for name in filenames:
             p = Path(dirpath) / name
-            rel = os.path.relpath(str(p), str(repo_root)).replace("\\", "/")
+            rel = os.path.relpath(str(p), str(scope_root)).replace("\\", "/")
             out.append(_validate_repo_rel(rel))
     out.sort()
     return out
@@ -100,7 +101,7 @@ def _media_type_for_path(rel_bundle_path: str) -> str:
 
 def _build_docs_bundle_stage(
     *,
-    repo_root: Path,
+    source_root: Path,
     profile: str,
     stage_dir: Path,
 ) -> tuple[list[str], list[dict[str, Any]]]:
@@ -116,22 +117,22 @@ def _build_docs_bundle_stage(
 
     inputs: list[str] = []
     for rel in required_root_files:
-        _resolve_repo_path(repo_root, rel, must_exist=True, must_be_file=True)
+        _resolve_repo_path(source_root, rel, must_exist=True, must_be_file=True)
         inputs.append(_validate_repo_rel(rel))
 
     # Required roots (template B2.2)
-    inputs.extend([p for p in _iter_repo_files(repo_root, "gates") if p.endswith(".md")])
-    inputs.extend([p for p in _iter_repo_files(repo_root, "tiers") if p.endswith(".md")])
-    inputs.extend([p for p in _iter_repo_files(repo_root, "docs/operations") if p.endswith(".md")])
+    inputs.extend([p for p in _iter_scope_files(source_root, "gates") if p.endswith(".md")])
+    inputs.extend([p for p in _iter_scope_files(source_root, "tiers") if p.endswith(".md")])
+    inputs.extend([p for p in _iter_scope_files(source_root, "docs/operations") if p.endswith(".md")])
 
     # Schemas: include README.md and all *.schema.json
-    _resolve_repo_path(repo_root, "schemas/README.md", must_exist=True, must_be_file=True)
+    _resolve_repo_path(source_root, "schemas/README.md", must_exist=True, must_be_file=True)
     inputs.append("schemas/README.md")
-    inputs.extend([p for p in _iter_repo_files(repo_root, "schemas") if p.endswith(".schema.json")])
+    inputs.extend([p for p in _iter_scope_files(source_root, "schemas") if p.endswith(".schema.json")])
 
     # Optional roots: docs/research/** only when profile == internal
     if profile == "internal":
-        inputs.extend([p for p in _iter_repo_files(repo_root, "docs/research") if p.endswith(".md")])
+        inputs.extend([p for p in _iter_scope_files(source_root, "docs/research") if p.endswith(".md")])
 
     # Normalize + stable order
     inputs = sorted({_validate_repo_rel(p) for p in inputs})
@@ -148,7 +149,7 @@ def _build_docs_bundle_stage(
 
     bundled: list[dict[str, Any]] = []
     for rel in inputs:
-        src = _resolve_repo_path(repo_root, rel, must_exist=True, must_be_file=True)
+        src = _resolve_repo_path(source_root, rel, must_exist=True, must_be_file=True)
         raw = src.read_bytes()
         out_bytes = _normalize_text_bytes(raw, source_label=rel)
 
@@ -603,7 +604,17 @@ def main() -> int:
             template_path = _resolve_repo_path(repo_root, template_rel, must_exist=True, must_be_file=True)
         except _UserInputError:
             raise _UserInputError(f"Template missing: {template_rel}")
-
+        try:
+            source_root = _resolve_repo_path(
+                repo_root,
+                ENGINE_CANONICALS_REPO_REL,
+                must_exist=True,
+                must_be_file=False,
+            )
+        except _UserInputError as e:
+            raise _UserInputError(
+                f"engine canonical resources missing in run workspace: {ENGINE_CANONICALS_REPO_REL}"
+            ) from e
 
         # Load protocol context (pack-truth for schemas)
         protocol = _load_protocol_context(repo_root=repo_root, args=args)
@@ -714,7 +725,7 @@ def main() -> int:
             _rmtree_retry(stage_dir)
 
         source_inputs, bundled_files = _build_docs_bundle_stage(
-            repo_root=repo_root,
+            source_root=source_root,
             profile=profile,
             stage_dir=stage_dir,
         )
@@ -835,9 +846,9 @@ def main() -> int:
             ]
         )
 
-        # Also record source hashes for included repo docs (audit/determinism).
+        # Also record source hashes for staged engine canonicals (audit/determinism).
         for rel in source_inputs:
-            src = _resolve_repo_path(repo_root, rel, must_exist=True, must_be_file=True)
+            src = _resolve_repo_path(source_root, rel, must_exist=True, must_be_file=True)
             payload["inputs"].append({"path": rel, "source_sha256": _sha256_file(src)})
 
         payload["inputs"].sort(key=lambda d: str(d.get("path", "")))

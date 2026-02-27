@@ -402,6 +402,7 @@ class TestR3WaiverPathJail:
             "rule_id": "R3.forbidden_paths",
             "scope": "src",
             "justification": "test",
+            "mitigation": "test mitigation",
             "approver": "human:test@example.com",
             "created_at": "2024-01-01T00:00:00Z",
             "expires_at": "2099-01-01T00:00:00Z",

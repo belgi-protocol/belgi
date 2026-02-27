@@ -1575,6 +1575,19 @@ def check_cs_tier_002(root: Path) -> InvariantResult:
     def doc_mentions_all(doc: str, toks: list[str]) -> bool:
         return all(f"`{t}`" in doc or t in doc for t in toks)
 
+    def extract_tier_block(doc: str, tier_id: str) -> str | None:
+        header_re = re.compile(
+            rf"^###\s+(?:\d+(?:\.\d+)*\s+)?Tier\s+\d+\s+\({re.escape(tier_id)}\)\s*$",
+            re.MULTILINE,
+        )
+        m = header_re.search(doc)
+        if not m:
+            return None
+        start = m.end()
+        next_m = re.search(r"^###\s+(?:\d+(?:\.\d+)*\s+)?Tier\s+\d+\s+\(tier-\d\)\s*$", doc[start:], re.MULTILINE)
+        end = start + next_m.start() if next_m else len(doc)
+        return doc[start:end]
+
     if not doc_mentions_all(t_txt, tier0) or not doc_mentions_all(t_txt, tier1):
         return InvariantResult(
             "CS-TIER-002",
@@ -1582,6 +1595,32 @@ def check_cs_tier_002(root: Path) -> InvariantResult:
             ["tiers/tier-packs.md#3-tier-parameter-sets"],
             "Ensure tier-packs.md lists required_evidence_kinds for tier-0 and tier-1..3 exactly as specified.",
         )
+
+    tier0_block = extract_tier_block(t_txt, "tier-0")
+    if tier0_block is None or "- adversarial_policy:" not in tier0_block or "findings_mode: `warn`" not in tier0_block:
+        return InvariantResult(
+            "CS-TIER-002",
+            "FAIL",
+            ["tiers/tier-packs.md#3-tier-parameter-sets"],
+            "Ensure tier-0 documents adversarial_policy.findings_mode as warn.",
+        )
+    for tid in ("tier-1", "tier-2", "tier-3"):
+        block = extract_tier_block(t_txt, tid)
+        if block is None or "- adversarial_policy:" not in block or "findings_mode: `fail`" not in block:
+            return InvariantResult(
+                "CS-TIER-002",
+                "FAIL",
+                ["tiers/tier-packs.md#3-tier-parameter-sets"],
+                "Ensure tier-1..tier-3 document adversarial_policy.findings_mode as fail.",
+            )
+    if "| R8 |" not in t_txt or "adversarial_policy.findings_mode" not in t_txt:
+        return InvariantResult(
+            "CS-TIER-002",
+            "FAIL",
+            ["tiers/tier-packs.md#4-tier--gate-parameter-map"],
+            "Ensure R8 gate parameter map includes adversarial_policy.findings_mode.",
+        )
+
     if not doc_mentions_all(eb_txt, tier0) or not doc_mentions_all(eb_txt, tier1):
         return InvariantResult(
             "CS-TIER-002",
@@ -2606,13 +2645,19 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "CANONICALS.md",
         "README.md",
         "CHANGELOG.md",
+        "WHITEPAPER.md",
+        "TRADEMARK.md",
         "VERSION",
         "terminology.md",
         "trust-model.md",
         "gates/GATE_Q.md",
         "gates/GATE_R.md",
         "gates/failure-taxonomy.md",
+        ".github/scripts/run_belgi_smoke.py",
+        ".github/scripts/validate_belgi_ref_pin.py",
+        ".github/workflows/belgi-tier1-reusable.yml",
         ".github/workflows/ci.yml",
+        ".github/workflows/proof-tier1.yml",
         "tiers/tier-packs.md",
         "tiers/tier-packs.json",
         "tiers/tier-packs.template.md",
@@ -2626,12 +2671,24 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "belgi/templates/IntentSpec.core.template.md",
         "belgi/templates/PromptBundle.blocks.md",
         "belgi/templates/DocsCompiler.template.md",
-        "docs/operations/running-belgi.md",
         "docs/operations/evidence-bundles.md",
-        "docs/operations/waivers.md",
+        "docs/operations/evidence-ownership.md",
+        "docs/operations/exit-codes.md",
+        "docs/operations/runbook_dev_tier.md",
+        "docs/operations/running-belgi.md",
         "docs/operations/security.md",
         "docs/operations/consistency-sweep.md",
+        "docs/operations/triage.md",
+        "docs/operations/waivers.md",
+        "docs/operations/workflows.md",
         "docs/research/experiment-design.md",
+        # Operator convenience scripts (public ergonomics surface)
+        "scripts/belgi_latest_run.ps1",
+        "scripts/belgi_latest_run.py",
+        "scripts/belgi_latest_run.sh",
+        "scripts/belgi_wip_commit_run_reset.ps1",
+        # CI template surface
+        "templates/ci/github/belgi-tier1.yml",
         # Canonical deterministic verifier entrypoints
         "chain/gate_q_verify.py",
         "chain/gate_r_verify.py",
@@ -2639,6 +2696,7 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "chain/seal_bundle.py",
         "chain/compiler_c3_docs.py",
         # Canonical tools
+        "tools/README.md",
         "tools/render.py",
         "tools/normalize.py",
         "tools/rehash.py",
@@ -3306,6 +3364,80 @@ def check_cs_sweep_001(root: Path) -> InvariantResult:
     return InvariantResult("CS-SWEEP-001", "PASS", ["schemas/README.md", "tools/normalize.py"], "")
 
 
+def _sweep_managed_surface_files(root: Path) -> list[str]:
+    """Enumerate tracked managed surfaces that require explicit sweep listing.
+
+    These surfaces change frequently across ops/workflow ergonomics work and
+    must remain explicitly present in _canonical_inputs to avoid silent drift.
+    """
+
+    tracked = _run_git(root, ["ls-files"])
+    out: set[str] = set()
+    for raw in tracked.splitlines():
+        rel = raw.strip()
+        if not rel:
+            continue
+        rel = _validate_repo_rel(rel)
+        if "/" not in rel and rel.endswith(".md"):
+            out.add(rel)
+            continue
+        if rel.startswith("docs/operations/") and rel.endswith(".md"):
+            out.add(rel)
+            continue
+        if rel.startswith(".github/workflows/") and rel.endswith((".yml", ".yaml")):
+            out.add(rel)
+            continue
+        if rel.startswith(".github/scripts/") and rel.endswith(".py"):
+            out.add(rel)
+            continue
+        if rel.startswith("scripts/belgi_") and rel.endswith((".py", ".sh", ".ps1")):
+            out.add(rel)
+            continue
+        if rel.startswith("templates/ci/github/") and rel.endswith((".yml", ".yaml")):
+            out.add(rel)
+            continue
+        if rel == "tools/README.md":
+            out.add(rel)
+    return sorted(out)
+
+
+def check_cs_sweep_002(root: Path) -> InvariantResult:
+    """CS-SWEEP-002 — Managed surfaces are explicitly listed in sweep inputs."""
+
+    try:
+        canon = set(_canonical_inputs(root))
+        required = _sweep_managed_surface_files(root)
+    except Exception as e:
+        return InvariantResult(
+            "CS-SWEEP-002",
+            "FAIL",
+            [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage"],
+            f"Failed to enumerate managed sweep surfaces ({e}).",
+        )
+
+    missing = sorted([rel for rel in required if rel not in canon])
+    if missing:
+        sample = ", ".join(missing[:8])
+        suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+        return InvariantResult(
+            "CS-SWEEP-002",
+            "FAIL",
+            [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage", "tools/sweep.py"],
+            (
+                "Add missing managed surface path(s) to _canonical_inputs and synchronize "
+                "docs/operations/consistency-sweep.md Inputs list. Missing: "
+                f"{sample}{suffix}."
+            ),
+        )
+
+    return InvariantResult(
+        "CS-SWEEP-002",
+        "PASS",
+        [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage", "tools/sweep.py"],
+        "",
+    )
+
+
 def _remediation_for_message(msg: str) -> str:
     """Map failure message to human-readable remediation hint."""
     m = (msg or "").lower()
@@ -3685,13 +3817,18 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if bool(args.regen_seals) and not bool(args.fix_fixtures):
-        raise SystemExit("--regen-seals requires --fix-fixtures")
+        print("NO-GO: --regen-seals requires --fix-fixtures", file=sys.stderr)
+        raise SystemExit(2)
 
     # Deterministic contract: the consistency sweep artifact location is fixed and
     # is consumed as evidence by downstream verification. Fail closed if asked to
     # emit the canonical artifact elsewhere.
     if args.out.replace("\\\\", "/") != CANONICAL_SWEEP_OUT:
-        raise SystemExit(f"--out must be '{CANONICAL_SWEEP_OUT}' (required by the evidence contract).")
+        print(
+            f"NO-GO: --out must be '{CANONICAL_SWEEP_OUT}' (required by the evidence contract).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     root = Path(args.repo).resolve()
     if not root.exists() or not root.is_dir():
@@ -3753,6 +3890,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-PACK-IDENTITY-001": check_cs_pack_identity_001,
         "CS-SEAL-KEYPAIR-001": check_cs_seal_keypair_001,
         "CS-SWEEP-001": check_cs_sweep_001,
+        "CS-SWEEP-002": check_cs_sweep_002,
         "CS-GV-001": check_cs_gv_001,
         "CS-LS-001": check_cs_ls_001,
         "CS-REF-001": check_cs_ref_001,
@@ -3907,6 +4045,12 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     print(f"Summary: total={len(results)} passed={passed} failed={failed}")
 
     failed_ids = [r.invariant_id for r in results if r.status == "FAIL"]
+    if failed_ids:
+        primary = next((r for r in results if r.status == "FAIL"), None)
+        if primary is not None:
+            primary_msg = str(primary.remediation or "").replace("\n", " ").strip()
+            print(f"PRIMARY_CAUSE: {primary.invariant_id}: {primary_msg}", file=sys.stderr)
+
     if not args.fix_fixtures and failed_ids == ["CS-EV-006"]:
         print(
             "\nNote: CS-EV-006 is intentionally self-referential (fixtures pin the sweep artifact hash; the sweep also reports CS-EV-006). "

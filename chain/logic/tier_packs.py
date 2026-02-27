@@ -2,7 +2,67 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass(frozen=True)
+class TierParams:
+    """Validated tier contract parameters consumed by Gate Q/R checks."""
+
+    tier_id: str
+    required_evidence_kinds: tuple[str, ...]
+    required_evidence_kinds_q: tuple[str, ...]
+    doc_impact_required: bool
+    command_log_mode: str
+    scope_budgets_max_touched_files: int | None
+    scope_budgets_max_loc_delta: int | None
+    scope_budgets_forbidden_paths_enforcement: str | None
+    test_policy_required: str
+    test_policy_allowed_skips: str
+    waiver_policy_allowed: bool
+    waiver_policy_max_active_waivers: int
+    waiver_policy_requires_hotl: str
+    adversarial_policy_findings_mode: str
+    envelope_policy_requires_attestation: str
+    envelope_policy_attestation_signature_required: str
+    envelope_policy_pinned_toolchain_refs_required: str
+
+    def to_legacy_map(self) -> dict[str, Any]:
+        # Compatibility map for existing checks while using a validated source object.
+        return {
+            "required_evidence_kinds": list(self.required_evidence_kinds),
+            "required_evidence_kinds_q": list(self.required_evidence_kinds_q),
+            "doc_impact_required": self.doc_impact_required,
+            "command_log_mode": self.command_log_mode,
+            "scope_budgets.max_touched_files": self.scope_budgets_max_touched_files,
+            "scope_budgets.max_loc_delta": self.scope_budgets_max_loc_delta,
+            "scope_budgets.forbidden_paths_enforcement": self.scope_budgets_forbidden_paths_enforcement,
+            "test_policy.required": self.test_policy_required,
+            "test_policy.allowed_skips": self.test_policy_allowed_skips,
+            "waiver_policy.allowed": self.waiver_policy_allowed,
+            "waiver_policy.max_active_waivers": self.waiver_policy_max_active_waivers,
+            "waiver_policy.requires_HOTL": self.waiver_policy_requires_hotl,
+            "adversarial_policy.findings_mode": self.adversarial_policy_findings_mode,
+            "envelope_policy.requires_attestation": self.envelope_policy_requires_attestation,
+            "envelope_policy.attestation_signature_required": self.envelope_policy_attestation_signature_required,
+            "envelope_policy.pinned_toolchain_refs_required": self.envelope_policy_pinned_toolchain_refs_required,
+        }
+
+
+@dataclass(frozen=True)
+class TierParamsLoadResult:
+    tier_id: str
+    params: TierParams | None
+    parse_error: str | None = None
+
+    def to_legacy_map(self) -> dict[str, Any]:
+        if self.params is None:
+            return {"_tier_parse_error": self.parse_error or "tier parameter parse failed"}
+        out = self.params.to_legacy_map()
+        if self.parse_error:
+            out["_tier_parse_error"] = self.parse_error
+        return out
 
 
 def _parse_tier_params_from_json(tier_packs_json: str, tier_id: str) -> dict[str, Any]:
@@ -97,6 +157,13 @@ def _parse_tier_params_from_json(tier_packs_json: str, tier_id: str) -> dict[str
             params["waiver_policy.max_active_waivers"] = max_active
         if isinstance(requires_hotl, bool):
             params["waiver_policy.requires_HOTL"] = "yes" if requires_hotl else "no"
+
+    # adversarial_policy
+    ap = tier_obj.get("adversarial_policy")
+    if isinstance(ap, dict):
+        findings_mode = ap.get("findings_mode")
+        if isinstance(findings_mode, str) and findings_mode in ("warn", "fail"):
+            params["adversarial_policy.findings_mode"] = findings_mode
 
     # envelope_policy
     ep = tier_obj.get("envelope_policy")
@@ -228,6 +295,16 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
     if rht:
         params["waiver_policy.requires_HOTL"] = rht.group(1)
 
+    # adversarial_policy.findings_mode:
+    afm = re.search(r"\s*-\s+findings_mode:\s+`(warn|fail)`", block)
+    if afm:
+        params["adversarial_policy.findings_mode"] = afm.group(1)
+    else:
+        # Legacy generated markdown may not carry this key yet.
+        # Deterministic fallback preserves tier gradient:
+        # strings => warn (tier-0), structured => fail (tier-1+)
+        params["adversarial_policy.findings_mode"] = "warn" if params.get("command_log_mode") == "strings" else "fail"
+
     # envelope_policy.requires_attestation: mandatory.
     ra = re.search(
         r"-\s+envelope_policy:\s*\n\s*-\s+requires_attestation:\s+`?([a-z]+)`?",
@@ -277,6 +354,105 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
     return params
 
 
+def _require_string_list(raw: dict[str, Any], key: str) -> tuple[str, ...]:
+    v = raw.get(key)
+    if not isinstance(v, list) or not all(isinstance(x, str) and x for x in v):
+        raise ValueError(f"{key} missing/invalid")
+    return tuple(v)
+
+
+def _require_bool(raw: dict[str, Any], key: str) -> bool:
+    v = raw.get(key)
+    if not isinstance(v, bool):
+        raise ValueError(f"{key} missing/invalid")
+    return v
+
+
+def _require_int_nonneg(raw: dict[str, Any], key: str) -> int:
+    v = raw.get(key)
+    if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+        raise ValueError(f"{key} missing/invalid")
+    return v
+
+
+def _optional_int_nonneg(raw: dict[str, Any], key: str) -> int | None:
+    v = raw.get(key)
+    if v is None:
+        return None
+    if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
+        return v
+    raise ValueError(f"{key} missing/invalid")
+
+
+def _optional_enum(raw: dict[str, Any], key: str, *, allowed: tuple[str, ...]) -> str | None:
+    v = raw.get(key)
+    if v is None:
+        return None
+    if isinstance(v, str) and v in allowed:
+        return v
+    raise ValueError(f"{key} missing/invalid")
+
+
+def _require_enum(raw: dict[str, Any], key: str, *, allowed: tuple[str, ...]) -> str:
+    v = raw.get(key)
+    if isinstance(v, str) and v in allowed:
+        return v
+    raise ValueError(f"{key} missing/invalid")
+
+
+def _build_validated_tier_params(raw: dict[str, Any], tier_id: str) -> TierParams:
+    return TierParams(
+        tier_id=tier_id,
+        required_evidence_kinds=_require_string_list(raw, "required_evidence_kinds"),
+        required_evidence_kinds_q=_require_string_list(raw, "required_evidence_kinds_q"),
+        doc_impact_required=_require_bool(raw, "doc_impact_required"),
+        command_log_mode=_require_enum(raw, "command_log_mode", allowed=("strings", "structured")),
+        scope_budgets_max_touched_files=_optional_int_nonneg(raw, "scope_budgets.max_touched_files"),
+        scope_budgets_max_loc_delta=_optional_int_nonneg(raw, "scope_budgets.max_loc_delta"),
+        scope_budgets_forbidden_paths_enforcement=_optional_enum(
+            raw,
+            "scope_budgets.forbidden_paths_enforcement",
+            allowed=("strict", "relaxed"),
+        ),
+        test_policy_required=_require_enum(raw, "test_policy.required", allowed=("yes", "no")),
+        test_policy_allowed_skips=_require_enum(raw, "test_policy.allowed_skips", allowed=("yes", "no")),
+        waiver_policy_allowed=_require_bool(raw, "waiver_policy.allowed"),
+        waiver_policy_max_active_waivers=_require_int_nonneg(raw, "waiver_policy.max_active_waivers"),
+        waiver_policy_requires_hotl=_require_enum(raw, "waiver_policy.requires_HOTL", allowed=("yes", "no")),
+        adversarial_policy_findings_mode=_require_enum(raw, "adversarial_policy.findings_mode", allowed=("warn", "fail")),
+        envelope_policy_requires_attestation=_require_enum(
+            raw,
+            "envelope_policy.requires_attestation",
+            allowed=("yes", "no"),
+        ),
+        envelope_policy_attestation_signature_required=_require_enum(
+            raw,
+            "envelope_policy.attestation_signature_required",
+            allowed=("yes", "no"),
+        ),
+        envelope_policy_pinned_toolchain_refs_required=_require_enum(
+            raw,
+            "envelope_policy.pinned_toolchain_refs_required",
+            allowed=("yes", "no"),
+        ),
+    )
+
+
+def load_tier_params(tiers_text: str, tier_id: str) -> TierParamsLoadResult:
+    """Load tier params from SSOT and return a validated object (fail-closed)."""
+
+    s = (tiers_text or "").lstrip()
+    raw = _parse_tier_params_from_json(tiers_text, tier_id) if s.startswith("{") else _parse_tier_params_from_md(tiers_text, tier_id)
+    parse_err = raw.get("_tier_parse_error")
+    if isinstance(parse_err, str) and parse_err:
+        return TierParamsLoadResult(tier_id=tier_id, params=None, parse_error=parse_err)
+    try:
+        params = _build_validated_tier_params(raw, tier_id)
+    except Exception as e:
+        return TierParamsLoadResult(tier_id=tier_id, params=None, parse_error=str(e))
+    return TierParamsLoadResult(tier_id=tier_id, params=params, parse_error=None)
+
+
 def parse_tier_params(tiers_text: str, tier_id: str) -> dict[str, Any]:
     """Parse tier parameters from canonical JSON SSOT (preferred) or legacy MD view.
 
@@ -284,7 +460,4 @@ def parse_tier_params(tiers_text: str, tier_id: str) -> dict[str, Any]:
     Generated view: tiers/tier-packs.md
     """
 
-    s = (tiers_text or "").lstrip()
-    if s.startswith("{"):
-        return _parse_tier_params_from_json(tiers_text, tier_id)
-    return _parse_tier_params_from_md(tiers_text, tier_id)
+    return load_tier_params(tiers_text, tier_id).to_legacy_map()

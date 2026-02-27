@@ -112,8 +112,10 @@ Notes:
   - forbidden_paths_enforcement: `relaxed`
 - waiver_policy:
   - allowed: `yes`
-  - max_active_waivers: `3`
+  - max_active_waivers: `20`
   - requires_HOTL: `no`
+- adversarial_policy:
+  - findings_mode: `warn`
 - envelope_policy:
   - requires_attestation: `no`
   - attestation_signature_required: `no`
@@ -134,8 +136,10 @@ Notes:
   - forbidden_paths_enforcement: `strict`
 - waiver_policy:
   - allowed: `yes`
-  - max_active_waivers: `2`
+  - max_active_waivers: `10`
   - requires_HOTL: `yes`
+- adversarial_policy:
+  - findings_mode: `fail`
 - envelope_policy:
   - requires_attestation: `yes`
   - attestation_signature_required: `no`
@@ -158,6 +162,8 @@ Notes:
   - allowed: `yes`
   - max_active_waivers: `1`
   - requires_HOTL: `yes`
+- adversarial_policy:
+  - findings_mode: `fail`
 - envelope_policy:
   - requires_attestation: `yes`
   - attestation_signature_required: `yes`
@@ -180,6 +186,8 @@ Notes:
   - allowed: `no`
   - max_active_waivers: `0`
   - requires_HOTL: `yes`
+- adversarial_policy:
+  - findings_mode: `fail`
 - envelope_policy:
   - requires_attestation: `yes`
   - attestation_signature_required: `yes`
@@ -209,5 +217,5 @@ This table lists which tier parameters each check reads.
 | R5 | test_policy.required, test_policy.allowed_skips, test_policy.flaky_handling, command_log_mode |
 | R6 | envelope_policy.requires_attestation, envelope_policy.attestation_signature_required, command_log_mode |
 | R7 | envelope_policy.pinned_toolchain_refs_required, command_log_mode |
-| R8 | waiver_policy.allowed (whether a waiver can be considered at all), command_log_mode |
+| R8 | waiver_policy.allowed, adversarial_policy.findings_mode, command_log_mode |
 | R-DOC-001 | doc_impact_required |

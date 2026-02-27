@@ -106,6 +106,4 @@ Notes:
 ## 4. Tier → Gate Parameter Map
 This table lists which tier parameters each check reads.
 
-{{TP_GATE_PARAMETER_MAP_TABLE_PREFIX}}
-| R8 | waiver_policy.allowed (whether a waiver can be considered at all), command_log_mode |
-{{TP_GATE_PARAMETER_MAP_TABLE_SUFFIX}}
+{{TP_GATE_PARAMETER_MAP_TABLE}}

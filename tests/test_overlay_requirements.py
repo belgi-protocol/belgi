@@ -161,7 +161,7 @@ def test_belgi_init_pin_drift_requires_refresh_pin(tmp_path: Path) -> None:
     _write_json(overlay_manifest, overlay_obj)
 
     rc2 = belgi_main(["init", "--repo", str(tmp_path)])
-    assert rc2 == 1
+    assert rc2 == 10
     assert stale_pack_id in adopter_toml.read_text(encoding="utf-8", errors="strict")
 
     rc3 = belgi_main(["init", "--repo", str(tmp_path), "--refresh-pin"])

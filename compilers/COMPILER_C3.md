@@ -51,7 +51,7 @@ R-snapshot indexing requirements (post-R binding):
 
 Note: the R-snapshot EvidenceManifest is referenced by hash from Gate R, so it cannot also index `GateVerdict.R.json` without creating an impossible circular dependency. C3 therefore binds the R-snapshot manifest by hash but does not require that verdict/spec JSON files be indexed inside it.
 
-Any mismatch is a hard failure (exit code 3). This is required to prevent post-R evidence substitution.
+Any mismatch is a hard failure (NO-GO exit code 2; internal/tool failures use exit code 3). This is required to prevent post-R evidence substitution.
 
 ## Outputs
 

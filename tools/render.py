@@ -236,6 +236,15 @@ def _compute_tier_params(data: Dict[str, Any], tier_id: str) -> str:
     lines.append(f"  - allowed: `{_fmt_bool_yesno(wp.get('allowed', False))}`")
     lines.append(f"  - max_active_waivers: `{wp.get('max_active_waivers', 0)}`")
     lines.append(f"  - requires_HOTL: `{_fmt_bool_yesno(wp.get('requires_HOTL', False))}`")
+
+    ap = t.get("adversarial_policy")
+    if not isinstance(ap, dict):
+        raise ValueError(f"tier-packs: tier '{tier_id}' missing adversarial_policy block")
+    findings_mode = ap.get("findings_mode")
+    if findings_mode not in ("warn", "fail"):
+        raise ValueError(f"tier-packs: tier '{tier_id}' adversarial_policy.findings_mode missing/invalid")
+    lines.append("- adversarial_policy:")
+    lines.append(f"  - findings_mode: `{findings_mode}`")
     
     ep = t.get("envelope_policy", {})
     lines.append("- envelope_policy:")
@@ -246,41 +255,20 @@ def _compute_tier_params(data: Dict[str, Any], tier_id: str) -> str:
     return "\n".join(lines)
 
 
-def _compute_gate_parameter_map_table_prefix(data: Dict[str, Any]) -> str:
-    """Compute {{TP_GATE_PARAMETER_MAP_TABLE_PREFIX}} content.
-    
-    Returns header + separator + all rows BEFORE R8 (Q1..R7).
-    R8 is a literal row in template (prose lives in template, not renderer).
-    """
+def _compute_gate_parameter_map_table(data: Dict[str, Any]) -> str:
+    """Compute {{TP_GATE_PARAMETER_MAP_TABLE}} content from JSON gate_parameter_map."""
     lines = []
     lines.append("| gate_check_id | tier params read |")
     lines.append("|---|---|")
-    for entry in data.get("gate_parameter_map", []):
+    for idx, entry in enumerate(data.get("gate_parameter_map", [])):
+        if not isinstance(entry, dict):
+            raise ValueError(f"tier-packs: gate_parameter_map[{idx}] must be an object")
         gid = entry.get("gate_check_id", "")
-        # Stop before R8 - R8 is literal in template
-        if gid == "R8":
-            break
         params = entry.get("tier_params_read", [])
-        params_str = ", ".join(params) if params else "(none)"
-        lines.append(f"| {gid} | {params_str} |")
-    return "\n".join(lines)
-
-
-def _compute_gate_parameter_map_table_suffix(data: Dict[str, Any]) -> str:
-    """Compute {{TP_GATE_PARAMETER_MAP_TABLE_SUFFIX}} content.
-    
-    Returns all rows AFTER R8 (R-DOC-001 and beyond).
-    """
-    lines = []
-    found_r8 = False
-    for entry in data.get("gate_parameter_map", []):
-        gid = entry.get("gate_check_id", "")
-        if gid == "R8":
-            found_r8 = True
-            continue  # Skip R8, it's literal in template
-        if not found_r8:
-            continue  # Skip everything before R8
-        params = entry.get("tier_params_read", [])
+        if not isinstance(gid, str) or not gid:
+            raise ValueError(f"tier-packs: gate_parameter_map[{idx}] gate_check_id missing/invalid")
+        if not isinstance(params, list) or not all(isinstance(p, str) and p for p in params):
+            raise ValueError(f"tier-packs: gate_parameter_map[{idx}] tier_params_read missing/invalid")
         params_str = ", ".join(params) if params else "(none)"
         lines.append(f"| {gid} | {params_str} |")
     return "\n".join(lines)
@@ -310,8 +298,7 @@ def compute_tier_packs_mapping(repo_root: Path, data: Dict[str, Any]) -> Dict[st
         "TP_TIER_1_PARAMS": _compute_tier_params(data, "tier-1"),
         "TP_TIER_2_PARAMS": _compute_tier_params(data, "tier-2"),
         "TP_TIER_3_PARAMS": _compute_tier_params(data, "tier-3"),
-        "TP_GATE_PARAMETER_MAP_TABLE_PREFIX": _compute_gate_parameter_map_table_prefix(data),
-        "TP_GATE_PARAMETER_MAP_TABLE_SUFFIX": _compute_gate_parameter_map_table_suffix(data),
+        "TP_GATE_PARAMETER_MAP_TABLE": _compute_gate_parameter_map_table(data),
     }
 
 

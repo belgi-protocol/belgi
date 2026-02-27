@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "TierPacks.schema.json",
+  "title": "TierPacks",
+  "description": "Canonical SSOT for tier parameter sets consumed by Gate Q and Gate R.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "format_version",
+    "source_md_sha256",
+    "_migration_note",
+    "tier_ids",
+    "parameter_definitions",
+    "doc_impact_policy_map",
+    "tiers",
+    "gate_parameter_map"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*TierPacks\\.schema\\.json$",
+      "description": "Self-reference path to this schema."
+    },
+    "format_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "source_md_sha256": {
+      "$ref": "#/$defs/Sha256Hex"
+    },
+    "_migration_note": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tier_ids": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "enum": ["tier-0", "tier-1", "tier-2", "tier-3"]
+      }
+    },
+    "parameter_definitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_evidence_kinds",
+        "required_evidence_kinds_q",
+        "test_policy",
+        "scope_budgets",
+        "waiver_policy",
+        "command_log_mode",
+        "envelope_policy",
+        "doc_impact_required"
+      ],
+      "properties": {
+        "required_evidence_kinds": { "$ref": "#/$defs/ParameterDefinition" },
+        "required_evidence_kinds_q": { "$ref": "#/$defs/ParameterDefinition" },
+        "test_policy": { "$ref": "#/$defs/ParameterDefinition" },
+        "scope_budgets": { "$ref": "#/$defs/ParameterDefinition" },
+        "waiver_policy": { "$ref": "#/$defs/ParameterDefinition" },
+        "command_log_mode": { "$ref": "#/$defs/ParameterDefinition" },
+        "envelope_policy": { "$ref": "#/$defs/ParameterDefinition" },
+        "doc_impact_required": { "$ref": "#/$defs/ParameterDefinition" }
+      }
+    },
+    "doc_impact_policy_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["_note", "schema_notes", "tiers"],
+      "properties": {
+        "_note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema_notes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tier_id",
+              "doc_impact_required",
+              "required_paths_may_be_empty",
+              "note_on_empty_required_when_empty",
+              "enforcing_gates"
+            ],
+            "properties": {
+              "tier_id": {
+                "type": "string",
+                "enum": ["tier-0", "tier-1", "tier-2", "tier-3"]
+              },
+              "doc_impact_required": { "type": "boolean" },
+              "required_paths_may_be_empty": { "type": "boolean" },
+              "note_on_empty_required_when_empty": { "type": "string", "minLength": 1 },
+              "enforcing_gates": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tiers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier-0", "tier-1", "tier-2", "tier-3"],
+      "properties": {
+        "tier-0": { "$ref": "#/$defs/TierConfig" },
+        "tier-1": { "$ref": "#/$defs/TierConfig" },
+        "tier-2": { "$ref": "#/$defs/TierConfig" },
+        "tier-3": { "$ref": "#/$defs/TierConfig" }
+      }
+    },
+    "gate_parameter_map": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate_check_id", "tier_params_read"],
+        "properties": {
+          "gate_check_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tier_params_read": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "ParameterDefinition": {
+      "type": "object",
+      "required": ["description"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "ArtifactKind": {
+      "type": "string",
+      "enum": [
+        "diff",
+        "test_report",
+        "command_log",
+        "env_attestation",
+        "policy_report",
+        "schema_validation",
+        "docs_compilation_log",
+        "hotl_approval",
+        "seal_manifest",
+        "genesis_seal"
+      ]
+    },
+    "TierConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_evidence_kinds",
+        "required_evidence_kinds_q",
+        "command_log_mode",
+        "doc_impact_required",
+        "test_policy",
+        "scope_budgets",
+        "waiver_policy",
+        "adversarial_policy",
+        "envelope_policy"
+      ],
+      "properties": {
+        "required_evidence_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ArtifactKind" }
+        },
+        "required_evidence_kinds_q": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ArtifactKind" }
+        },
+        "command_log_mode": {
+          "type": "string",
+          "enum": ["strings", "structured"]
+        },
+        "doc_impact_required": {
+          "type": "boolean"
+        },
+        "test_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "allowed_skips", "flaky_handling"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "allowed_skips": { "type": "boolean" },
+            "allowed_skips_note": { "type": "string", "minLength": 1 },
+            "flaky_handling": { "type": "string", "minLength": 1 }
+          }
+        },
+        "scope_budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_touched_files", "max_loc_delta", "forbidden_paths_enforcement"],
+          "properties": {
+            "max_touched_files": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "max_loc_delta": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "forbidden_paths_enforcement": {
+              "type": "string",
+              "enum": ["strict", "relaxed"]
+            }
+          }
+        },
+        "waiver_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowed", "max_active_waivers", "requires_HOTL"],
+          "properties": {
+            "allowed": { "type": "boolean" },
+            "max_active_waivers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "requires_HOTL": { "type": "boolean" }
+          }
+        },
+        "adversarial_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["findings_mode"],
+          "properties": {
+            "findings_mode": {
+              "type": "string",
+              "enum": ["warn", "fail"]
+            }
+          }
+        },
+        "envelope_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requires_attestation",
+            "attestation_signature_required",
+            "pinned_toolchain_refs_required"
+          ],
+          "properties": {
+            "requires_attestation": { "type": "boolean" },
+            "attestation_signature_required": { "type": "boolean" },
+            "pinned_toolchain_refs_required": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}
