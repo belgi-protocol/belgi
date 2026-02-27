@@ -5,7 +5,7 @@ It does not contain experimental results or performance claims.
 ## 1.2.0 — 2026-02-27
 
 ### Summary
-Release synthesized from artifact-backed draft entries, covering orchestration hardening, policy realism, CI/proof reliability, and operator ergonomics.
+Artifact-backed Phase-2 release in capability buckets: infra orchestration/verify, tier+waiver realism, CI proof surfaces, sweep hardening, operator ergonomics, and exit-code SSOT stabilization.
 
 ### Added
 - Deterministic run workspace orchestration and verification surfaces:
@@ -15,6 +15,10 @@ Release synthesized from artifact-backed draft entries, covering orchestration h
   - reusable workflow and template wiring for BELGI checks
   - immutable BELGI ref pin validator (`BELGI_REF` must be 40-hex SHA)
   - cross-platform smoke helper used by workflows
+  - PR label-gated proof workflow (`proof-tier1.yml`) with downloadable audit artifacts
+- Sweep managed-surface hardening:
+  - expanded authoritative sweep input coverage for managed docs/workflows/scripts/templates
+  - `CS-SWEEP-002` invariant + regression lock to fail on unlisted managed surfaces
 - Operator ergonomics helpers:
   - `scripts/belgi_latest_run.py`
   - `scripts/belgi_latest_run.ps1`
@@ -26,6 +30,7 @@ Release synthesized from artifact-backed draft entries, covering orchestration h
 - Run/verify contract hardening:
   - stabilized machine-readable first-line result and classed exit-code model for infra usage
   - tier obligations sourced from tier packs (SSOT) and enforced across gate/orchestrator paths
+  - legacy `rc=3` normalization aligned to `USER_ERROR (20)` and exit-code SSOT centralized under `docs/operations/exit-codes.md`
 - Tier policy and waiver realism:
   - Tier-0 findings signal surfaced in machine/run-summary outputs
   - tier-driven adversarial findings policy (`warn` tier-0, `fail` tier-1+)
