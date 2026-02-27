@@ -5,7 +5,7 @@ It does not contain experimental results or performance claims.
 ## 1.2.0 — 2026-02-27
 
 ### Summary
-Artifact-backed Phase-2 release in capability buckets: infra orchestration/verify, tier+waiver realism, CI proof surfaces, sweep hardening, operator ergonomics, and exit-code SSOT stabilization.
+Artifact-backed release in capability buckets: infra orchestration/verify, tier+waiver realism, CI proof surfaces, sweep hardening, operator ergonomics, and exit-code SSOT stabilization.
 
 ### Added
 - Deterministic run workspace orchestration and verification surfaces:
