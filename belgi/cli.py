@@ -139,6 +139,23 @@ def _emit_cli_user_error_result(
     return RC_USER_ERROR
 
 
+def _normalize_cli_exit_code(raw_rc: int) -> int:
+    """Map legacy subcommand return codes onto the public BELGI CLI RC model."""
+    if raw_rc == RC_GO:
+        return RC_GO
+    if raw_rc == RC_NO_GO:
+        return RC_NO_GO
+    if raw_rc == RC_USER_ERROR:
+        return RC_USER_ERROR
+    if raw_rc == RC_INTERNAL_ERROR:
+        return RC_INTERNAL_ERROR
+    if raw_rc in (1, 2):
+        return RC_NO_GO
+    if raw_rc == 3:
+        return RC_INTERNAL_ERROR
+    return RC_INTERNAL_ERROR
+
+
 # ---------------------------------------------------------------------------
 # supply-chain subcommand
 # ---------------------------------------------------------------------------
@@ -2524,72 +2541,78 @@ def main(argv: list[str] | None = None) -> int:
         )
     
     if args.command == "about":
-        return cmd_about(args)
+        rc = cmd_about(args)
     elif args.command == "pack":
         if args.pack_command == "build":
             if not args.input:
-                return _emit_cli_user_error_result(
+                rc = _emit_cli_user_error_result(
                     primary_reason="--in required for `belgi pack build`",
                     parser=p_pack_build,
                 )
-            return cmd_pack_build(args)
+            else:
+                rc = cmd_pack_build(args)
         elif args.pack_command == "verify":
-            return cmd_pack_verify(args)
+            rc = cmd_pack_verify(args)
         else:
-            return _emit_cli_user_error_result(
+            rc = _emit_cli_user_error_result(
                 primary_reason="missing pack subcommand",
                 parser=p_pack,
                 help_to_stderr=True,
             )
     elif args.command == "init":
-        return cmd_init(args)
+        rc = cmd_init(args)
     elif args.command == "policy":
         if args.policy_command in ("stub", "check-overlay"):
-            return int(args.func(args))
-        return _emit_cli_user_error_result(
-            primary_reason="missing policy subcommand",
-            parser=p_policy,
-            help_to_stderr=True,
-        )
+            rc = int(args.func(args))
+        else:
+            rc = _emit_cli_user_error_result(
+                primary_reason="missing policy subcommand",
+                parser=p_policy,
+                help_to_stderr=True,
+            )
     elif args.command == "run":
         if args.run_command == "new":
-            return cmd_run_new(args)
-        if getattr(args, "tier", None):
-            return cmd_run(args)
-        return _emit_cli_user_error_result(
-            primary_reason="missing run mode: provide `run new` or `run --tier`",
-            parser=p_run,
-            help_to_stderr=True,
-        )
+            rc = cmd_run_new(args)
+        elif getattr(args, "tier", None):
+            rc = cmd_run(args)
+        else:
+            rc = _emit_cli_user_error_result(
+                primary_reason="missing run mode: provide `run new` or `run --tier`",
+                parser=p_run,
+                help_to_stderr=True,
+            )
     elif args.command == "verify":
-        return cmd_verify(args)
+        rc = cmd_verify(args)
     elif args.command == "manifest":
         if args.manifest_command == "add":
-            return cmd_manifest_add(args)
-        return _emit_cli_user_error_result(
-            primary_reason="missing manifest subcommand",
-            parser=p_manifest,
-            help_to_stderr=True,
-        )
+            rc = cmd_manifest_add(args)
+        else:
+            rc = _emit_cli_user_error_result(
+                primary_reason="missing manifest subcommand",
+                parser=p_manifest,
+                help_to_stderr=True,
+            )
     elif args.command == "bundle":
         if args.bundle_command == "check":
-            return cmd_bundle_check(args)
+            rc = cmd_bundle_check(args)
         else:
-            return _emit_cli_user_error_result(
+            rc = _emit_cli_user_error_result(
                 primary_reason="missing bundle subcommand",
                 parser=p_bundle,
                 help_to_stderr=True,
             )
     elif args.command == "supplychain-scan":
-        return int(args.func(args))
+        rc = int(args.func(args))
     elif args.command == "adversarial-scan":
-        return int(args.func(args))
+        rc = int(args.func(args))
     else:
-        return _emit_cli_user_error_result(
+        rc = _emit_cli_user_error_result(
             primary_reason="missing command",
             parser=parser,
             help_to_stderr=True,
         )
+
+    return _normalize_cli_exit_code(int(rc))
 
 
 if __name__ == "__main__":

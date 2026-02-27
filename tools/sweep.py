@@ -3724,13 +3724,18 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if bool(args.regen_seals) and not bool(args.fix_fixtures):
-        raise SystemExit("--regen-seals requires --fix-fixtures")
+        print("NO-GO: --regen-seals requires --fix-fixtures", file=sys.stderr)
+        raise SystemExit(2)
 
     # Deterministic contract: the consistency sweep artifact location is fixed and
     # is consumed as evidence by downstream verification. Fail closed if asked to
     # emit the canonical artifact elsewhere.
     if args.out.replace("\\\\", "/") != CANONICAL_SWEEP_OUT:
-        raise SystemExit(f"--out must be '{CANONICAL_SWEEP_OUT}' (required by the evidence contract).")
+        print(
+            f"NO-GO: --out must be '{CANONICAL_SWEEP_OUT}' (required by the evidence contract).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     root = Path(args.repo).resolve()
     if not root.exists() or not root.is_dir():

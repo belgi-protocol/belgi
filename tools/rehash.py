@@ -465,7 +465,8 @@ def _cmd_evidence_manifest(argv: list[str]) -> int:
 
     doc = _load_json(em_path)
     if not isinstance(doc, dict):
-        raise SystemExit("EvidenceManifest must be a JSON object")
+        print("NO-GO: EvidenceManifest must be a JSON object", file=sys.stderr)
+        raise SystemExit(2)
 
     changed = False
     checked = 0
