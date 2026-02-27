@@ -46,6 +46,6 @@ def test_missing_required_args_returns_user_error_and_machine_json(capsys: objec
     assert "required" in str(machine["primary_reason"]).lower()
 
 
-def test_legacy_subcommand_rc_maps_to_cli_internal_error() -> None:
+def test_legacy_subcommand_rc_maps_to_cli_user_error() -> None:
     rc = belgi_main(["pack", "verify", "--in", "missing-pack-dir"])
-    assert rc == 30
+    assert rc == 20

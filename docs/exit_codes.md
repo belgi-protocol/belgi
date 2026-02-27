@@ -8,8 +8,8 @@ The installable `belgi` CLI uses this normalized model:
 
 - `0`: `GO`
 - `10`: `NO-GO` (policy/evidence/contract failure)
-- `20`: `USER_ERROR` (usage/argument/input contract)
-- `30`: `INTERNAL_ERROR`
+- `20`: `USER_ERROR` (usage/argument/input contract, including normalized legacy `rc=3` returns)
+- `30`: `INTERNAL_ERROR` (unexpected exception paths or explicit `RC_INTERNAL_ERROR` returns)
 
 Rule: public CLI commands must return only `{0,10,20,30}`.
 

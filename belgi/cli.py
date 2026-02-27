@@ -152,7 +152,7 @@ def _normalize_cli_exit_code(raw_rc: int) -> int:
     if raw_rc in (1, 2):
         return RC_NO_GO
     if raw_rc == 3:
-        return RC_INTERNAL_ERROR
+        return RC_USER_ERROR
     return RC_INTERNAL_ERROR
 
 
