@@ -33,6 +33,16 @@ def _builtin_canonical_bytes(name: str) -> bytes:
     return resource_files("belgi").joinpath("canonicals", name).read_bytes()
 
 
+def _head_sha(repo: Path) -> str:
+    cp = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return cp.stdout.strip().lower()
+
+
 def test_tier0_run_succeeds_without_repo_root_canonical_docs(tmp_path: Path, capsys: object) -> None:
     repo = _init_min_git_repo(tmp_path)
     assert not (repo / "CANONICALS.md").exists()
@@ -43,7 +53,7 @@ def test_tier0_run_succeeds_without_repo_root_canonical_docs(tmp_path: Path, cap
     assert rc_init == 0
     _ = capsys.readouterr()
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", _head_sha(repo)])
     captured = capsys.readouterr()
     assert rc_run == 0, captured.err
     assert "missing path in scope" not in captured.err
@@ -65,7 +75,7 @@ def test_tier0_run_uses_engine_canonicals_when_repo_has_collision(tmp_path: Path
     assert rc_init == 0
     _ = capsys.readouterr()
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", _head_sha(repo)])
     captured = capsys.readouterr()
     assert rc_run == 0, captured.err
 
