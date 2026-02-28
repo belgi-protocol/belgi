@@ -195,18 +195,16 @@ jobs:
         run: |
           set -euo pipefail
           actor="${GITHUB_ACTOR:-}"
-          act_raw="${ACT:-}"
-          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
-          act_truthy=0
-          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
-            act_truthy=1
+          force_raw="${BELGI_FORCE_ACT:-}"
+          force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
+          force_act=0
+          if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
+            force_act=1
           fi
 
           is_act=0
-          if [ "$actor" = "nektos/act" ]; then
+          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
             is_act=1
-          elif [ "$act_truthy" -eq 1 ]; then
-            echo "::warning::ACT is truthy but actor is '${actor:-<empty>}'; treating as CI (IS_ACT=0)."
           fi
           echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
 
