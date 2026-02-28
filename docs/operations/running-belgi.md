@@ -129,10 +129,12 @@ python -m chain.gate_r_verify \
   --locked-spec LockedSpec.json \
   --gate-q-verdict GateVerdict.Q.json \
   --evidence-manifest EvidenceManifest.json \
-  --evaluated-revision HEAD \
+  --evaluated-revision <EVALUATED_SHA40> \
   --gate-verdict-out GateVerdict.R.json \
   --out policy/verify_report.json
 ```
+
+`evaluated_revision` MUST be a stable 40-hex commit SHA (not a moving ref). Obtain it via `git rev-parse HEAD`.
 
 Fixture note (Gate R):
 - Fixtures are runnable without git history. If the repo is a zip snapshot (no `.git`), Gate R may accept a 40-hex `--evaluated-revision` as an opaque id only when inputs are under `policy/fixtures/`.
@@ -197,7 +199,7 @@ Examples:
 ```bash
 belgi stage c1 --repo . --intent-spec IntentSpec.core.md --out LockedSpec.json --run-id run-001 --repo-ref owner/repo --prompt-bundle-out bundle/prompt_bundle.bin
 belgi stage q --repo . --intent-spec IntentSpec.core.md --locked-spec LockedSpec.json --evidence-manifest EvidenceManifest.json --out GateVerdict.Q.json
-belgi stage r --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision HEAD --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json
+belgi stage r --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json
 belgi stage c3 --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --gate-r-verdict GateVerdict.R.json --r-snapshot-manifest EvidenceManifest.json --out-final-manifest EvidenceManifest.final.json --out-log docs/docs_compilation_log.json --out-docs docs/run_docs.md --out-bundle-dir bundle --out-bundle-root-sha docs/bundle_root.sha256 --profile public --prompt-block-hashes prompt_block_hashes.json
 belgi stage s seal --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --gate-r-verdict GateVerdict.R.json --evidence-manifest EvidenceManifest.final.json --final-commit-sha <FINAL_COMMIT_SHA> --sealed-at 2000-01-01T00:30:00Z --signer human:release-manager --out SealManifest.json
 belgi stage s verify --repo . --locked-spec LockedSpec.json --protocol-pack belgi/_protocol_packs/v1 --seal-manifest SealManifest.json --evidence-manifest EvidenceManifest.final.json --out GateVerdict.S.json
@@ -413,7 +415,7 @@ Failure handling:
 
 Deterministic verifier (MUST-level enforcement):
 - Run the canonical verifier and write a deterministic JSON report:
-  - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision HEAD --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
+  - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
   - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
 
 Verifier ordered-results contract (hardening note):
