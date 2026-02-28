@@ -666,7 +666,7 @@ def orchestrate_chain_run(
     commands_executed: list[Any] = []
     rc_supply = run_supplychain_scan(
         repo=chain_repo_dir,
-        evaluated_revision=base_revision,
+        evaluated_revision=evaluated_revision,
         out_path=chain_repo_dir / rel_policy_supply,
         deterministic=True,
         run_id=run_key,
