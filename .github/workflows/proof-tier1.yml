@@ -7,9 +7,6 @@ on:
 permissions:
   contents: read
 
-env:
-  IS_ACT: ${{ github.actor == 'nektos/act' && '1' || '' }}
-
 concurrency:
   group: proof-tier1-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -63,8 +60,29 @@ jobs:
               | tee -a "proof_preflight/pin_check_negative_${bad_ref}.log"
           done
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
+          act_truthy=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            act_truthy=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ]; then
+            is_act=1
+          elif [ "$act_truthy" -eq 1 ]; then
+            echo "::warning::ACT is truthy but actor is '${actor:-<empty>}'; treating as CI (IS_ACT=0)."
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload preflight logs
-        if: ${{ always() && !env.IS_ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-preflight-${{ steps.sha.outputs.pr_sha }}
@@ -107,8 +125,29 @@ jobs:
           python .github/scripts/run_belgi_smoke.py --repo . --tier tier-1 \
             2>&1 | tee "proof_smoke/tier1-${{ matrix.os }}.log"
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
+          act_truthy=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            act_truthy=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ]; then
+            is_act=1
+          elif [ "$act_truthy" -eq 1 ]; then
+            echo "::warning::ACT is truthy but actor is '${actor:-<empty>}'; treating as CI (IS_ACT=0)."
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload smoke artifacts
-        if: ${{ always() && !env.IS_ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-smoke-${{ matrix.os }}-${{ needs.preflight.outputs.pr_sha }}
@@ -156,8 +195,29 @@ jobs:
           "${VENV}/bin/belgi" --help > proof_wheel/belgi-help.log
           "${VENV}/bin/belgi" pack verify --builtin > proof_wheel/builtin-verify.log 2>&1
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
+          act_truthy=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            act_truthy=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ]; then
+            is_act=1
+          elif [ "$act_truthy" -eq 1 ]; then
+            echo "::warning::ACT is truthy but actor is '${actor:-<empty>}'; treating as CI (IS_ACT=0)."
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload wheel artifact
-        if: ${{ always() && !env.IS_ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-wheel-${{ needs.preflight.outputs.pr_sha }}
@@ -165,7 +225,7 @@ jobs:
           path: dist/*.whl
 
       - name: Upload wheel logs
-        if: ${{ always() && !env.IS_ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-wheel-logs-${{ needs.preflight.outputs.pr_sha }}

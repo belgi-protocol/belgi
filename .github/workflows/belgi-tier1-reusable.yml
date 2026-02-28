@@ -62,20 +62,18 @@ jobs:
           BELGI_REPO_URL_INPUT: ${{ inputs.belgi_repo_url }}
           BELGI_VARS_JSON: ${{ toJson(vars) }}
         run: |
-          import json
           import os
           import pathlib
           import sys
 
-          vars_raw = (os.environ.get("BELGI_VARS_JSON", "") or "").strip()
-          vars_map = {}
-          if vars_raw:
-              try:
-                  parsed = json.loads(vars_raw)
-              except Exception:
-                  parsed = {}
-              if isinstance(parsed, dict):
-                  vars_map = parsed
+          from tools.github_vars_sanitize import SecretLikeVariableError, sanitize_vars_map
+
+          vars_raw = os.environ.get("BELGI_VARS_JSON", "") or ""
+          try:
+              vars_map = sanitize_vars_map(vars_raw)
+          except SecretLikeVariableError as e:
+              print(str(e), file=sys.stderr)
+              raise SystemExit(1)
 
           ref = (os.environ.get("BELGI_REF_INPUT", "") or "").strip()
           if not ref:
@@ -191,7 +189,29 @@ jobs:
               raise SystemExit(1)
           (attempt_dir / "logs").mkdir(parents=True, exist_ok=True)
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
+          act_truthy=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            act_truthy=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ]; then
+            is_act=1
+          elif [ "$act_truthy" -eq 1 ]; then
+            echo "::warning::ACT is truthy but actor is '${actor:-<empty>}'; treating as CI (IS_ACT=0)."
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload BELGI run artifact
+        if: ${{ steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: belgi-run-${{ github.sha }}-${{ matrix.os }}-${{ matrix.tier }}
