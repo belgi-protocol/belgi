@@ -23,6 +23,12 @@ from belgi.core import run_orchestrator
 from belgi.protocol.pack import get_builtin_protocol_context
 
 
+@pytest.fixture(autouse=True)
+def _clear_base_revision_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BELGI_BASE_SHA", raising=False)
+    monkeypatch.delenv("GITHUB_BASE_SHA", raising=False)
+
+
 def _list_dirs(path: Path) -> list[Path]:
     return sorted([p for p in path.iterdir() if p.is_dir()], key=lambda p: p.name)
 

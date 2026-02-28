@@ -6,6 +6,8 @@ import sys
 from importlib.resources import files as resource_files
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -15,6 +17,12 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.cli import main as belgi_main
+
+
+@pytest.fixture(autouse=True)
+def _clear_base_revision_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BELGI_BASE_SHA", raising=False)
+    monkeypatch.delenv("GITHUB_BASE_SHA", raising=False)
 
 
 def _init_min_git_repo(tmp_path: Path, *, name: str = "repo") -> Path:
