@@ -41,6 +41,22 @@ ZERO_SHA256 = "0" * 64
 
 CONSISTENCY_SPEC_DOC = "docs/operations/consistency-sweep.md"
 
+_C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
+    ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
+    ("terminology.md", "belgi/canonicals/terminology.md"),
+    ("trust-model.md", "belgi/canonicals/trust-model.md"),
+    ("docs/operations/consistency-sweep.md", "belgi/canonicals/docs/operations/consistency-sweep.md"),
+    ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
+    ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
+    ("docs/operations/runbook_dev_tier.md", "belgi/canonicals/docs/operations/runbook_dev_tier.md"),
+    ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
+    ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
+    ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
+    ("docs/research/README.md", "belgi/canonicals/docs/research/README.md"),
+    ("docs/research/experiment-design.md", "belgi/canonicals/docs/research/experiment-design.md"),
+    ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Allow running from outside the repo by pinning imports to this repo root.
@@ -642,6 +658,61 @@ def check_cs_can_003(root: Path) -> InvariantResult:
             "belgi/templates/PromptBundle.blocks.md#a4-public-release-redaction-policy",
             "belgi/templates/DocsCompiler.template.md#b22-repository-documentation-inputs-public-safe-categories",
         ],
+        "",
+    )
+
+
+def check_cs_can_005(root: Path) -> InvariantResult:
+    """CS-CAN-005 — Package canonical mirror is byte-identical to source docs."""
+
+    missing: list[str] = []
+    drifted: list[str] = []
+    evidence: list[str] = []
+
+    for src_rel, dst_rel in _C3_CANONICAL_MIRROR_BINDINGS:
+        try:
+            src = _resolve_repo_path(root, src_rel, must_exist=True, must_be_file=True)
+        except _UserInputError:
+            missing.append(src_rel)
+            continue
+        try:
+            dst = _resolve_repo_path(root, dst_rel, must_exist=True, must_be_file=True)
+        except _UserInputError:
+            missing.append(dst_rel)
+            continue
+
+        evidence.extend([src_rel, dst_rel])
+        if src.read_bytes() != dst.read_bytes():
+            drifted.append(f"{dst_rel} != {src_rel}")
+
+    if missing:
+        joined = ", ".join(sorted(set(missing)))
+        return InvariantResult(
+            "CS-CAN-005",
+            "FAIL",
+            [f"{CONSISTENCY_SPEC_DOC}#cs-can-005--package-canonical-mirror-is-byte-identical-to-source-docs"],
+            f"Missing canonical mirror source/target file(s): {joined}.",
+        )
+
+    if drifted:
+        sample = ", ".join(sorted(drifted)[:8])
+        extra = len(drifted) - 8
+        suffix = "" if extra <= 0 else f" (+{extra} more)"
+        return InvariantResult(
+            "CS-CAN-005",
+            "FAIL",
+            [f"{CONSISTENCY_SPEC_DOC}#cs-can-005--package-canonical-mirror-is-byte-identical-to-source-docs"],
+            (
+                "Canonical package mirror drift detected. "
+                "Run `python -m tools.build_builtin_pack` and rerun sweep. Drift: "
+                f"{sample}{suffix}."
+            ),
+        )
+
+    return InvariantResult(
+        "CS-CAN-005",
+        "PASS",
+        sorted(set(evidence)),
         "",
     )
 
@@ -2681,7 +2752,23 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "docs/operations/triage.md",
         "docs/operations/waivers.md",
         "docs/operations/workflows.md",
+        "docs/research/README.md",
         "docs/research/experiment-design.md",
+        "docs/research/metrics.md",
+        # Package canonical mirror (must stay byte-identical to source docs)
+        "belgi/canonicals/CANONICALS.md",
+        "belgi/canonicals/terminology.md",
+        "belgi/canonicals/trust-model.md",
+        "belgi/canonicals/docs/operations/consistency-sweep.md",
+        "belgi/canonicals/docs/operations/evidence-bundles.md",
+        "belgi/canonicals/docs/operations/evidence-ownership.md",
+        "belgi/canonicals/docs/operations/runbook_dev_tier.md",
+        "belgi/canonicals/docs/operations/running-belgi.md",
+        "belgi/canonicals/docs/operations/security.md",
+        "belgi/canonicals/docs/operations/waivers.md",
+        "belgi/canonicals/docs/research/README.md",
+        "belgi/canonicals/docs/research/experiment-design.md",
+        "belgi/canonicals/docs/research/metrics.md",
         # Operator convenience scripts (public ergonomics surface)
         "scripts/belgi_latest_run.ps1",
         "scripts/belgi_latest_run.py",
@@ -3384,6 +3471,9 @@ def _sweep_managed_surface_files(root: Path) -> list[str]:
         if rel.startswith("docs/operations/") and rel.endswith(".md"):
             out.add(rel)
             continue
+        if rel.startswith("belgi/canonicals/") and rel.endswith(".md"):
+            out.add(rel)
+            continue
         if rel.startswith(".github/workflows/") and rel.endswith((".yml", ".yaml")):
             out.add(rel)
             continue
@@ -3844,6 +3934,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-CAN-004": check_cs_can_004,
         "CS-CAN-002": check_cs_can_002,
         "CS-CAN-003": check_cs_can_003,
+        "CS-CAN-005": check_cs_can_005,
         "CS-TERM-001": check_cs_term_001,
         # Gate-schema
         "CS-GS-001": check_cs_gs_001,
