@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import importlib
 import json
 import os
 import re
@@ -160,6 +161,60 @@ def _normalize_cli_exit_code(raw_rc: int) -> int:
     if raw_rc == 3:
         return RC_USER_ERROR
     return RC_INTERNAL_ERROR
+
+
+@contextlib.contextmanager
+def _patched_argv(prog: str, argv: list[str]) -> Any:
+    original_argv = list(sys.argv)
+    try:
+        sys.argv = [prog, *argv]
+        yield
+    finally:
+        sys.argv = original_argv
+
+
+def _invoke_module_main(module_name: str, argv: list[str]) -> int:
+    module = importlib.import_module(module_name)
+    main_fn = getattr(module, "main", None)
+    if not callable(main_fn):
+        raise RuntimeError(f"{module_name} does not expose callable main()")
+
+    try:
+        with _patched_argv(module_name, argv):
+            rc = main_fn()
+    except SystemExit as e:
+        if isinstance(e.code, int):
+            return int(e.code)
+        return 3
+
+    if not isinstance(rc, int):
+        raise RuntimeError(f"{module_name}.main() returned non-int exit code: {type(rc).__name__}")
+    return int(rc)
+
+
+def _run_stage_forwarder(
+    *,
+    stage_name: str,
+    parser: argparse.ArgumentParser,
+    module_name: str,
+    forward_args: list[str],
+) -> int:
+    if not forward_args:
+        return _emit_cli_user_error_result(
+            primary_reason=f"missing stage arguments; see `belgi stage {stage_name} --help`",
+            parser=parser,
+        )
+
+    try:
+        raw_rc = _invoke_module_main(module_name, forward_args)
+    except Exception as e:
+        print(f"[belgi stage {stage_name}] ERROR: {e}", file=sys.stderr)
+        print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+        return RC_INTERNAL_ERROR
+
+    if raw_rc == 3:
+        print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+    return raw_rc
 
 
 # ---------------------------------------------------------------------------
@@ -2620,7 +2675,62 @@ def main(argv: list[str] | None = None) -> int:
         help="Acknowledge this is a demo-grade checker (required)"
     )
     p_bundle_check.add_argument("--verbose", action="store_true", help="Verbose output")
-    
+
+    # stage (strict forwarders to canonical chain entrypoints)
+    p_stage = subparsers.add_parser(
+        "stage",
+        help="Forward canonical stage modules (thin wrappers only)",
+    )
+    stage_subs = p_stage.add_subparsers(dest="stage_command", help="Stage subcommand")
+
+    p_stage_c1 = stage_subs.add_parser(
+        "c1",
+        help="Forward to chain.compiler_c1_intent",
+        epilog="Example: belgi stage c1 --repo . --intent-spec IntentSpec.core.md --out out/LockedSpec.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_q = stage_subs.add_parser(
+        "q",
+        help="Forward to chain.gate_q_verify",
+        epilog="Example: belgi stage q --repo . --intent-spec IntentSpec.core.md --locked-spec out/LockedSpec.json --evidence-manifest out/EvidenceManifest.json --out out/GateVerdict.Q.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_r = stage_subs.add_parser(
+        "r",
+        help="Forward to chain.gate_r_verify",
+        epilog="Example: belgi stage r --repo . --locked-spec out/LockedSpec.json --gate-q-verdict out/GateVerdict.Q.json --evidence-manifest out/EvidenceManifest.json --evaluated-revision <sha40> --out out/verify_report.R.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_c3 = stage_subs.add_parser(
+        "c3",
+        help="Forward to chain.compiler_c3_docs",
+        epilog="Example: belgi stage c3 --repo . --locked-spec out/LockedSpec.json --gate-q-verdict out/GateVerdict.Q.json --gate-r-verdict out/GateVerdict.R.json --r-snapshot-manifest out/EvidenceManifest.R.json --out-final-manifest out/EvidenceManifest.json --out-log docs/docs_compilation_log.json --out-docs docs/chain_of_changes.md --out-bundle-dir out/bundle --out-bundle-root-sha out/bundle_root.sha256 --prompt-block-hashes out/prompt_block_hashes.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_s = stage_subs.add_parser(
+        "s",
+        help="Stage S subcommands (seal/verify)",
+    )
+    stage_s_subs = p_stage_s.add_subparsers(dest="stage_s_command", help="S subcommand")
+
+    p_stage_s_seal = stage_s_subs.add_parser(
+        "seal",
+        help="Forward to chain.seal_bundle",
+        epilog="Example: belgi stage s seal --repo . --locked-spec out/LockedSpec.json --gate-q-verdict out/GateVerdict.Q.json --gate-r-verdict out/GateVerdict.R.json --evidence-manifest out/EvidenceManifest.json --final-commit-sha <sha40> --sealed-at 1970-01-01T00:00:00Z --signer human:ops --out out/SealManifest.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_s_verify = stage_s_subs.add_parser(
+        "verify",
+        help="Forward to chain.gate_s_verify",
+        epilog="Example: belgi stage s verify --repo . --locked-spec out/LockedSpec.json --seal-manifest out/SealManifest.json --evidence-manifest out/EvidenceManifest.json --out out/GateVerdict.S.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
     # supplychain-scan
     p_sc = subparsers.add_parser("supplychain-scan", help="Run supplychain scan and produce policy.supplychain artifact")
     p_sc.add_argument("--repo", default=".", help="Repo root")
@@ -2651,7 +2761,7 @@ def main(argv: list[str] | None = None) -> int:
     p_adv.set_defaults(func=cmd_adversarial_scan)
 
     try:
-        args = parser.parse_args(argv)
+        args, unknown_args = parser.parse_known_args(argv)
     except _CliUsageError as e:
         return _emit_cli_user_error_result(
             primary_reason=e.message or "invalid CLI usage",
@@ -2664,6 +2774,14 @@ def main(argv: list[str] | None = None) -> int:
             return RC_GO
         return _emit_cli_user_error_result(
             primary_reason=f"argument parsing failed (rc={code})",
+            parser=parser,
+        )
+
+    if args.command == "stage":
+        setattr(args, "forward_args", [str(x) for x in unknown_args])
+    elif unknown_args:
+        return _emit_cli_user_error_result(
+            primary_reason=f"unrecognized arguments: {' '.join(str(x) for x in unknown_args)}",
             parser=parser,
         )
     
@@ -2726,6 +2844,63 @@ def main(argv: list[str] | None = None) -> int:
             rc = _emit_cli_user_error_result(
                 primary_reason="missing bundle subcommand",
                 parser=p_bundle,
+                help_to_stderr=True,
+            )
+    elif args.command == "stage":
+        stage_forward_args = [str(x) for x in (getattr(args, "forward_args", []) or [])]
+        if args.stage_command == "c1":
+            rc = _run_stage_forwarder(
+                stage_name="c1",
+                parser=p_stage_c1,
+                module_name="chain.compiler_c1_intent",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "q":
+            rc = _run_stage_forwarder(
+                stage_name="q",
+                parser=p_stage_q,
+                module_name="chain.gate_q_verify",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "r":
+            rc = _run_stage_forwarder(
+                stage_name="r",
+                parser=p_stage_r,
+                module_name="chain.gate_r_verify",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "c3":
+            rc = _run_stage_forwarder(
+                stage_name="c3",
+                parser=p_stage_c3,
+                module_name="chain.compiler_c3_docs",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "s":
+            if args.stage_s_command == "seal":
+                rc = _run_stage_forwarder(
+                    stage_name="s seal",
+                    parser=p_stage_s_seal,
+                    module_name="chain.seal_bundle",
+                    forward_args=stage_forward_args,
+                )
+            elif args.stage_s_command == "verify":
+                rc = _run_stage_forwarder(
+                    stage_name="s verify",
+                    parser=p_stage_s_verify,
+                    module_name="chain.gate_s_verify",
+                    forward_args=stage_forward_args,
+                )
+            else:
+                rc = _emit_cli_user_error_result(
+                    primary_reason="missing stage s subcommand",
+                    parser=p_stage_s,
+                    help_to_stderr=True,
+                )
+        else:
+            rc = _emit_cli_user_error_result(
+                primary_reason="missing stage subcommand",
+                parser=p_stage,
                 help_to_stderr=True,
             )
     elif args.command == "supplychain-scan":
