@@ -51,7 +51,10 @@ def _head_sha(repo: Path) -> str:
     return cp.stdout.strip().lower()
 
 
-def test_tier0_run_succeeds_without_repo_root_canonical_docs(tmp_path: Path, capsys: object) -> None:
+def test_tier0_run_succeeds_without_repo_root_canonical_docs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     repo = _init_min_git_repo(tmp_path)
     assert not (repo / "CANONICALS.md").exists()
     assert not (repo / "terminology.md").exists()
@@ -71,7 +74,10 @@ def test_tier0_run_succeeds_without_repo_root_canonical_docs(tmp_path: Path, cap
     assert machine["verdict"] == "GO"
 
 
-def test_tier0_run_uses_engine_canonicals_when_repo_has_collision(tmp_path: Path, capsys: object) -> None:
+def test_tier0_run_uses_engine_canonicals_when_repo_has_collision(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     repo = _init_min_git_repo(tmp_path)
     (repo / "terminology.md").write_text("ADOPTER COLLISION\n", encoding="utf-8", errors="strict")
     subprocess.run(["git", "-C", str(repo), "add", "terminology.md"], check=True, capture_output=True, text=True)
