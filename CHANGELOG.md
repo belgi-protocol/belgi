@@ -2,6 +2,41 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.3.0 — 2026-02-28
+
+### Summary
+Capability-focused release for run revision authority, stage discoverability parity, workflow drift controls, and operator guidance hardening.
+
+### Added
+- Authoritative revision-binding evidence for `belgi run`:
+  - schema-valid `policy.revision_binding` artifact indexed in `EvidenceManifest`
+  - explicit binding fields for `base_revision` and `evaluated_revision` (stable SHA40 values)
+- Repo-local stage forwarders on primary CLI:
+  - `belgi stage c1|q|r|c3|s seal|s verify`
+  - thin-wrapper forwarding to canonical `chain.*` entrypoints
+- Private workflow safety helper for repository variables:
+  - `tools/github_vars_sanitize.py` with allowlist filtering and secret-like key rejection
+
+### Changed
+- Run correctness hardening:
+  - base/evaluated revision discovery is fail-closed and SHA40-only
+  - `LockedSpec.upstream_state.commit_sha` and Gate R revision wiring are aligned to authoritative base/evaluated inputs
+  - supplychain scan revision labeling now binds to the evaluated revision
+- CLI stage forwarder reliability:
+  - normalized exit-code mapping under CLI SSOT `{0,10,20,30}`
+  - canonical stage module rc mapping preserved (`2 -> 10`, `3 -> 20`)
+  - missing repo-local stage modules return actionable USER_ERROR
+- Workflow drift controls:
+  - ACT-context upload suppression hardened with explicit override (`BELGI_FORCE_ACT`)
+  - repository variable consumption restricted to allowlisted keys with fail-closed secret-like detection
+  - run-smoke call-sites aligned to explicit `--base-revision` usage
+- Operations/docs clarity:
+  - updated repo-local vs wheel-only boundaries for stage usage
+  - evaluated revision examples now use stable SHA40 guidance (no moving refs for canonical examples)
+
+### Notes
+- Public entry intentionally records shipped capability surfaces only; private qualification/proof packets remain under private `temp/` operations paths.
+
 ## 1.2.0 — 2026-02-27
 
 ### Summary
