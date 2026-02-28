@@ -260,7 +260,8 @@ def test_stage_forwarders_invoke_expected_modules(
     [
         (0, 0),
         (10, 10),
-        (2, 20),
+        (2, 10),
+        (1, 30),
         (20, 20),
         (30, 30),
         (3, 20),
@@ -290,13 +291,17 @@ def test_stage_missing_args_is_user_error_with_help_pointer(capsys: pytest.Captu
     assert "belgi stage r --help" in str(payload["primary_reason"])
 
 
-def test_stage_rc2_prints_help_remediation(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_stage_rc2_is_no_go_and_prints_help_remediation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.setattr(belgi_cli, "_invoke_module_main", lambda _m, _a: 2)
 
     rc = belgi_main(["stage", "q", "--repo", "."])
     captured = capsys.readouterr()
 
-    assert rc == 20
+    assert rc == 10
+    assert rc != 20
     assert "[belgi stage q] Remediation: run `belgi stage q --help`." in captured.err
 
 

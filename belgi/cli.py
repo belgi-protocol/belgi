@@ -231,11 +231,25 @@ def _run_stage_forwarder(
         print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
         return RC_INTERNAL_ERROR
 
+    normalized_rc: int
+    if raw_rc == RC_GO:
+        normalized_rc = RC_GO
+    elif raw_rc == RC_NO_GO:
+        normalized_rc = RC_NO_GO
+    elif raw_rc == RC_USER_ERROR:
+        normalized_rc = RC_USER_ERROR
+    elif raw_rc == RC_INTERNAL_ERROR:
+        normalized_rc = RC_INTERNAL_ERROR
+    elif raw_rc == 2:
+        normalized_rc = RC_NO_GO
+    elif raw_rc == 3:
+        normalized_rc = RC_USER_ERROR
+    else:
+        normalized_rc = RC_INTERNAL_ERROR
+
     if raw_rc in (2, 3):
         print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
-    if raw_rc == 2:
-        return RC_USER_ERROR
-    return raw_rc
+    return normalized_rc
 
 
 # ---------------------------------------------------------------------------
