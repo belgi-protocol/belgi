@@ -16,6 +16,40 @@ Core intent contract (v1):
 - IntentSpec template: `belgi/templates/IntentSpec.core.template.md`
 - IntentSpec schema: `../../schemas/IntentSpec.schema.json`
 
+## Quickstart (Local DEV loop)
+
+Minimum branch workflow:
+1. Start from your normal branch and initialize repo-local BELGI surfaces once:
+   - `belgi init --repo .`
+2. Run the canonical path:
+   - `belgi run --repo . --tier tier-1`
+3. Inspect the latest attempt under:
+   - `.belgi/runs/<run_key>/<attempt_id>/`
+4. Optional integrity replay check:
+   - `belgi verify --repo .`
+
+Revision semantics in `belgi run` (deterministic, fail-closed):
+- `evaluated_revision` is resolved from current `HEAD` (40-hex SHA) and bound into evidence via `policy.revision_binding` at:
+  - `.belgi/runs/<run_key>/<attempt_id>/repo/out/artifacts/policy.revision_binding.json`
+- `base_revision` discovery order:
+  1. CI env (`BELGI_BASE_SHA`, then `GITHUB_BASE_SHA`)
+  2. upstream merge-base (`merge-base(HEAD, @{u})`)
+  3. explicit `--base-revision <40-hex SHA>`
+- If none of the above can resolve a valid base revision, `belgi run` fails closed with `USER_ERROR (20)`.
+
+## What BELGI creates
+
+- `.belgi/`:
+  - run workspace and attempt outputs
+  - canonical attempt layout: `.belgi/runs/<run_key>/<attempt_id>/`
+  - includes run summary, engine staging repo (`repo/`), and produced artifacts (`repo/out/...`)
+- `belgi_pack/`:
+  - repo-local overlay pack bootstrap created by `belgi init`
+  - operator-provisioned surface used by overlay checks
+- Boundary:
+  - `.belgi` is run output/workspace state
+  - `belgi_pack` is a repo surface for operator-managed overlay policy
+
 ## 0) Inputs
 
 ### 0.1 IntentSpec (required input artifact)
