@@ -35,6 +35,20 @@ Use:
 If the sweep reports `REGEN-SEALS NO-GO` after `--fix-fixtures`, regenerate only the touched seal-related fixtures (and immediately re-verify via Gate S):
 - `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`
 
+## github_vars_sanitize.py
+
+Purpose: deterministic workflow helper for repository variable ingestion (`BELGI_VARS_JSON`) in GitHub Actions.
+
+Behavior contract:
+- Parses raw JSON safely; invalid JSON or non-object input returns `{}`.
+- Allowlist only: `BELGI_REF`, `BELGI_REPO_URL`.
+- Fail-closed if any secret-like repository variable key (`SECRET|TOKEN|PASSWORD|KEY`) has a non-empty value.
+- Never logs variable values.
+
+Integration:
+- Imported by `.github/workflows/belgi-tier1-reusable.yml` Python step (`Resolve BELGI_REF (fail-closed)`).
+- Tested by `tests/test_github_vars_sanitize.py`.
+
 ## rehash.py
 
 Purpose: recompute `sha256(bytes)` bindings in manifest-style artifacts after legitimate byte changes (e.g., after LF normalization or regenerated reports).

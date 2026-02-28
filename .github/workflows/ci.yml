@@ -63,8 +63,27 @@ jobs:
             echo "❌ \`policy/consistency_sweep.summary.md\` not found." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          force_raw="${BELGI_FORCE_ACT:-}"
+          force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
+          force_act=0
+          if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
+            force_act=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+            is_act=1
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload consistency sweep artifacts
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: consistency-sweep

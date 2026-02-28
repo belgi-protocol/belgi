@@ -106,7 +106,7 @@ python -m chain.gate_r_verify \
   --locked-spec .belgi/runs/${RUN_ID}/LockedSpec.json \
   --gate-q-verdict .belgi/runs/${RUN_ID}/GateVerdict.Q.json \
   --evidence-manifest .belgi/runs/${RUN_ID}/EvidenceManifest.json \
-  --evaluated-revision HEAD \
+  --evaluated-revision <EVALUATED_SHA40> \
   --gate-verdict-out .belgi/runs/${RUN_ID}/GateVerdict.R.json \
   --out .belgi/runs/${RUN_ID}/verify_report.json \
   --overlay belgi_pack

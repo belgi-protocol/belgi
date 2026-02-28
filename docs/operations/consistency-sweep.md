@@ -75,6 +75,21 @@ Canonical trigger:
 - docs/operations/waivers.md
 - docs/operations/security.md
 - docs/operations/workflows.md
+- docs/research/README.md
+- docs/research/metrics.md
+- belgi/canonicals/CANONICALS.md
+- belgi/canonicals/terminology.md
+- belgi/canonicals/trust-model.md
+- belgi/canonicals/docs/operations/consistency-sweep.md
+- belgi/canonicals/docs/operations/evidence-bundles.md
+- belgi/canonicals/docs/operations/evidence-ownership.md
+- belgi/canonicals/docs/operations/runbook_dev_tier.md
+- belgi/canonicals/docs/operations/running-belgi.md
+- belgi/canonicals/docs/operations/security.md
+- belgi/canonicals/docs/operations/waivers.md
+- belgi/canonicals/docs/research/README.md
+- belgi/canonicals/docs/research/experiment-design.md
+- belgi/canonicals/docs/research/metrics.md
 - belgi/templates/PromptBundle.blocks.md
 - belgi/templates/DocsCompiler.template.md
 - scripts/belgi_latest_run.ps1
@@ -176,6 +191,34 @@ Canonical trigger:
 - pass/fail criteria:
   - PASS if all confirmations hold.
   - FAIL if any public-safe doc includes bypass-oriented rule details or lacks the prohibition.
+
+#### CS-CAN-005 — Package canonical mirror is byte-identical to source docs
+- invariant_id: CS-CAN-005
+- statement: Package canonical resources under `belgi/canonicals/**` MUST be byte-identical to their authoritative source docs at repo root.
+- source-of-truth (file/section):
+  - tools/build_builtin_pack.py (canonical mirror sync implementation)
+  - belgi/core/run_orchestrator.py (C3 staged canonicals load from package resources)
+- check procedure (deterministic):
+  1) For each required source→mirror pair, read bytes and compare exact equality:
+     - `CANONICALS.md` → `belgi/canonicals/CANONICALS.md`
+     - `terminology.md` → `belgi/canonicals/terminology.md`
+     - `trust-model.md` → `belgi/canonicals/trust-model.md`
+     - `docs/operations/consistency-sweep.md` → `belgi/canonicals/docs/operations/consistency-sweep.md`
+     - `docs/operations/evidence-bundles.md` → `belgi/canonicals/docs/operations/evidence-bundles.md`
+     - `docs/operations/evidence-ownership.md` → `belgi/canonicals/docs/operations/evidence-ownership.md`
+     - `docs/operations/runbook_dev_tier.md` → `belgi/canonicals/docs/operations/runbook_dev_tier.md`
+     - `docs/operations/running-belgi.md` → `belgi/canonicals/docs/operations/running-belgi.md`
+     - `docs/operations/security.md` → `belgi/canonicals/docs/operations/security.md`
+     - `docs/operations/waivers.md` → `belgi/canonicals/docs/operations/waivers.md`
+     - `docs/research/README.md` → `belgi/canonicals/docs/research/README.md`
+     - `docs/research/experiment-design.md` → `belgi/canonicals/docs/research/experiment-design.md`
+     - `docs/research/metrics.md` → `belgi/canonicals/docs/research/metrics.md`
+  2) FAIL if any source/mirror file is missing.
+  3) FAIL if any compared pair is byte-different.
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if every source/mirror pair exists and bytes match exactly.
+  - FAIL otherwise; remediation: run `python -m tools.build_builtin_pack` and rerun sweep.
 
 #### CS-TERM-001 — Terminology Drift Guard (Verification vs Validation)
 - invariant_id: CS-TERM-001

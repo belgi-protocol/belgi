@@ -27,14 +27,16 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import importlib
 import json
+import os
 import re
 import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, metadata, version
 from importlib.resources import as_file, files
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
     from typing import Any
@@ -58,6 +60,15 @@ RC_GO = 0
 RC_NO_GO = 10
 RC_USER_ERROR = 20
 RC_INTERNAL_ERROR = 30
+_SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_CI_BASE_SHA_ENV_ORDER: tuple[str, ...] = (
+    "BELGI_BASE_SHA",
+    "GITHUB_BASE_SHA",
+)
+_STAGE_FORWARDER_NOTE = (
+    "Strict forwarder to repo-local canonical chain entrypoints (`python -m chain.*`). "
+    "May be unavailable in wheel-only installs where `chain/*` is not present."
+)
 
 
 class _UserInputError(ValueError):
@@ -76,7 +87,7 @@ class _CliUsageError(Exception):
 class _BelgiArgumentParser(argparse.ArgumentParser):
     """ArgumentParser variant that raises deterministic usage errors."""
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise _CliUsageError(message, self)
 
 
@@ -154,6 +165,95 @@ def _normalize_cli_exit_code(raw_rc: int) -> int:
     if raw_rc == 3:
         return RC_USER_ERROR
     return RC_INTERNAL_ERROR
+
+
+@contextlib.contextmanager
+def _patched_argv(prog: str, argv: list[str]) -> Any:
+    original_argv = list(sys.argv)
+    try:
+        sys.argv = [prog, *argv]
+        yield
+    finally:
+        sys.argv = original_argv
+
+
+def _invoke_module_main(module_name: str, argv: list[str]) -> int:
+    module = importlib.import_module(module_name)
+    main_fn = getattr(module, "main", None)
+    if not callable(main_fn):
+        raise RuntimeError(f"{module_name} does not expose callable main()")
+
+    try:
+        with _patched_argv(module_name, argv):
+            rc = main_fn()
+    except SystemExit as e:
+        if isinstance(e.code, int):
+            return int(e.code)
+        return 3
+
+    if not isinstance(rc, int):
+        raise RuntimeError(f"{module_name}.main() returned non-int exit code: {type(rc).__name__}")
+    return int(rc)
+
+
+def _run_stage_forwarder(
+    *,
+    stage_name: str,
+    parser: argparse.ArgumentParser,
+    module_name: str,
+    forward_args: list[str],
+) -> int:
+    if not forward_args:
+        return _emit_cli_user_error_result(
+            primary_reason=f"missing stage arguments; see `belgi stage {stage_name} --help`",
+            parser=parser,
+        )
+
+    try:
+        raw_rc = _invoke_module_main(module_name, forward_args)
+    except ModuleNotFoundError as e:
+        missing_name = str(getattr(e, "name", "") or "").strip()
+        message = str(e)
+        if (
+            missing_name == "chain"
+            or missing_name.startswith("chain.")
+            or "No module named 'chain'" in message
+            or "No module named \"chain\"" in message
+        ):
+            return _emit_cli_user_error_result(
+                primary_reason=(
+                    "repo-local stage module missing; run inside BELGI source checkout or "
+                    "use canonical python -m chain.<...> invocation"
+                ),
+                parser=parser,
+            )
+        print(f"[belgi stage {stage_name}] ERROR: {e}", file=sys.stderr)
+        print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+        return RC_INTERNAL_ERROR
+    except Exception as e:
+        print(f"[belgi stage {stage_name}] ERROR: {e}", file=sys.stderr)
+        print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+        return RC_INTERNAL_ERROR
+
+    normalized_rc: int
+    if raw_rc == RC_GO:
+        normalized_rc = RC_GO
+    elif raw_rc == RC_NO_GO:
+        normalized_rc = RC_NO_GO
+    elif raw_rc == RC_USER_ERROR:
+        normalized_rc = RC_USER_ERROR
+    elif raw_rc == RC_INTERNAL_ERROR:
+        normalized_rc = RC_INTERNAL_ERROR
+    elif raw_rc == 2:
+        normalized_rc = RC_NO_GO
+    elif raw_rc == 3:
+        normalized_rc = RC_USER_ERROR
+    else:
+        normalized_rc = RC_INTERNAL_ERROR
+
+    if raw_rc in (2, 3):
+        print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+    return normalized_rc
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +484,99 @@ def _repo_head_sha(repo_root: Path) -> str:
     raise ValueError("cannot determine repo HEAD SHA; `git rev-parse HEAD` returned an invalid value")
 
 
+def _resolve_commit_sha(repo_root: Path, revision: str, *, label: str) -> str:
+    raw = str(revision or "").strip()
+    if not raw:
+        raise ValueError(f"{label} missing/empty")
+    if not _SHA1_40_RE.fullmatch(raw):
+        raise ValueError(f"{label} must be a stable 40-hex commit SHA")
+    try:
+        cp = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--verify", f"{raw}^{{commit}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+    except Exception as e:
+        raise ValueError(f"{label} is not resolvable in repository history") from e
+    resolved = cp.stdout.strip()
+    if not _SHA1_40_RE.fullmatch(resolved):
+        raise ValueError(f"{label} resolved to a non-40-hex commit SHA")
+    return resolved.lower()
+
+
+def _current_upstream_ref(repo_root: Path) -> str | None:
+    cp = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
+    if cp.returncode != 0:
+        return None
+    ref = cp.stdout.strip()
+    if not ref:
+        return None
+    return ref
+
+
+def _merge_base_with_upstream(repo_root: Path) -> str:
+    cp = subprocess.run(
+        ["git", "-C", str(repo_root), "merge-base", "--", "HEAD", "@{u}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
+    if cp.returncode != 0:
+        msg = (cp.stderr or cp.stdout or "").strip()
+        raise ValueError(f"cannot resolve merge-base(HEAD, @{{u}}): {msg or 'unknown error'}")
+    merge_base = cp.stdout.strip()
+    if not _SHA1_40_RE.fullmatch(merge_base):
+        raise ValueError("merge-base(HEAD, @{u}) did not resolve to a 40-hex commit SHA")
+    return _resolve_commit_sha(repo_root, merge_base, label="merge-base revision")
+
+
+def _discover_base_revision(
+    *,
+    repo_root: Path,
+    explicit_base_revision: str | None,
+) -> tuple[str, str, str | None]:
+    for env_name in _CI_BASE_SHA_ENV_ORDER:
+        env_val = os.environ.get(env_name)
+        if env_val is None or not str(env_val).strip():
+            continue
+        try:
+            sha = _resolve_commit_sha(repo_root, str(env_val), label=f"{env_name}")
+        except ValueError as e:
+            raise _UserInputError(f"invalid CI base revision from {env_name}: {e}") from e
+        return sha, "ci_env", None
+
+    upstream_ref = _current_upstream_ref(repo_root)
+    if upstream_ref is not None:
+        try:
+            sha = _merge_base_with_upstream(repo_root)
+        except ValueError as e:
+            raise _UserInputError(f"cannot resolve base revision from upstream {upstream_ref}: {e}") from e
+        return sha, "merge_base", upstream_ref
+
+    explicit_raw = str(explicit_base_revision or "").strip()
+    if explicit_raw:
+        try:
+            sha = _resolve_commit_sha(repo_root, explicit_raw, label="--base-revision")
+        except ValueError as e:
+            raise _UserInputError(str(e)) from e
+        return sha, "explicit", None
+
+    raise _UserInputError(
+        "base revision unavailable: no CI base SHA env and no upstream tracking branch. "
+        "Do set upstream tracking (`git branch --set-upstream-to origin/<branch>`) or rerun with "
+        "`--base-revision <40-hex SHA>`."
+    )
+
+
 def _validate_tier_id(raw: str) -> str:
     tier_id = str(raw or "").strip()
     if tier_id not in ALLOWED_RUN_TIERS:
@@ -435,6 +628,8 @@ def _derive_run_key_preimage(
     workspace_rel: str,
     intent_source_rel: str,
     intent_spec_sha256: str,
+    base_revision: str,
+    evaluated_revision: str,
     protocol_pack_name: str,
     protocol_pack_id: str,
     protocol_manifest_sha256: str,
@@ -450,7 +645,9 @@ def _derive_run_key_preimage(
         "intent_spec_sha256": intent_spec_sha256,
         "belgi": {
             "package_version": _package_version(),
-            "repo_head_sha": _repo_head_sha(repo_root),
+            "repo_head_sha": evaluated_revision,
+            "base_revision_sha": base_revision,
+            "evaluated_revision_sha": evaluated_revision,
         },
         "protocol_pack": {
             "manifest_sha256": protocol_manifest_sha256,
@@ -655,10 +852,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"[belgi init] ERROR: invalid workspace path: {e}", file=sys.stderr)
         return 3
 
+    protocol = None
     try:
         protocol = get_builtin_protocol_context()
     except Exception as e:
         print(f"[belgi init] ERROR: cannot load builtin protocol pack identity: {e}", file=sys.stderr)
+        return 3
+    if protocol is None:
+        print("[belgi init] ERROR: cannot load builtin protocol pack identity", file=sys.stderr)
         return 3
 
     adopter_dir = workspace_dir
@@ -1084,6 +1285,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     preimage: dict[str, object] | None = None
     chain_repo_dir: Path | None = None
     chain_out_dir: Path | None = None
+    base_revision: str | None = None
+    evaluated_revision: str | None = None
+    revision_discovery_method: str | None = None
+    upstream_ref: str | None = None
     chain_paths: list[Path] = []
     adversarial_findings_present = False
     adversarial_findings_count = 0
@@ -1143,13 +1348,22 @@ def cmd_run(args: argparse.Namespace) -> int:
             intent_source_rel = "(auto)"
 
         protocol = get_builtin_protocol_context()
-        repo_head_sha = _repo_head_sha(repo_root)
+        try:
+            evaluated_revision = _repo_head_sha(repo_root)
+        except ValueError as e:
+            raise _UserInputError(f"cannot resolve evaluated revision: {e}") from e
+        base_revision, revision_discovery_method, upstream_ref = _discover_base_revision(
+            repo_root=repo_root,
+            explicit_base_revision=getattr(args, "base_revision", None),
+        )
         preimage = _derive_run_key_preimage(
             repo_root=repo_root,
             tier_id=tier_id,
             workspace_rel=workspace_rel,
             intent_source_rel=intent_source_rel,
             intent_spec_sha256=sha256_bytes(intent_bytes),
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             protocol_pack_name=protocol.pack_name,
             protocol_pack_id=protocol.pack_id,
             protocol_manifest_sha256=protocol.manifest_sha256,
@@ -1174,7 +1388,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 chain_repo_dir=attempt_dir / CHAIN_REPO_DIRNAME,
                 run_key=run_key,
                 tier_id=tier_id,
-                repo_head_sha=repo_head_sha,
+                base_revision=base_revision,
+                evaluated_revision=evaluated_revision,
+                revision_discovery_method=revision_discovery_method,
+                upstream_ref=upstream_ref,
                 intent_bytes=intent_bytes,
                 protocol=protocol,
             )
@@ -2144,6 +2361,7 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     # Verify protocol identity binding (pack_id/pack_name/manifest_sha256).
     # NOTE: source is metadata and is intentionally NOT treated as identity.
     checks_total += 1
+    protocol: Any | None = None
     try:
         protocol = get_builtin_protocol_context()
         if locked_spec is not None:
@@ -2329,6 +2547,9 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     
     # Success summary (run_ids all present and unique at this point)
     display_run_id = run_ids.get("SealManifest") or "UNKNOWN"
+    if protocol is None:
+        print("[belgi bundle check] ERROR: builtin protocol context unavailable", file=sys.stderr)
+        return 1
     if getattr(args, "verbose", False):
         print(f"[belgi bundle check] source: {bundle_dir}", file=sys.stdout)
         print(f"[belgi bundle check] run_id: {display_run_id}", file=sys.stdout)
@@ -2419,6 +2640,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help='Repo-relative intent/spec source to bind into run_key (default: auto-generated "(auto)")',
     )
+    p_run.add_argument(
+        "--base-revision",
+        default=None,
+        help=(
+            "Optional 40-hex base commit SHA used only when CI base env and upstream merge-base "
+            "discovery are unavailable"
+        ),
+    )
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")
 
     # run new
@@ -2493,7 +2722,109 @@ def main(argv: list[str] | None = None) -> int:
         help="Acknowledge this is a demo-grade checker (required)"
     )
     p_bundle_check.add_argument("--verbose", action="store_true", help="Verbose output")
-    
+
+    # stage (strict forwarders to canonical chain entrypoints)
+    p_stage = subparsers.add_parser(
+        "stage",
+        help="Run repo-local stage forwarders (thin wrappers only)",
+        description=_STAGE_FORWARDER_NOTE,
+        epilog=(
+            "Use `belgi run` for end-to-end canonical spine execution. "
+            "Use `belgi stage` for targeted stage operations."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    stage_subs = p_stage.add_subparsers(dest="stage_command", help="Stage subcommand")
+
+    p_stage_c1 = stage_subs.add_parser(
+        "c1",
+        help="Forward to chain.compiler_c1_intent",
+        epilog=(
+            f"{_STAGE_FORWARDER_NOTE}\n\n"
+            "Abbreviated example (source checkout): "
+            "belgi stage c1 --repo . --intent-spec IntentSpec.core.md --out out/LockedSpec.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_q = stage_subs.add_parser(
+        "q",
+        help="Forward to chain.gate_q_verify",
+        epilog=(
+            f"{_STAGE_FORWARDER_NOTE}\n\n"
+            "Abbreviated example (source checkout): "
+            "belgi stage q --repo . --intent-spec IntentSpec.core.md "
+            "--locked-spec out/LockedSpec.json --evidence-manifest out/EvidenceManifest.json "
+            "--out out/GateVerdict.Q.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_r = stage_subs.add_parser(
+        "r",
+        help="Forward to chain.gate_r_verify",
+        epilog=(
+            f"{_STAGE_FORWARDER_NOTE}\n\n"
+            "Abbreviated example (source checkout): "
+            "belgi stage r --repo . --locked-spec out/LockedSpec.json "
+            "--gate-q-verdict out/GateVerdict.Q.json --evidence-manifest out/EvidenceManifest.json "
+            "--evaluated-revision <sha40> --out out/verify_report.R.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_c3 = stage_subs.add_parser(
+        "c3",
+        help="Forward to chain.compiler_c3_docs",
+        epilog=(
+            f"{_STAGE_FORWARDER_NOTE}\n\n"
+            "Abbreviated example (source checkout): "
+            "belgi stage c3 --repo . --locked-spec out/LockedSpec.json "
+            "--gate-q-verdict out/GateVerdict.Q.json --gate-r-verdict out/GateVerdict.R.json "
+            "--r-snapshot-manifest out/EvidenceManifest.R.json --out-final-manifest out/EvidenceManifest.json "
+            "--out-log docs/docs_compilation_log.json --out-docs docs/chain_of_changes.md "
+            "--out-bundle-dir out/bundle --out-bundle-root-sha out/bundle_root.sha256 "
+            "--prompt-block-hashes out/prompt_block_hashes.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_s = stage_subs.add_parser(
+        "s",
+        help="Stage S subcommands (seal/verify)",
+        description=_STAGE_FORWARDER_NOTE,
+        epilog="Choose `seal` or `verify` for targeted Stage S operations.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    stage_s_subs = p_stage_s.add_subparsers(dest="stage_s_command", help="S subcommand")
+
+    p_stage_s_seal = stage_s_subs.add_parser(
+        "seal",
+        help="Forward to chain.seal_bundle",
+        epilog=(
+            f"{_STAGE_FORWARDER_NOTE}\n\n"
+            "Abbreviated example (source checkout): "
+            "belgi stage s seal --repo . --locked-spec out/LockedSpec.json "
+            "--gate-q-verdict out/GateVerdict.Q.json --gate-r-verdict out/GateVerdict.R.json "
+            "--evidence-manifest out/EvidenceManifest.json --final-commit-sha <sha40> "
+            "--sealed-at 1970-01-01T00:00:00Z --signer human:ops --out out/SealManifest.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    p_stage_s_verify = stage_s_subs.add_parser(
+        "verify",
+        help="Forward to chain.gate_s_verify",
+        epilog=(
+            f"{_STAGE_FORWARDER_NOTE}\n\n"
+            "Abbreviated example (source checkout): "
+            "belgi stage s verify --repo . --locked-spec out/LockedSpec.json "
+            "--seal-manifest out/SealManifest.json --evidence-manifest out/EvidenceManifest.json "
+            "--out out/GateVerdict.S.json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
     # supplychain-scan
     p_sc = subparsers.add_parser("supplychain-scan", help="Run supplychain scan and produce policy.supplychain artifact")
     p_sc.add_argument("--repo", default=".", help="Repo root")
@@ -2524,7 +2855,7 @@ def main(argv: list[str] | None = None) -> int:
     p_adv.set_defaults(func=cmd_adversarial_scan)
 
     try:
-        args = parser.parse_args(argv)
+        args, unknown_args = parser.parse_known_args(argv)
     except _CliUsageError as e:
         return _emit_cli_user_error_result(
             primary_reason=e.message or "invalid CLI usage",
@@ -2537,6 +2868,14 @@ def main(argv: list[str] | None = None) -> int:
             return RC_GO
         return _emit_cli_user_error_result(
             primary_reason=f"argument parsing failed (rc={code})",
+            parser=parser,
+        )
+
+    if args.command == "stage":
+        setattr(args, "forward_args", [str(x) for x in unknown_args])
+    elif unknown_args:
+        return _emit_cli_user_error_result(
+            primary_reason=f"unrecognized arguments: {' '.join(str(x) for x in unknown_args)}",
             parser=parser,
         )
     
@@ -2599,6 +2938,63 @@ def main(argv: list[str] | None = None) -> int:
             rc = _emit_cli_user_error_result(
                 primary_reason="missing bundle subcommand",
                 parser=p_bundle,
+                help_to_stderr=True,
+            )
+    elif args.command == "stage":
+        stage_forward_args = [str(x) for x in (getattr(args, "forward_args", []) or [])]
+        if args.stage_command == "c1":
+            rc = _run_stage_forwarder(
+                stage_name="c1",
+                parser=p_stage_c1,
+                module_name="chain.compiler_c1_intent",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "q":
+            rc = _run_stage_forwarder(
+                stage_name="q",
+                parser=p_stage_q,
+                module_name="chain.gate_q_verify",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "r":
+            rc = _run_stage_forwarder(
+                stage_name="r",
+                parser=p_stage_r,
+                module_name="chain.gate_r_verify",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "c3":
+            rc = _run_stage_forwarder(
+                stage_name="c3",
+                parser=p_stage_c3,
+                module_name="chain.compiler_c3_docs",
+                forward_args=stage_forward_args,
+            )
+        elif args.stage_command == "s":
+            if args.stage_s_command == "seal":
+                rc = _run_stage_forwarder(
+                    stage_name="s seal",
+                    parser=p_stage_s_seal,
+                    module_name="chain.seal_bundle",
+                    forward_args=stage_forward_args,
+                )
+            elif args.stage_s_command == "verify":
+                rc = _run_stage_forwarder(
+                    stage_name="s verify",
+                    parser=p_stage_s_verify,
+                    module_name="chain.gate_s_verify",
+                    forward_args=stage_forward_args,
+                )
+            else:
+                rc = _emit_cli_user_error_result(
+                    primary_reason="missing stage s subcommand",
+                    parser=p_stage_s,
+                    help_to_stderr=True,
+                )
+        else:
+            rc = _emit_cli_user_error_result(
+                primary_reason="missing stage subcommand",
+                parser=p_stage,
                 help_to_stderr=True,
             )
     elif args.command == "supplychain-scan":

@@ -60,8 +60,27 @@ jobs:
               | tee -a "proof_preflight/pin_check_negative_${bad_ref}.log"
           done
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          force_raw="${BELGI_FORCE_ACT:-}"
+          force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
+          force_act=0
+          if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
+            force_act=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+            is_act=1
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload preflight logs
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-preflight-${{ steps.sha.outputs.pr_sha }}
@@ -104,8 +123,27 @@ jobs:
           python .github/scripts/run_belgi_smoke.py --repo . --tier tier-1 \
             2>&1 | tee "proof_smoke/tier1-${{ matrix.os }}.log"
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          force_raw="${BELGI_FORCE_ACT:-}"
+          force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
+          force_act=0
+          if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
+            force_act=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+            is_act=1
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload smoke artifacts
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-smoke-${{ matrix.os }}-${{ needs.preflight.outputs.pr_sha }}
@@ -153,8 +191,27 @@ jobs:
           "${VENV}/bin/belgi" --help > proof_wheel/belgi-help.log
           "${VENV}/bin/belgi" pack verify --builtin > proof_wheel/builtin-verify.log 2>&1
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          force_raw="${BELGI_FORCE_ACT:-}"
+          force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
+          force_act=0
+          if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
+            force_act=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+            is_act=1
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload wheel artifact
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-wheel-${{ needs.preflight.outputs.pr_sha }}
@@ -162,7 +219,7 @@ jobs:
           path: dist/*.whl
 
       - name: Upload wheel logs
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-wheel-logs-${{ needs.preflight.outputs.pr_sha }}

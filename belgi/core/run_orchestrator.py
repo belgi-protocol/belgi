@@ -27,6 +27,7 @@ FIXED_SEALED_AT = "2000-01-01T00:30:00Z"
 FIXED_SIGNER = "human:belgi-run"
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _CHAIN_TEMPLATE_BINDINGS: tuple[tuple[str, str], ...] = (
     ("templates/PromptBundle.blocks.md", "belgi/templates/PromptBundle.blocks.md"),
     ("templates/DocsCompiler.template.md", "belgi/templates/DocsCompiler.template.md"),
@@ -389,6 +390,13 @@ def _append_command(
     )
 
 
+def _require_commit_sha40(value: str, *, label: str) -> str:
+    sha = str(value or "").strip().lower()
+    if not _SHA1_40_RE.fullmatch(sha):
+        raise ValueError(f"{label} must be a stable 40-hex commit SHA")
+    return sha
+
+
 def _load_builtin_resource_bytes(*, resource_rel: str) -> bytes:
     try:
         node = resource_files("belgi").joinpath(*resource_rel.split("/"))
@@ -609,10 +617,20 @@ def orchestrate_chain_run(
     chain_repo_dir: Path,
     run_key: str,
     tier_id: str,
-    repo_head_sha: str,
+    base_revision: str,
+    evaluated_revision: str,
+    revision_discovery_method: str,
+    upstream_ref: str | None,
     intent_bytes: bytes,
     protocol: Any,
 ) -> RunOrchestrationResult:
+    base_revision = _require_commit_sha40(base_revision, label="base_revision")
+    evaluated_revision = _require_commit_sha40(evaluated_revision, label="evaluated_revision")
+    if revision_discovery_method not in ("ci_env", "merge_base", "explicit"):
+        raise ValueError(
+            "revision_discovery_method must be one of: ci_env, merge_base, explicit"
+        )
+
     command_log_mode = _command_log_mode_for_tier(protocol=protocol, tier_id=tier_id)
     tier_test_plan = _tier_test_plan_for_tier(protocol=protocol, tier_id=tier_id) if tier_id == "tier-1" else None
 
@@ -624,6 +642,7 @@ def orchestrate_chain_run(
     rel_prompt_hashes = f"{CHAIN_OUT_DIRNAME}/prompt_block_hashes.json"
     rel_prompt_policy = f"{CHAIN_OUT_DIRNAME}/policy.prompt_bundle.json"
     rel_policy_inv = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.invariant_eval.json"
+    rel_policy_revision_binding = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.revision_binding.json"
     rel_policy_supply = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.supplychain.json"
     rel_policy_adv = f"{CHAIN_OUT_DIRNAME}/artifacts/policy.adversarial_scan.json"
     rel_command_log = f"{CHAIN_OUT_DIRNAME}/artifacts/command_log.json"
@@ -642,12 +661,12 @@ def orchestrate_chain_run(
     rel_seal = f"{CHAIN_OUT_DIRNAME}/SealManifest.json"
     rel_gate_s = f"{CHAIN_OUT_DIRNAME}/GateVerdict.S.json"
 
-    _git_clone_at_commit(source_repo=source_repo_root, dest_repo=chain_repo_dir, commit_sha=repo_head_sha)
+    _git_clone_at_commit(source_repo=source_repo_root, dest_repo=chain_repo_dir, commit_sha=evaluated_revision)
 
     commands_executed: list[Any] = []
     rc_supply = run_supplychain_scan(
         repo=chain_repo_dir,
-        evaluated_revision=repo_head_sha,
+        evaluated_revision=evaluated_revision,
         out_path=chain_repo_dir / rel_policy_supply,
         deterministic=True,
         run_id=run_key,
@@ -686,6 +705,7 @@ def orchestrate_chain_run(
         },
     )
 
+    repo_ref = str(upstream_ref).strip() if isinstance(upstream_ref, str) and str(upstream_ref).strip() else "HEAD"
     c1_argv = [
         "--repo",
         str(chain_repo_dir),
@@ -696,7 +716,9 @@ def orchestrate_chain_run(
         "--run-id",
         run_key,
         "--repo-ref",
-        repo_head_sha,
+        repo_ref,
+        "--upstream-commit-sha",
+        base_revision,
         "--prompt-bundle-out",
         rel_prompt_bundle,
         "--prompt-bundle-id",
@@ -734,6 +756,17 @@ def orchestrate_chain_run(
     locked_tier = str(tier_obj.get("tier_id") or "") if isinstance(tier_obj, dict) else ""
     if locked_tier != tier_id:
         raise ValueError(f"LockedSpec tier mismatch: expected {tier_id}, got {locked_tier or '<missing>'}")
+    upstream_state = locked_spec.get("upstream_state")
+    locked_base_revision = (
+        str(upstream_state.get("commit_sha") or "")
+        if isinstance(upstream_state, dict)
+        else ""
+    )
+    if locked_base_revision != base_revision:
+        raise ValueError(
+            "LockedSpec.upstream_state.commit_sha mismatch after C1 compilation "
+            f"(expected {base_revision}, got {locked_base_revision or '<missing>'})"
+        )
 
     _ensure_complete_prompt_block_hashes(
         chain_repo_root=chain_repo_dir,
@@ -784,7 +817,7 @@ def orchestrate_chain_run(
     diff_path = chain_repo_dir / rel_diff
     diff_path.parent.mkdir(parents=True, exist_ok=True)
     diff_path.write_bytes(
-        _git_diff_bytes(repo_root=chain_repo_dir, upstream=repo_head_sha, evaluated=repo_head_sha)
+        _git_diff_bytes(repo_root=chain_repo_dir, upstream=base_revision, evaluated=evaluated_revision)
     )
 
     command_log_path = chain_repo_dir / rel_command_log
@@ -871,6 +904,41 @@ def orchestrate_chain_run(
             {"schema_version": "1.0.0", "run_id": run_key, "commands_executed": commands_executed},
         )
 
+    revision_binding_payload: dict[str, Any] = {
+        "schema_version": "1.0.0",
+        "run_id": run_key,
+        "generated_at": FIXED_GENERATED_AT,
+        "summary": {"total_checks": 1, "passed": 1, "failed": 0},
+        "checks": [
+            {
+                "check_id": "REV-BIND-001",
+                "passed": True,
+                "message": "base and evaluated revisions are bound into the run contract.",
+                "base_revision": base_revision,
+                "evaluated_revision": evaluated_revision,
+                "discovery_method": revision_discovery_method,
+                "upstream_ref": repo_ref if upstream_ref is not None else None,
+            }
+        ],
+        "base_revision": base_revision,
+        "evaluated_revision": evaluated_revision,
+        "discovery_method": revision_discovery_method,
+    }
+    revision_binding_path = chain_repo_dir / rel_policy_revision_binding
+    revision_binding_schema = protocol.read_json("schemas/PolicyReportPayload.schema.json")
+    if not isinstance(revision_binding_schema, dict):
+        raise ValueError("PolicyReportPayload schema must be a JSON object")
+    revision_binding_errors = validate_schema(
+        revision_binding_payload,
+        revision_binding_schema,
+        root_schema=revision_binding_schema,
+        path="PolicyReportPayload",
+    )
+    if revision_binding_errors:
+        first = revision_binding_errors[0]
+        raise ValueError(f"revision binding policy payload invalid at {first.path}: {first.message}")
+    _write_json(revision_binding_path, revision_binding_payload)
+
     artifacts = [
         _make_evidence_artifact(
             chain_repo_root=chain_repo_dir,
@@ -893,6 +961,14 @@ def orchestrate_chain_run(
             path=chain_repo_dir / rel_policy_inv,
             kind="policy_report",
             artifact_id="policy.invariant_eval",
+            media_type="application/json",
+            produced_by="C1",
+        ),
+        _make_evidence_artifact(
+            chain_repo_root=chain_repo_dir,
+            path=revision_binding_path,
+            kind="policy_report",
+            artifact_id="policy.revision_binding",
             media_type="application/json",
             produced_by="C1",
         ),
@@ -1003,7 +1079,7 @@ def orchestrate_chain_run(
         "--out",
         rel_verify_report,
         "--evaluated-revision",
-        repo_head_sha,
+        evaluated_revision,
     ]
     rc_gate_r = _invoke_module_main("chain.gate_r_verify", gate_r_argv)
     if rc_gate_r != 0:
@@ -1063,7 +1139,7 @@ def orchestrate_chain_run(
         "--evidence-manifest",
         rel_evidence_final,
         "--final-commit-sha",
-        repo_head_sha,
+        evaluated_revision,
         "--sealed-at",
         FIXED_SEALED_AT,
         "--signer",

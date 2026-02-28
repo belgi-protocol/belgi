@@ -23,6 +23,23 @@ from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes, validat
 PACK_ALLOWED_FOLDERS = frozenset({"schemas", "gates", "tiers"})
 PACK_ALLOWED_FILES = frozenset({MANIFEST_FILENAME})
 
+# Canonical docs/resources mirrored into package data for C3 staging.
+_C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
+    ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
+    ("terminology.md", "belgi/canonicals/terminology.md"),
+    ("trust-model.md", "belgi/canonicals/trust-model.md"),
+    ("docs/operations/consistency-sweep.md", "belgi/canonicals/docs/operations/consistency-sweep.md"),
+    ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
+    ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
+    ("docs/operations/runbook_dev_tier.md", "belgi/canonicals/docs/operations/runbook_dev_tier.md"),
+    ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
+    ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
+    ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
+    ("docs/research/README.md", "belgi/canonicals/docs/research/README.md"),
+    ("docs/research/experiment-design.md", "belgi/canonicals/docs/research/experiment-design.md"),
+    ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
+)
+
 
 def _repo_root_from_this_file() -> Path:
     # tools/build_builtin_pack.py -> <repo_root>/tools/build_builtin_pack.py
@@ -66,6 +83,24 @@ def _copy_tree_bytes(*, src_root: Path, dst_root: Path) -> None:
             dst_path.write_bytes(src_path.read_bytes())
 
 
+def _sync_c3_canonical_mirror(*, repo_root: Path) -> None:
+    """Sync package canonicals from authoritative repo sources (fail-closed)."""
+
+    for src_rel, dst_rel in _C3_CANONICAL_MIRROR_BINDINGS:
+        src = repo_root / src_rel
+        dst = repo_root / dst_rel
+        _assert_under_repo_root(repo_root, src)
+        _assert_under_repo_root(repo_root, dst)
+
+        if not src.exists() or not src.is_file() or src.is_symlink():
+            raise ValueError(f"missing/invalid canonical source for mirror sync: {src_rel}")
+        if dst.exists() and (dst.is_symlink() or not dst.is_file()):
+            raise ValueError(f"invalid canonical mirror target path: {dst_rel}")
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(src.read_bytes())
+
+
 def build_builtin_pack(*, repo_root: Path, pack_root: Path, pack_name: str) -> None:
     _assert_under_repo_root(repo_root, pack_root)
 
@@ -89,6 +124,9 @@ def build_builtin_pack(*, repo_root: Path, pack_root: Path, pack_name: str) -> N
 
     # Fail-closed: verify pack shape (no unexpected content).
     _assert_pack_shape(pack_root)
+
+    # Keep C3 package canonicals derivation deterministic and one-way.
+    _sync_c3_canonical_mirror(repo_root=repo_root)
 
 
 def _assert_pack_shape(pack_root: Path) -> None:

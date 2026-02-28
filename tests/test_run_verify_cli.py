@@ -18,7 +18,15 @@ for _k in list(sys.modules.keys()):
 
 import belgi.cli as belgi_cli
 from belgi.cli import main as belgi_main
+from belgi.core.schema import validate_schema
 from belgi.core import run_orchestrator
+from belgi.protocol.pack import get_builtin_protocol_context
+
+
+@pytest.fixture(autouse=True)
+def _clear_base_revision_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BELGI_BASE_SHA", raising=False)
+    monkeypatch.delenv("GITHUB_BASE_SHA", raising=False)
 
 
 def _list_dirs(path: Path) -> list[Path]:
@@ -81,6 +89,28 @@ def _run_git(repo: Path, args: list[str]) -> None:
     assert cp.returncode == 0, cp.stderr
 
 
+def _git_rev_parse(repo: Path, revision: str) -> str:
+    cp = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", revision],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cp.returncode == 0, cp.stderr
+    sha = cp.stdout.strip().lower()
+    assert re.fullmatch(r"[0-9a-f]{40}", sha)
+    return sha
+
+
+def _unset_upstream_if_present(repo: Path) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), "branch", "--unset-upstream"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 def _remove_tests_tree_and_commit(repo: Path) -> None:
     _run_git(repo, ["rm", "-r", "--quiet", "--ignore-unmatch", "tests"])
     _run_git(repo, ["commit", "-m", "remove tests tree"])
@@ -91,7 +121,9 @@ def _run_tier1_and_get_attempt(repo: Path, capsys: object) -> tuple[dict[str, ob
     assert rc_init == 0
     _ = capsys.readouterr()
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--base-revision", head_sha])
     assert rc_run == 0
     captured = capsys.readouterr()
 
@@ -138,11 +170,12 @@ def _write_applied_waiver(
 
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
 
-    rc1 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc1 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc1 == 0
 
     runs_root = repo / ".belgi" / "runs"
@@ -175,7 +208,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     rc_verify_1 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_1 == 0
 
-    rc2 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc2 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc2 == 0
 
     run_dirs_after_second = _list_dirs(runs_root)
@@ -193,6 +226,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
 
 def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo), "--workspace", ".belgi_alt"])
     assert rc_init == 0
@@ -201,7 +235,19 @@ def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) ->
     assert ".belgi/" in gitignore
     assert ".belgi_alt/" in gitignore
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--workspace", ".belgi_alt"])
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-1",
+            "--workspace",
+            ".belgi_alt",
+            "--base-revision",
+            head_sha,
+        ]
+    )
     assert rc_run == 0
 
     runs_root = repo / ".belgi_alt" / "runs"
@@ -216,10 +262,11 @@ def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) ->
 
 def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
 
     runs_root = repo / ".belgi" / "runs"
@@ -244,17 +291,109 @@ def test_run_fails_closed_when_repo_head_sha_is_unavailable(tmp_path: Path) -> N
     assert rc_init == 0
 
     rc_run = belgi_main(["run", "--repo", str(tmp_path), "--tier", "tier-0"])
-    assert rc_run == 10
+    assert rc_run == 20
 
 
-def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
+def test_run_fails_closed_when_base_revision_is_unavailable(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    _unset_upstream_if_present(repo)
+    monkeypatch.delenv("BELGI_BASE_SHA", raising=False)
+    monkeypatch.delenv("GITHUB_BASE_SHA", raising=False)
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
     _ = capsys.readouterr()
 
     rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    reason = str(machine.get("primary_reason") or "")
+    assert "base revision unavailable" in reason
+    assert "--base-revision <40-hex SHA>" in reason
+
+
+def test_run_revision_binding_is_authoritative_for_base_and_evaluated(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+    evaluated_sha = _git_rev_parse(repo, "HEAD")
+
+    monkeypatch.setenv("BELGI_BASE_SHA", base_sha)
+    monkeypatch.delenv("GITHUB_BASE_SHA", raising=False)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+    attempt_dir = repo / ".belgi" / "runs" / run_key / attempt_id
+
+    locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    assert str(locked_spec.get("upstream_state", {}).get("commit_sha", "")) == base_sha
+
+    evidence_input = json.loads(
+        (attempt_dir / "repo" / "out" / "EvidenceManifest.input.json").read_text(encoding="utf-8", errors="strict")
+    )
+    artifacts = evidence_input.get("artifacts")
+    assert isinstance(artifacts, list)
+    revision_binding_artifacts = [
+        art
+        for art in artifacts
+        if isinstance(art, dict)
+        and art.get("kind") == "policy_report"
+        and art.get("id") == "policy.revision_binding"
+    ]
+    assert len(revision_binding_artifacts) == 1
+    revision_binding_artifact = revision_binding_artifacts[0]
+    assert revision_binding_artifact.get("produced_by") == "C1"
+    storage_ref = str(revision_binding_artifact.get("storage_ref", ""))
+    revision_binding_path = attempt_dir / "repo" / Path(*storage_ref.split("/"))
+    revision_binding_payload = json.loads(revision_binding_path.read_text(encoding="utf-8", errors="strict"))
+
+    policy_schema = get_builtin_protocol_context().read_json("schemas/PolicyReportPayload.schema.json")
+    schema_errors = validate_schema(
+        revision_binding_payload,
+        policy_schema,
+        root_schema=policy_schema,
+        path="policy.revision_binding",
+    )
+    assert schema_errors == []
+
+    assert revision_binding_payload.get("base_revision") == base_sha
+    assert revision_binding_payload.get("evaluated_revision") == evaluated_sha
+    checks = revision_binding_payload.get("checks")
+    assert isinstance(checks, list) and len(checks) >= 1
+    first_check = checks[0]
+    assert isinstance(first_check, dict)
+    assert first_check.get("check_id") == "REV-BIND-001"
+    assert first_check.get("passed") is True
+    assert first_check.get("base_revision") == base_sha
+    assert first_check.get("evaluated_revision") == evaluated_sha
+    assert first_check.get("discovery_method") == "ci_env"
+
+    verify_report = json.loads((attempt_dir / "repo" / "out" / "verify_report.R.json").read_text(encoding="utf-8", errors="strict"))
+    assert str(verify_report.get("repo_revision") or "") == evaluated_sha
+
+
+def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
     captured = capsys.readouterr()
 
@@ -271,10 +410,11 @@ def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
 
 def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
     _ = capsys.readouterr()
 
@@ -299,7 +439,9 @@ def test_tier0_emits_findings_signal_in_summary_and_machine_json(tmp_path: Path,
     assert rc_init == 0
     _ = capsys.readouterr()
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
     captured = capsys.readouterr()
 
@@ -354,7 +496,9 @@ def test_tier0_fails_closed_if_policy_scan_exists_but_signal_missing(
 
     monkeypatch.setattr(belgi_cli, "orchestrate_chain_run", _patched_orchestrate_chain_run)
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 10
     captured = capsys.readouterr()
     machine = json.loads(captured.out.splitlines()[0])
@@ -466,7 +610,9 @@ def test_tier1_passes_with_valid_applied_waiver(tmp_path: Path, capsys: object) 
         expires_at="2100-01-01T00:00:00Z",
     )
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--base-revision", head_sha])
     assert rc_run == 0
     captured = capsys.readouterr()
 
@@ -520,7 +666,9 @@ def test_tier1_fails_with_expired_or_mismatched_applied_waiver(
         expires_at=expires_at,
     )
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--base-revision", head_sha])
     assert rc_run == 10
     captured = capsys.readouterr()
     machine = json.loads(captured.out.splitlines()[0])
@@ -551,7 +699,9 @@ def test_run_summary_exists_on_run_tests_failure(
 
     monkeypatch.setattr(run_orchestrator, "_run_tools_belgi", _patched_run_tools)
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1"])
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--base-revision", head_sha])
     assert rc_run == 10
     captured_run = capsys.readouterr()
     machine_run = json.loads(captured_run.out.splitlines()[0])

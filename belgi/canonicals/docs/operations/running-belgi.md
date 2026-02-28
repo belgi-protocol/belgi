@@ -16,6 +16,40 @@ Core intent contract (v1):
 - IntentSpec template: `belgi/templates/IntentSpec.core.template.md`
 - IntentSpec schema: `../../schemas/IntentSpec.schema.json`
 
+## Quickstart (Local DEV loop)
+
+Minimum branch workflow:
+1. Start from your normal branch and initialize repo-local BELGI surfaces once:
+   - `belgi init --repo .`
+2. Run the canonical path:
+   - `belgi run --repo . --tier tier-1`
+3. Inspect the latest attempt under:
+   - `.belgi/runs/<run_key>/<attempt_id>/`
+4. Optional integrity replay check:
+   - `belgi verify --repo .`
+
+Revision semantics in `belgi run` (deterministic, fail-closed):
+- `evaluated_revision` is resolved from current `HEAD` (40-hex SHA) and bound into evidence via `policy.revision_binding` at:
+  - `.belgi/runs/<run_key>/<attempt_id>/repo/out/artifacts/policy.revision_binding.json`
+- `base_revision` discovery order:
+  1. CI env (`BELGI_BASE_SHA`, then `GITHUB_BASE_SHA`)
+  2. upstream merge-base (`merge-base(HEAD, @{u})`)
+  3. explicit `--base-revision <40-hex SHA>`
+- If none of the above can resolve a valid base revision, `belgi run` fails closed with `USER_ERROR (20)`.
+
+## What BELGI creates
+
+- `.belgi/`:
+  - run workspace and attempt outputs
+  - canonical attempt layout: `.belgi/runs/<run_key>/<attempt_id>/`
+  - includes run summary, engine staging repo (`repo/`), and produced artifacts (`repo/out/...`)
+- `belgi_pack/`:
+  - repo-local overlay pack bootstrap created by `belgi init`
+  - operator-provisioned surface used by overlay checks
+- Boundary:
+  - `.belgi` is run output/workspace state
+  - `belgi_pack` is a repo surface for operator-managed overlay policy
+
 ## 0) Inputs
 
 ### 0.1 IntentSpec (required input artifact)
@@ -95,15 +129,17 @@ python -m chain.gate_r_verify \
   --locked-spec LockedSpec.json \
   --gate-q-verdict GateVerdict.Q.json \
   --evidence-manifest EvidenceManifest.json \
-  --evaluated-revision HEAD \
+  --evaluated-revision <EVALUATED_SHA40> \
   --gate-verdict-out GateVerdict.R.json \
   --out policy/verify_report.json
 ```
 
+`evaluated_revision` MUST be a stable 40-hex commit SHA (not a moving ref). Obtain it via `git rev-parse HEAD`.
+
 Fixture note (Gate R):
 - Fixtures are runnable without git history. If the repo is a zip snapshot (no `.git`), Gate R may accept a 40-hex `--evaluated-revision` as an opaque id only when inputs are under `policy/fixtures/`.
 - In that fixture context, git-dependent checks are bypassed or replaced with byte-level comparisons (e.g., diff-bytes parsing).
-- Real runs remain strict and require a resolvable commit-ish for `--evaluated-revision`.
+- Real runs remain strict and require a stable 40-hex commit SHA for `--evaluated-revision`.
 
 ### Stage C3 — Compile docs + final manifest (append-only)
 
@@ -153,6 +189,25 @@ python -m chain.gate_s_verify \
   --evidence-manifest EvidenceManifest.final.json \
   --out GateVerdict.S.json
 ```
+
+### Convenience forwarders (repo-local)
+
+`belgi stage` is a convenience wrapper over the canonical repo-local entrypoints (`python -m chain.*`). It does not change stage semantics.
+
+Examples:
+
+```bash
+belgi stage c1 --repo . --intent-spec IntentSpec.core.md --out LockedSpec.json --run-id run-001 --repo-ref owner/repo --prompt-bundle-out bundle/prompt_bundle.bin
+belgi stage q --repo . --intent-spec IntentSpec.core.md --locked-spec LockedSpec.json --evidence-manifest EvidenceManifest.json --out GateVerdict.Q.json
+belgi stage r --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json
+belgi stage c3 --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --gate-r-verdict GateVerdict.R.json --r-snapshot-manifest EvidenceManifest.json --out-final-manifest EvidenceManifest.final.json --out-log docs/docs_compilation_log.json --out-docs docs/run_docs.md --out-bundle-dir bundle --out-bundle-root-sha docs/bundle_root.sha256 --profile public --prompt-block-hashes prompt_block_hashes.json
+belgi stage s seal --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --gate-r-verdict GateVerdict.R.json --evidence-manifest EvidenceManifest.final.json --final-commit-sha <FINAL_COMMIT_SHA> --sealed-at 2000-01-01T00:30:00Z --signer human:release-manager --out SealManifest.json
+belgi stage s verify --repo . --locked-spec LockedSpec.json --protocol-pack belgi/_protocol_packs/v1 --seal-manifest SealManifest.json --evidence-manifest EvidenceManifest.final.json --out GateVerdict.S.json
+```
+
+Repo-local boundary:
+- Canonical stage entrypoints remain `python -m chain.*`.
+- `belgi stage` may be unavailable in wheel-only installs where `chain/*` is not present; run from a BELGI source checkout in that case.
 
 ## 1B) When to run what (DEV / PRE-MERGE / RELEASE)
 
@@ -360,7 +415,7 @@ Failure handling:
 
 Deterministic verifier (MUST-level enforcement):
 - Run the canonical verifier and write a deterministic JSON report:
-  - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision HEAD --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
+  - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
   - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
 
 Verifier ordered-results contract (hardening note):

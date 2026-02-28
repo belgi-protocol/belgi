@@ -59,17 +59,25 @@ jobs:
         shell: python
         env:
           BELGI_REF_INPUT: ${{ inputs.belgi_ref }}
-          BELGI_REF_VAR: ${{ vars.BELGI_REF }}
           BELGI_REPO_URL_INPUT: ${{ inputs.belgi_repo_url }}
-          BELGI_REPO_URL_VAR: ${{ vars.BELGI_REPO_URL }}
+          BELGI_VARS_JSON: ${{ toJson(vars) }}
         run: |
           import os
           import pathlib
           import sys
 
+          from tools.github_vars_sanitize import SecretLikeVariableError, sanitize_vars_map
+
+          vars_raw = os.environ.get("BELGI_VARS_JSON", "") or ""
+          try:
+              vars_map = sanitize_vars_map(vars_raw)
+          except SecretLikeVariableError as e:
+              print(str(e), file=sys.stderr)
+              raise SystemExit(1)
+
           ref = (os.environ.get("BELGI_REF_INPUT", "") or "").strip()
           if not ref:
-              ref = (os.environ.get("BELGI_REF_VAR", "") or "").strip()
+              ref = str(vars_map.get("BELGI_REF", "") or "").strip()
           if not ref:
               print(
                   "BELGI_REF is required. Set workflow input 'belgi_ref' or repository variable 'BELGI_REF'.",
@@ -86,15 +94,13 @@ jobs:
               handle.write(f"BELGI_REF={ref}\n")
               repo_url = (os.environ.get("BELGI_REPO_URL_INPUT", "") or "").strip()
               if not repo_url:
-                  repo_url = (os.environ.get("BELGI_REPO_URL_VAR", "") or "").strip()
+                  repo_url = str(vars_map.get("BELGI_REPO_URL", "") or "").strip()
               if not repo_url:
                   repo_url = "https://github.com/belgi-protocol/belgi.git"
               handle.write(f"BELGI_REPO_URL={repo_url}\n")
 
       - name: Validate immutable BELGI_REF pin (fail-closed)
         shell: python
-        env:
-          BELGI_REF: ${{ env.BELGI_REF }}
         run: |
           import os
           import subprocess
@@ -110,9 +116,6 @@ jobs:
 
       - name: Install pinned BELGI CLI
         shell: python
-        env:
-          BELGI_REF: ${{ env.BELGI_REF }}
-          BELGI_REPO_URL: ${{ env.BELGI_REPO_URL }}
         run: |
           import os
           import subprocess
@@ -186,7 +189,27 @@ jobs:
               raise SystemExit(1)
           (attempt_dir / "logs").mkdir(parents=True, exist_ok=True)
 
+      - name: Detect ACT context
+        id: act_context
+        shell: bash
+        run: |
+          set -euo pipefail
+          actor="${GITHUB_ACTOR:-}"
+          force_raw="${BELGI_FORCE_ACT:-}"
+          force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
+          force_act=0
+          if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
+            force_act=1
+          fi
+
+          is_act=0
+          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+            is_act=1
+          fi
+          echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
+
       - name: Upload BELGI run artifact
+        if: ${{ steps.act_context.outputs.is_act != '1' }}
         uses: actions/upload-artifact@v4
         with:
           name: belgi-run-${{ github.sha }}-${{ matrix.os }}-${{ matrix.tier }}

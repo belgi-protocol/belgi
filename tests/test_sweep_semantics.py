@@ -154,6 +154,65 @@ def test_cs_term_001_allows_schema_validation_context(tmp_path: Path) -> None:
     assert res.status == "PASS"
 
 
+def test_cs_can_005_passes_when_package_mirror_matches_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import sweep as sweep_mod
+
+    source_rel = "docs/operations/running-belgi.md"
+    mirror_rel = "belgi/canonicals/docs/operations/running-belgi.md"
+    monkeypatch.setattr(sweep_mod, "_C3_CANONICAL_MIRROR_BINDINGS", ((source_rel, mirror_rel),))
+
+    src = tmp_path / source_rel
+    dst = tmp_path / mirror_rel
+    src.parent.mkdir(parents=True, exist_ok=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("stable sha40 guidance\n", encoding="utf-8", errors="strict", newline="\n")
+    dst.write_text("stable sha40 guidance\n", encoding="utf-8", errors="strict", newline="\n")
+
+    res = sweep_mod.check_cs_can_005(tmp_path)
+    assert res.invariant_id == "CS-CAN-005"
+    assert res.status == "PASS"
+
+
+def test_cs_can_005_fails_when_package_mirror_drifts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import sweep as sweep_mod
+
+    source_rel = "docs/operations/running-belgi.md"
+    mirror_rel = "belgi/canonicals/docs/operations/running-belgi.md"
+    monkeypatch.setattr(sweep_mod, "_C3_CANONICAL_MIRROR_BINDINGS", ((source_rel, mirror_rel),))
+
+    src = tmp_path / source_rel
+    dst = tmp_path / mirror_rel
+    src.parent.mkdir(parents=True, exist_ok=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("stable sha40 guidance\n", encoding="utf-8", errors="strict", newline="\n")
+    dst.write_text("moving ref guidance\n", encoding="utf-8", errors="strict", newline="\n")
+
+    res = sweep_mod.check_cs_can_005(tmp_path)
+    assert res.invariant_id == "CS-CAN-005"
+    assert res.status == "FAIL"
+    assert mirror_rel in res.remediation
+    assert source_rel in res.remediation
+
+
+def test_managed_sweep_surfaces_include_package_canonicals(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "belgi/canonicals/docs/operations/running-belgi.md": "# mirror\n",
+        },
+    )
+    managed = sweep_mod._sweep_managed_surface_files(tmp_path)
+    assert "belgi/canonicals/docs/operations/running-belgi.md" in managed
+
+
 def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from tools import sweep as sweep_mod
 

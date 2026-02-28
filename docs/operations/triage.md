@@ -2,6 +2,21 @@
 
 Helpers in `scripts/` are convenience only. BELGI verifiers and gate verdict artifacts are the authority.
 
+## 30-second pointers
+
+### If you installed via wheel
+
+- Expected to work: packaged BELGI CLI surfaces (for example `belgi about`, `belgi pack verify --builtin`).
+- Repo-local only surface: `belgi stage` forwarders (`chain/*` modules must be available in the execution context).
+- Detection signal:
+  - `belgi stage ...` returns `USER_ERROR (20)` with:
+    - `repo-local stage module missing; run inside BELGI source checkout or use canonical python -m chain.<...> invocation`
+
+### If you are in a source checkout
+
+- Use `belgi stage` for targeted per-stage operations; it is a strict forwarder to `python -m chain.*`.
+- Prefer `belgi run` for the canonical end-to-end orchestration spine and consolidated run artifacts.
+
 ## Where artifacts live
 
 BELGI run artifacts are repo-local under the workspace runs root, typically:
