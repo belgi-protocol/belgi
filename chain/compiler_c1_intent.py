@@ -156,6 +156,13 @@ def _git_head_sha(repo_root: Path) -> str:
     return s
 
 
+def _require_commit_sha40(raw: str, *, name: str) -> str:
+    sha = str(raw or "").strip()
+    if not re.fullmatch(r"[0-9A-Fa-f]{40}", sha):
+        raise _UserInputError(f"{name} must be a stable 40-hex commit SHA")
+    return sha.lower()
+
+
 def _git_is_clean(repo_root: Path) -> bool:
     try:
         out = subprocess.check_output(["git", "status", "--porcelain"], cwd=str(repo_root))
@@ -294,6 +301,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--run-id", required=True, help="Run identifier")
 
     ap.add_argument("--repo-ref", required=True, help="Pinned repository reference string")
+    ap.add_argument(
+        "--upstream-commit-sha",
+        default=None,
+        help="Optional authoritative upstream/base commit SHA (40-hex).",
+    )
     pb_group = ap.add_mutually_exclusive_group(required=True)
     pb_group.add_argument(
         "--prompt-bundle",
@@ -527,6 +539,12 @@ def main(argv: list[str] | None = None) -> int:
             raise _UserInputError("--run-id missing/empty")
         if not isinstance(args.repo_ref, str) or not args.repo_ref.strip():
             raise _UserInputError("--repo-ref missing/empty")
+        upstream_commit_sha_arg = str(args.upstream_commit_sha or "").strip()
+        upstream_commit_sha = (
+            _require_commit_sha40(upstream_commit_sha_arg, name="--upstream-commit-sha")
+            if upstream_commit_sha_arg
+            else _git_head_sha(repo_root)
+        )
 
         if os.environ.get("CI") and not _git_is_clean(repo_root):
             raise _UserInputError("repo is dirty; refuse to emit LockedSpec with dirty_flag=false")
@@ -704,7 +722,7 @@ def main(argv: list[str] | None = None) -> int:
             },
             "upstream_state": {
                 "repo_ref": str(args.repo_ref),
-                "commit_sha": _git_head_sha(repo_root),
+                "commit_sha": upstream_commit_sha,
                 "dirty_flag": False,
             },
             "protocol_pack": {

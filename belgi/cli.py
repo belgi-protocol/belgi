@@ -28,6 +28,7 @@ import argparse
 import contextlib
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -58,6 +59,11 @@ RC_GO = 0
 RC_NO_GO = 10
 RC_USER_ERROR = 20
 RC_INTERNAL_ERROR = 30
+_SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_CI_BASE_SHA_ENV_ORDER: tuple[str, ...] = (
+    "BELGI_BASE_SHA",
+    "GITHUB_BASE_SHA",
+)
 
 
 class _UserInputError(ValueError):
@@ -384,6 +390,99 @@ def _repo_head_sha(repo_root: Path) -> str:
     raise ValueError("cannot determine repo HEAD SHA; `git rev-parse HEAD` returned an invalid value")
 
 
+def _resolve_commit_sha(repo_root: Path, revision: str, *, label: str) -> str:
+    raw = str(revision or "").strip()
+    if not raw:
+        raise ValueError(f"{label} missing/empty")
+    if not _SHA1_40_RE.fullmatch(raw):
+        raise ValueError(f"{label} must be a stable 40-hex commit SHA")
+    try:
+        cp = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--verify", f"{raw}^{{commit}}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+    except Exception as e:
+        raise ValueError(f"{label} is not resolvable in repository history") from e
+    resolved = cp.stdout.strip()
+    if not _SHA1_40_RE.fullmatch(resolved):
+        raise ValueError(f"{label} resolved to a non-40-hex commit SHA")
+    return resolved.lower()
+
+
+def _current_upstream_ref(repo_root: Path) -> str | None:
+    cp = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
+    if cp.returncode != 0:
+        return None
+    ref = cp.stdout.strip()
+    if not ref:
+        return None
+    return ref
+
+
+def _merge_base_with_upstream(repo_root: Path) -> str:
+    cp = subprocess.run(
+        ["git", "-C", str(repo_root), "merge-base", "--", "HEAD", "@{u}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
+    if cp.returncode != 0:
+        msg = (cp.stderr or cp.stdout or "").strip()
+        raise ValueError(f"cannot resolve merge-base(HEAD, @{{u}}): {msg or 'unknown error'}")
+    merge_base = cp.stdout.strip()
+    if not _SHA1_40_RE.fullmatch(merge_base):
+        raise ValueError("merge-base(HEAD, @{u}) did not resolve to a 40-hex commit SHA")
+    return _resolve_commit_sha(repo_root, merge_base, label="merge-base revision")
+
+
+def _discover_base_revision(
+    *,
+    repo_root: Path,
+    explicit_base_revision: str | None,
+) -> tuple[str, str, str | None]:
+    for env_name in _CI_BASE_SHA_ENV_ORDER:
+        env_val = os.environ.get(env_name)
+        if env_val is None or not str(env_val).strip():
+            continue
+        try:
+            sha = _resolve_commit_sha(repo_root, str(env_val), label=f"{env_name}")
+        except ValueError as e:
+            raise _UserInputError(f"invalid CI base revision from {env_name}: {e}") from e
+        return sha, "ci_env", None
+
+    upstream_ref = _current_upstream_ref(repo_root)
+    if upstream_ref is not None:
+        try:
+            sha = _merge_base_with_upstream(repo_root)
+        except ValueError as e:
+            raise _UserInputError(f"cannot resolve base revision from upstream {upstream_ref}: {e}") from e
+        return sha, "merge_base", upstream_ref
+
+    explicit_raw = str(explicit_base_revision or "").strip()
+    if explicit_raw:
+        try:
+            sha = _resolve_commit_sha(repo_root, explicit_raw, label="--base-revision")
+        except ValueError as e:
+            raise _UserInputError(str(e)) from e
+        return sha, "explicit", None
+
+    raise _UserInputError(
+        "base revision unavailable: no CI base SHA env and no upstream tracking branch. "
+        "Do set upstream tracking (`git branch --set-upstream-to origin/<branch>`) or rerun with "
+        "`--base-revision <40-hex SHA>`."
+    )
+
+
 def _validate_tier_id(raw: str) -> str:
     tier_id = str(raw or "").strip()
     if tier_id not in ALLOWED_RUN_TIERS:
@@ -435,6 +534,8 @@ def _derive_run_key_preimage(
     workspace_rel: str,
     intent_source_rel: str,
     intent_spec_sha256: str,
+    base_revision: str,
+    evaluated_revision: str,
     protocol_pack_name: str,
     protocol_pack_id: str,
     protocol_manifest_sha256: str,
@@ -450,7 +551,9 @@ def _derive_run_key_preimage(
         "intent_spec_sha256": intent_spec_sha256,
         "belgi": {
             "package_version": _package_version(),
-            "repo_head_sha": _repo_head_sha(repo_root),
+            "repo_head_sha": evaluated_revision,
+            "base_revision_sha": base_revision,
+            "evaluated_revision_sha": evaluated_revision,
         },
         "protocol_pack": {
             "manifest_sha256": protocol_manifest_sha256,
@@ -1084,6 +1187,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     preimage: dict[str, object] | None = None
     chain_repo_dir: Path | None = None
     chain_out_dir: Path | None = None
+    base_revision: str | None = None
+    evaluated_revision: str | None = None
+    revision_discovery_method: str | None = None
+    upstream_ref: str | None = None
     chain_paths: list[Path] = []
     adversarial_findings_present = False
     adversarial_findings_count = 0
@@ -1143,13 +1250,22 @@ def cmd_run(args: argparse.Namespace) -> int:
             intent_source_rel = "(auto)"
 
         protocol = get_builtin_protocol_context()
-        repo_head_sha = _repo_head_sha(repo_root)
+        try:
+            evaluated_revision = _repo_head_sha(repo_root)
+        except ValueError as e:
+            raise _UserInputError(f"cannot resolve evaluated revision: {e}") from e
+        base_revision, revision_discovery_method, upstream_ref = _discover_base_revision(
+            repo_root=repo_root,
+            explicit_base_revision=getattr(args, "base_revision", None),
+        )
         preimage = _derive_run_key_preimage(
             repo_root=repo_root,
             tier_id=tier_id,
             workspace_rel=workspace_rel,
             intent_source_rel=intent_source_rel,
             intent_spec_sha256=sha256_bytes(intent_bytes),
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             protocol_pack_name=protocol.pack_name,
             protocol_pack_id=protocol.pack_id,
             protocol_manifest_sha256=protocol.manifest_sha256,
@@ -1174,7 +1290,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 chain_repo_dir=attempt_dir / CHAIN_REPO_DIRNAME,
                 run_key=run_key,
                 tier_id=tier_id,
-                repo_head_sha=repo_head_sha,
+                base_revision=base_revision,
+                evaluated_revision=evaluated_revision,
+                revision_discovery_method=revision_discovery_method,
+                upstream_ref=upstream_ref,
                 intent_bytes=intent_bytes,
                 protocol=protocol,
             )
@@ -2418,6 +2537,14 @@ def main(argv: list[str] | None = None) -> int:
         "--intent-spec",
         default=None,
         help='Repo-relative intent/spec source to bind into run_key (default: auto-generated "(auto)")',
+    )
+    p_run.add_argument(
+        "--base-revision",
+        default=None,
+        help=(
+            "Optional 40-hex base commit SHA used only when CI base env and upstream merge-base "
+            "discovery are unavailable"
+        ),
     )
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")
 

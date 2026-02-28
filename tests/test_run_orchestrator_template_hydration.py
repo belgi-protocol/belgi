@@ -133,7 +133,10 @@ def test_orchestrate_runs_supplychain_before_template_hydration(
             chain_repo_dir=tmp_path / "chain",
             run_key="run-key",
             tier_id="tier-0",
-            repo_head_sha="0123456789abcdef0123456789abcdef01234567",
+            base_revision="0123456789abcdef0123456789abcdef01234567",
+            evaluated_revision="0123456789abcdef0123456789abcdef01234567",
+            revision_discovery_method="explicit",
+            upstream_ref=None,
             intent_bytes=b"intent",
             protocol=object(),
         )
