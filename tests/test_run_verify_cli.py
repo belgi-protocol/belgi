@@ -170,11 +170,12 @@ def _write_applied_waiver(
 
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
 
-    rc1 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc1 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc1 == 0
 
     runs_root = repo / ".belgi" / "runs"
@@ -207,7 +208,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     rc_verify_1 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_1 == 0
 
-    rc2 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc2 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc2 == 0
 
     run_dirs_after_second = _list_dirs(runs_root)
@@ -225,6 +226,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
 
 def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo), "--workspace", ".belgi_alt"])
     assert rc_init == 0
@@ -233,7 +235,19 @@ def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) ->
     assert ".belgi/" in gitignore
     assert ".belgi_alt/" in gitignore
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--workspace", ".belgi_alt"])
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-1",
+            "--workspace",
+            ".belgi_alt",
+            "--base-revision",
+            head_sha,
+        ]
+    )
     assert rc_run == 0
 
     runs_root = repo / ".belgi_alt" / "runs"
@@ -248,10 +262,11 @@ def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) ->
 
 def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
 
     runs_root = repo / ".belgi" / "runs"
@@ -372,12 +387,13 @@ def test_run_revision_binding_is_authoritative_for_base_and_evaluated(
 
 def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
     _ = capsys.readouterr()
 
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
     captured = capsys.readouterr()
 
@@ -394,10 +410,11 @@ def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
 
 def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0"])
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
     _ = capsys.readouterr()
 

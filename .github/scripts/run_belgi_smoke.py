@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 
 
 BELGI_RESULT_PREFIX = "BELGI_RESULT"
+SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _fail(message: str) -> int:
@@ -27,6 +29,41 @@ def _run(cmd: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         check=False,
         shell=False,
     )
+
+
+def _as_sha40(raw: str) -> str | None:
+    candidate = str(raw or "").strip().lower()
+    if SHA40_RE.fullmatch(candidate):
+        return candidate
+    return None
+
+
+def _git_resolve_sha40(repo_root: Path, revision: str) -> str | None:
+    cp = _run(["git", "rev-parse", "--verify", f"{revision}^{{commit}}"], cwd=repo_root)
+    if cp.returncode != 0:
+        return None
+    return _as_sha40(cp.stdout)
+
+
+def _resolve_base_revision(repo_root: Path) -> tuple[str | None, str | None]:
+    for env_name in ("BELGI_BASE_SHA", "GITHUB_BASE_SHA"):
+        raw = os.environ.get(env_name, "")
+        if not str(raw).strip():
+            continue
+        sha = _as_sha40(raw)
+        if sha is None:
+            return None, f"{env_name} must be a stable 40-hex commit SHA"
+        return sha, None
+
+    parent_sha = _git_resolve_sha40(repo_root, "HEAD~1")
+    if parent_sha is not None:
+        return parent_sha, None
+
+    head_sha = _git_resolve_sha40(repo_root, "HEAD")
+    if head_sha is not None:
+        return head_sha, None
+
+    return None, "unable to resolve base revision from env or git history"
 
 
 def _first_line_machine_json(stdout_text: str, *, label: str) -> dict[str, object]:
@@ -108,7 +145,14 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as e:
         return _fail(str(e))
 
-    cp_run = _run([belgi_bin, "run", "--repo", ".", "--tier", ns.tier], cwd=repo_root)
+    base_revision, base_error = _resolve_base_revision(repo_root)
+    if base_revision is None:
+        return _fail(base_error or "unable to resolve base revision")
+
+    cp_run = _run(
+        [belgi_bin, "run", "--repo", ".", "--tier", ns.tier, "--base-revision", base_revision],
+        cwd=repo_root,
+    )
     try:
         _assert_success(cp_run, label=f"belgi run --tier {ns.tier}")
     except RuntimeError as e:
