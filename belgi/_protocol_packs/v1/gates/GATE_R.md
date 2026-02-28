@@ -55,7 +55,7 @@ python chain/gate_r_verify.py \
   --locked-spec LockedSpec.json \
   --gate-q-verdict GateVerdict.Q.json \
   --evidence-manifest EvidenceManifest.json \
-  --evaluated-revision HEAD \
+  --evaluated-revision <EVALUATED_SHA40> \
   --gate-verdict-out policy/GateVerdict.json \
   --out policy/verify_report.json
 
@@ -194,7 +194,7 @@ Deterministic interpretation of required `policy_report.summary.failed` (v1):
 ### 5.2.2 Canonical deterministic verifier (MUST)
 To prevent fragmented enforcement, Gate R MUST be executed using the canonical deterministic verifier entrypoint:
 
-- `python chain/gate_r_verify.py --repo . --locked-spec LockedSpec.json --evidence-manifest EvidenceManifest.json --evaluated-revision HEAD --gate-verdict-out policy/GateVerdict.json --out policy/verify_report.json`
+- `python chain/gate_r_verify.py --repo . --locked-spec LockedSpec.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out policy/GateVerdict.json --out policy/verify_report.json`
 
 This verifier MUST implement the MUST-level obligations in this gate spec, including:
 - required `(kind,id)` uniqueness ("must match exactly one")

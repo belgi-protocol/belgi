@@ -139,7 +139,7 @@ python -m chain.gate_r_verify \
 Fixture note (Gate R):
 - Fixtures are runnable without git history. If the repo is a zip snapshot (no `.git`), Gate R may accept a 40-hex `--evaluated-revision` as an opaque id only when inputs are under `policy/fixtures/`.
 - In that fixture context, git-dependent checks are bypassed or replaced with byte-level comparisons (e.g., diff-bytes parsing).
-- Real runs remain strict and require a resolvable commit-ish for `--evaluated-revision`.
+- Real runs remain strict and require a stable 40-hex commit SHA for `--evaluated-revision`.
 
 ### Stage C3 — Compile docs + final manifest (append-only)
 

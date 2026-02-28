@@ -36,7 +36,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, metadata, version
 from importlib.resources import as_file, files
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
     from typing import Any
@@ -87,7 +87,7 @@ class _CliUsageError(Exception):
 class _BelgiArgumentParser(argparse.ArgumentParser):
     """ArgumentParser variant that raises deterministic usage errors."""
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise _CliUsageError(message, self)
 
 
@@ -852,10 +852,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"[belgi init] ERROR: invalid workspace path: {e}", file=sys.stderr)
         return 3
 
+    protocol = None
     try:
         protocol = get_builtin_protocol_context()
     except Exception as e:
         print(f"[belgi init] ERROR: cannot load builtin protocol pack identity: {e}", file=sys.stderr)
+        return 3
+    if protocol is None:
+        print("[belgi init] ERROR: cannot load builtin protocol pack identity", file=sys.stderr)
         return 3
 
     adopter_dir = workspace_dir
@@ -2357,6 +2361,7 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     # Verify protocol identity binding (pack_id/pack_name/manifest_sha256).
     # NOTE: source is metadata and is intentionally NOT treated as identity.
     checks_total += 1
+    protocol: Any | None = None
     try:
         protocol = get_builtin_protocol_context()
         if locked_spec is not None:
@@ -2542,6 +2547,9 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     
     # Success summary (run_ids all present and unique at this point)
     display_run_id = run_ids.get("SealManifest") or "UNKNOWN"
+    if protocol is None:
+        print("[belgi bundle check] ERROR: builtin protocol context unavailable", file=sys.stderr)
+        return 1
     if getattr(args, "verbose", False):
         print(f"[belgi bundle check] source: {bundle_dir}", file=sys.stdout)
         print(f"[belgi bundle check] run_id: {display_run_id}", file=sys.stdout)

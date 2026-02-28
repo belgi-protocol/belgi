@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  IS_ACT: ${{ github.actor == 'nektos/act' && '1' || '' }}
+
 concurrency:
   group: proof-tier1-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -61,7 +64,7 @@ jobs:
           done
 
       - name: Upload preflight logs
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && !env.IS_ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-preflight-${{ steps.sha.outputs.pr_sha }}
@@ -105,7 +108,7 @@ jobs:
             2>&1 | tee "proof_smoke/tier1-${{ matrix.os }}.log"
 
       - name: Upload smoke artifacts
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && !env.IS_ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-smoke-${{ matrix.os }}-${{ needs.preflight.outputs.pr_sha }}
@@ -154,7 +157,7 @@ jobs:
           "${VENV}/bin/belgi" pack verify --builtin > proof_wheel/builtin-verify.log 2>&1
 
       - name: Upload wheel artifact
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && !env.IS_ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-wheel-${{ needs.preflight.outputs.pr_sha }}
@@ -162,7 +165,7 @@ jobs:
           path: dist/*.whl
 
       - name: Upload wheel logs
-        if: ${{ always() && !env.ACT }}
+        if: ${{ always() && !env.IS_ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: proof-wheel-logs-${{ needs.preflight.outputs.pr_sha }}

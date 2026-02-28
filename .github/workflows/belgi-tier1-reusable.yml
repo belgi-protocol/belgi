@@ -59,17 +59,27 @@ jobs:
         shell: python
         env:
           BELGI_REF_INPUT: ${{ inputs.belgi_ref }}
-          BELGI_REF_VAR: ${{ vars.BELGI_REF }}
           BELGI_REPO_URL_INPUT: ${{ inputs.belgi_repo_url }}
-          BELGI_REPO_URL_VAR: ${{ vars.BELGI_REPO_URL }}
+          BELGI_VARS_JSON: ${{ toJson(vars) }}
         run: |
+          import json
           import os
           import pathlib
           import sys
 
+          vars_raw = (os.environ.get("BELGI_VARS_JSON", "") or "").strip()
+          vars_map = {}
+          if vars_raw:
+              try:
+                  parsed = json.loads(vars_raw)
+              except Exception:
+                  parsed = {}
+              if isinstance(parsed, dict):
+                  vars_map = parsed
+
           ref = (os.environ.get("BELGI_REF_INPUT", "") or "").strip()
           if not ref:
-              ref = (os.environ.get("BELGI_REF_VAR", "") or "").strip()
+              ref = str(vars_map.get("BELGI_REF", "") or "").strip()
           if not ref:
               print(
                   "BELGI_REF is required. Set workflow input 'belgi_ref' or repository variable 'BELGI_REF'.",
@@ -86,15 +96,13 @@ jobs:
               handle.write(f"BELGI_REF={ref}\n")
               repo_url = (os.environ.get("BELGI_REPO_URL_INPUT", "") or "").strip()
               if not repo_url:
-                  repo_url = (os.environ.get("BELGI_REPO_URL_VAR", "") or "").strip()
+                  repo_url = str(vars_map.get("BELGI_REPO_URL", "") or "").strip()
               if not repo_url:
                   repo_url = "https://github.com/belgi-protocol/belgi.git"
               handle.write(f"BELGI_REPO_URL={repo_url}\n")
 
       - name: Validate immutable BELGI_REF pin (fail-closed)
         shell: python
-        env:
-          BELGI_REF: ${{ env.BELGI_REF }}
         run: |
           import os
           import subprocess
@@ -110,9 +118,6 @@ jobs:
 
       - name: Install pinned BELGI CLI
         shell: python
-        env:
-          BELGI_REF: ${{ env.BELGI_REF }}
-          BELGI_REPO_URL: ${{ env.BELGI_REPO_URL }}
         run: |
           import os
           import subprocess
