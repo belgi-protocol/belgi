@@ -207,13 +207,34 @@ def _run_stage_forwarder(
 
     try:
         raw_rc = _invoke_module_main(module_name, forward_args)
+    except ModuleNotFoundError as e:
+        missing_name = str(getattr(e, "name", "") or "").strip()
+        message = str(e)
+        if (
+            missing_name == "chain"
+            or missing_name.startswith("chain.")
+            or "No module named 'chain'" in message
+            or "No module named \"chain\"" in message
+        ):
+            return _emit_cli_user_error_result(
+                primary_reason=(
+                    "repo-local stage module missing; run inside BELGI source checkout or "
+                    "use canonical python -m chain.<...> invocation"
+                ),
+                parser=parser,
+            )
+        print(f"[belgi stage {stage_name}] ERROR: {e}", file=sys.stderr)
+        print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+        return RC_INTERNAL_ERROR
     except Exception as e:
         print(f"[belgi stage {stage_name}] ERROR: {e}", file=sys.stderr)
         print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
         return RC_INTERNAL_ERROR
 
-    if raw_rc == 3:
+    if raw_rc in (2, 3):
         print(f"[belgi stage {stage_name}] Remediation: run `belgi stage {stage_name} --help`.", file=sys.stderr)
+    if raw_rc == 2:
+        return RC_USER_ERROR
     return raw_rc
 
 

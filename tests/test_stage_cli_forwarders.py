@@ -260,6 +260,7 @@ def test_stage_forwarders_invoke_expected_modules(
     [
         (0, 0),
         (10, 10),
+        (2, 20),
         (20, 20),
         (30, 30),
         (3, 20),
@@ -287,3 +288,34 @@ def test_stage_missing_args_is_user_error_with_help_pointer(capsys: pytest.Captu
     payload = json.loads(lines[0])
     assert payload["verdict"] == "NO-GO"
     assert "belgi stage r --help" in str(payload["primary_reason"])
+
+
+def test_stage_rc2_prints_help_remediation(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(belgi_cli, "_invoke_module_main", lambda _m, _a: 2)
+
+    rc = belgi_main(["stage", "q", "--repo", "."])
+    captured = capsys.readouterr()
+
+    assert rc == 20
+    assert "[belgi stage q] Remediation: run `belgi stage q --help`." in captured.err
+
+
+def test_stage_missing_chain_module_is_user_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def _raise_missing(_module_name: str) -> object:
+        raise ModuleNotFoundError("No module named 'chain'")
+
+    monkeypatch.setattr(belgi_cli.importlib, "import_module", _raise_missing)
+
+    rc = belgi_main(["stage", "q", "--repo", "."])
+    captured = capsys.readouterr()
+
+    assert rc == 20
+    lines = captured.out.splitlines()
+    assert lines, "expected machine result output"
+    payload = json.loads(lines[0])
+    assert isinstance(payload.get("primary_reason"), str)
+    assert "repo-local stage module missing" in payload["primary_reason"]
+    assert "python -m chain." in payload["primary_reason"]

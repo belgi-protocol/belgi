@@ -154,6 +154,25 @@ python -m chain.gate_s_verify \
   --out GateVerdict.S.json
 ```
 
+### Convenience forwarders (repo-local)
+
+`belgi stage` is a convenience wrapper over the canonical repo-local entrypoints (`python -m chain.*`). It does not change stage semantics.
+
+Examples:
+
+```bash
+belgi stage c1 --repo . --intent-spec IntentSpec.core.md --out LockedSpec.json --run-id run-001 --repo-ref owner/repo --prompt-bundle-out bundle/prompt_bundle.bin
+belgi stage q --repo . --intent-spec IntentSpec.core.md --locked-spec LockedSpec.json --evidence-manifest EvidenceManifest.json --out GateVerdict.Q.json
+belgi stage r --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision HEAD --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json
+belgi stage c3 --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --gate-r-verdict GateVerdict.R.json --r-snapshot-manifest EvidenceManifest.json --out-final-manifest EvidenceManifest.final.json --out-log docs/docs_compilation_log.json --out-docs docs/run_docs.md --out-bundle-dir bundle --out-bundle-root-sha docs/bundle_root.sha256 --profile public --prompt-block-hashes prompt_block_hashes.json
+belgi stage s seal --repo . --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --gate-r-verdict GateVerdict.R.json --evidence-manifest EvidenceManifest.final.json --final-commit-sha <FINAL_COMMIT_SHA> --sealed-at 2000-01-01T00:30:00Z --signer human:release-manager --out SealManifest.json
+belgi stage s verify --repo . --locked-spec LockedSpec.json --protocol-pack belgi/_protocol_packs/v1 --seal-manifest SealManifest.json --evidence-manifest EvidenceManifest.final.json --out GateVerdict.S.json
+```
+
+Repo-local boundary:
+- Canonical stage entrypoints remain `python -m chain.*`.
+- `belgi stage` may be unavailable in wheel-only installs where `chain/*` is not present; run from a BELGI source checkout in that case.
+
 ## 1B) When to run what (DEV / PRE-MERGE / RELEASE)
 
 DEV (tight loop):
