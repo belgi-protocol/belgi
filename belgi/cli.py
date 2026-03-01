@@ -8,6 +8,8 @@ Subcommands:
 - belgi policy stub    → Generate deterministic PolicyReportPayload stubs
 - belgi run new        → Create deterministic adopter run workspace
 - belgi run --tier     → Create deterministic run attempt under run_key/attempt_id
+- belgi waiver new     → Create schema-valid waiver draft in run inputs
+- belgi waiver apply   → Record run-local applied waiver refs for C1
 - belgi verify         → Verify deterministic run summaries/manifests
 - belgi manifest add   → Deterministically add/update EvidenceManifest artifacts
 - belgi pack build     → Build/update protocol pack manifest deterministically
@@ -56,11 +58,16 @@ DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
 ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
+RUN_INPUTS_DIRNAME = "inputs"
+RUN_INTENT_REPO_REL = "inputs/intent/IntentSpec.core.md"
+RUN_WAIVERS_DIR_REPO_REL = "inputs/waivers"
+RUN_WAIVERS_APPLIED_REPO_REL = "inputs/waivers_applied.json"
 RC_GO = 0
 RC_NO_GO = 10
 RC_USER_ERROR = 20
 RC_INTERNAL_ERROR = 30
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_RFC3339_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
 _CI_BASE_SHA_ENV_ORDER: tuple[str, ...] = (
     "BELGI_BASE_SHA",
     "GITHUB_BASE_SHA",
@@ -1062,31 +1069,111 @@ def _validate_run_id(raw: str) -> str:
     return rid
 
 
-def _render_run_intent_template(*, run_id: str) -> str:
-    return (
-        "# IntentSpec\n\n"
-        f"Run ID: `{run_id}`\n\n"
-        "human-authored; required before running.\n\n"
-        "## Objective\n"
-        "- TODO: describe objective delta.\n\n"
-        "## Scope Fence\n"
-        "- TODO: define in-scope and out-of-scope changes.\n\n"
-        "## Acceptance\n"
-        "- TODO: list testable acceptance criteria.\n\n"
-        "## Evidence Obligations\n"
-        "- TODO: list proof commands and expected artifacts.\n"
-    )
+def _validate_waiver_id(raw: str) -> str:
+    wid = str(raw or "").strip()
+    if not wid:
+        raise ValueError("--waiver-id missing/invalid")
+    if "/" in wid or "\\" in wid:
+        raise ValueError("--waiver-id must not contain path separators")
+    if wid in (".", ".."):
+        raise ValueError("--waiver-id missing/invalid")
+    if ":" in wid or "\x00" in wid:
+        raise ValueError("--waiver-id contains forbidden characters")
+    return wid
 
 
-def _render_run_waivers_template(*, run_id: str) -> str:
-    return (
-        "# Waivers\n\n"
-        f"Run ID: `{run_id}`\n\n"
-        "draft-only; applying waivers requires explicit human approval.\n\n"
-        "| waiver_id | reason | expiry_utc | approver |\n"
-        "| --- | --- | --- | --- |\n"
-        "| TODO | TODO | YYYY-MM-DDTHH:MM:SSZ | human:<name> |\n"
+def _run_intent_path(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_INTENT_REPO_REL.split("/"))
+
+
+def _run_waivers_dir(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_WAIVERS_DIR_REPO_REL.split("/"))
+
+
+def _run_waivers_applied_path(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_WAIVERS_APPLIED_REPO_REL.split("/"))
+
+
+def _resolve_run_dir(*, repo_root: Path, workspace_rel: str, run_id: str, must_exist: bool) -> Path:
+    from belgi.core.jail import resolve_repo_rel_path
+
+    run_rel = f"{workspace_rel}/runs/{run_id}"
+    run_dir = resolve_repo_rel_path(
+        repo_root,
+        run_rel,
+        must_exist=must_exist,
+        must_be_file=False,
+        allow_backslashes=False,
+        forbid_symlinks=True,
     )
+    if run_dir.is_symlink() or (must_exist and not run_dir.is_dir()):
+        raise ValueError(f"invalid run workspace path: {run_dir}")
+    return run_dir
+
+
+def _render_run_waivers_applied_doc(*, run_id: str, waivers: list[str]) -> dict[str, object]:
+    return {
+        "schema_version": "1.0.0",
+        "run_id": run_id,
+        "waivers": sorted(dict.fromkeys(waivers)),
+    }
+
+
+def _load_run_waivers_applied_refs(*, repo_root: Path, run_dir: Path, run_id: str) -> list[str]:
+    from belgi.core.jail import resolve_storage_ref
+
+    applied_path = _run_waivers_applied_path(run_dir)
+    if not applied_path.exists():
+        return []
+    if applied_path.is_symlink() or not applied_path.is_file():
+        raise ValueError(f"invalid run waiver refs file: {applied_path}")
+    try:
+        doc = json.loads(applied_path.read_text(encoding="utf-8", errors="strict"))
+    except Exception as e:
+        raise ValueError(f"run waiver refs are not valid UTF-8 JSON: {e}") from e
+    if not isinstance(doc, dict):
+        raise ValueError("run waiver refs must be a JSON object")
+    if str(doc.get("run_id") or "") != run_id:
+        raise ValueError("run waiver refs run_id mismatch")
+    waivers_raw = doc.get("waivers")
+    if waivers_raw is None:
+        return []
+    if not isinstance(waivers_raw, list):
+        raise ValueError("run waiver refs `waivers` must be an array")
+
+    refs: list[str] = []
+    seen: set[str] = set()
+    for entry in waivers_raw:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ValueError("run waiver refs must contain non-empty strings")
+        ref = entry.strip()
+        if ref in seen:
+            raise ValueError(f"duplicate run waiver ref: {ref}")
+        seen.add(ref)
+        resolved = resolve_storage_ref(repo_root, ref)
+        if not resolved.exists() or resolved.is_symlink() or not resolved.is_file():
+            raise ValueError(f"run waiver ref missing/invalid: {ref}")
+        if resolved.suffix.lower() != ".json":
+            raise ValueError(f"run waiver ref must point to a .json file: {ref}")
+        refs.append(ref)
+    refs.sort()
+    return refs
+
+
+def _infer_run_id_from_intent_source(*, workspace_rel: str, intent_source_rel: str) -> str | None:
+    ws_norm = str(workspace_rel).strip().strip("/")
+    source_norm = str(intent_source_rel).strip().strip("/")
+    expected_suffix = "/".join(RUN_INTENT_REPO_REL.split("/"))
+    prefix = f"{ws_norm}/runs/"
+    if not source_norm.startswith(prefix):
+        return None
+    if not source_norm.endswith(expected_suffix):
+        return None
+    middle = source_norm[len(prefix) : -len(expected_suffix)]
+    middle = middle.strip("/")
+    if not middle or "/" in middle:
+        return None
+    return middle
 
 
 def _render_runbook_template(*, run_id: str) -> str:
@@ -1094,15 +1181,19 @@ def _render_runbook_template(*, run_id: str) -> str:
         "# RUN\n\n"
         f"Run ID: `{run_id}`\n\n"
         "Minimal operator loop:\n\n"
-        "1. Edit `IntentSpec.md` and `IntentSpec.core.md`.\n"
-        "2. (Optional) Draft waivers in `Waivers.md` (drafts are not auto-applied).\n"
+        "1. Edit `inputs/intent/IntentSpec.core.md`.\n"
+        "2. (Optional) Create and apply waiver drafts:\n\n"
+        "```bash\n"
+        f"belgi waiver new --repo . --run-id {run_id} --gate R --rule-id RULE-ID --waiver-id waiver-001 --expires-at 2100-01-01T00:00:00Z\n"
+        f"belgi waiver apply --repo . --run-id {run_id} --waiver .belgi/runs/{run_id}/inputs/waivers/waiver-001.json\n"
+        "```\n\n"
         "3. Resolve a stable SHA40:\n\n"
         "```bash\n"
         "BASE_SHA40=\"$(git rev-parse HEAD)\"\n"
         "```\n\n"
         "4. Run BELGI:\n\n"
         "```bash\n"
-        "belgi run --repo . --tier tier-1 --base-revision \"${BASE_SHA40}\"\n"
+        f"belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md --base-revision \"${{BASE_SHA40}}\"\n"
         "```\n\n"
         "5. Verify and triage:\n\n"
         "```bash\n"
@@ -1110,6 +1201,31 @@ def _render_runbook_template(*, run_id: str) -> str:
         "```\n\n"
         "Artifacts are created under `.belgi/runs/<run_key>/<attempt_id>/`.\n"
     )
+
+
+def _waiver_schema() -> dict[str, object]:
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    protocol = get_builtin_protocol_context()
+    schema_obj = protocol.read_json("schemas/Waiver.schema.json")
+    if not isinstance(schema_obj, dict):
+        raise ValueError("builtin Waiver.schema.json must be a JSON object")
+    return schema_obj
+
+
+def _assert_valid_waiver_doc(*, waiver_obj: object, label: str) -> dict[str, object]:
+    from belgi.core.schema import validate_schema
+
+    if not isinstance(waiver_obj, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    schema_obj = _waiver_schema()
+    errors = validate_schema(waiver_obj, schema_obj, root_schema=schema_obj, path=label)
+    if errors:
+        first = errors[0]
+        err_path = str(first.get("path") or label)
+        msg = str(first.get("message") or "schema validation failed")
+        raise ValueError(f"{label} invalid: {err_path}: {msg}")
+    return waiver_obj
 
 
 def _write_text_template(path: Path, payload: str, *, force: bool) -> str | None:
@@ -1161,9 +1277,9 @@ def _seed_run_workspace(
     intent_bytes: bytes,
     force: bool,
 ) -> tuple[list[Path], list[Path], list[Path]]:
-    intent_path = run_dir / "IntentSpec.core.md"
-    intent_template_path = run_dir / "IntentSpec.md"
-    waivers_template_path = run_dir / "Waivers.md"
+    inputs_dir = run_dir / RUN_INPUTS_DIRNAME
+    intent_path = _run_intent_path(run_dir)
+    waivers_dir = _run_waivers_dir(run_dir)
     runbook_template_path = run_dir / "RUN.md"
     placeholders = [
         run_dir / "tolerances.json",
@@ -1181,6 +1297,13 @@ def _seed_run_workspace(
     created: list[Path] = []
     updated: list[Path] = []
 
+    if inputs_dir.exists():
+        if inputs_dir.is_symlink() or not inputs_dir.is_dir():
+            raise ValueError(f"invalid path in run workspace: {inputs_dir}")
+    else:
+        inputs_dir.mkdir(parents=True, exist_ok=True)
+        created.append(inputs_dir)
+
     if intent_path.exists():
         if intent_path.is_symlink() or not intent_path.is_file():
             raise ValueError(f"invalid path in run workspace: {intent_path}")
@@ -1192,17 +1315,18 @@ def _seed_run_workspace(
         intent_path.write_bytes(intent_bytes)
         created.append(intent_path)
 
-    template_payloads = [
-        (intent_template_path, _render_run_intent_template(run_id=run_id)),
-        (waivers_template_path, _render_run_waivers_template(run_id=run_id)),
-        (runbook_template_path, _render_runbook_template(run_id=run_id)),
-    ]
-    for path, payload in template_payloads:
-        state = _write_text_template(path, payload, force=force)
-        if state == "created":
-            created.append(path)
-        elif state == "updated":
-            updated.append(path)
+    if waivers_dir.exists():
+        if waivers_dir.is_symlink() or not waivers_dir.is_dir():
+            raise ValueError(f"invalid path in run workspace: {waivers_dir}")
+    else:
+        waivers_dir.mkdir(parents=True, exist_ok=True)
+        created.append(waivers_dir)
+
+    runbook_state = _write_text_template(runbook_template_path, _render_runbook_template(run_id=run_id), force=force)
+    if runbook_state == "created":
+        created.append(runbook_template_path)
+    elif runbook_state == "updated":
+        updated.append(runbook_template_path)
 
     for path in placeholders:
         state = _write_json_placeholder(path, force=force)
@@ -1223,8 +1347,7 @@ def _seed_run_workspace(
 
     seeded_paths = [
         intent_path,
-        intent_template_path,
-        waivers_template_path,
+        waivers_dir,
         runbook_template_path,
         *placeholders,
         evidence_manifest_path,
@@ -1296,13 +1419,147 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             print(f"[belgi run new] updated: {safe_relpath(repo_root, p)}", file=sys.stderr)
     if not created and not updated:
         print("[belgi run new] no changes (already initialized)", file=sys.stderr)
-    template_names = {"IntentSpec.md", "Waivers.md", "RUN.md"}
-    template_paths = [p for p in seeded_paths if p.name in template_names]
-    for template_path in template_paths:
-        print(f"[belgi run new] template: {template_path.resolve()}", file=sys.stderr)
-        uri = _best_effort_file_uri(template_path)
+    pointer_paths = [
+        _run_intent_path(run_dir),
+        _run_waivers_dir(run_dir),
+        run_dir / "RUN.md",
+    ]
+    for pointer_path in pointer_paths:
+        print(f"[belgi run new] open: {pointer_path.resolve()}", file=sys.stderr)
+        uri = _best_effort_file_uri(pointer_path)
         if uri:
-            print(f"[belgi run new] template_uri: {uri}", file=sys.stderr)
+            print(f"[belgi run new] open_uri: {uri}", file=sys.stderr)
+    return 0
+
+
+def cmd_waiver_new(args: argparse.Namespace) -> int:
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+
+    repo_root = Path(str(args.repo)).resolve()
+    if not repo_root.exists():
+        print(f"[belgi waiver new] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
+        return 3
+    if not repo_root.is_dir():
+        print(f"[belgi waiver new] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
+        return 3
+    if repo_root.is_symlink():
+        print(f"[belgi waiver new] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
+        return 3
+
+    try:
+        workspace_rel, _ = _resolve_workspace_dir(
+            repo_root,
+            getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+            must_exist=True,
+        )
+        run_id = _validate_run_id(str(args.run_id))
+        gate_id = str(getattr(args, "gate", "") or "").strip().upper()
+        if gate_id not in ("Q", "R"):
+            raise ValueError("--gate must be Q or R")
+        rule_id = str(getattr(args, "rule_id", "") or "").strip()
+        if not rule_id:
+            raise ValueError("--rule-id missing/invalid")
+        waiver_id = _validate_waiver_id(str(args.waiver_id))
+        expires_at = str(getattr(args, "expires_at", "") or "").strip()
+        if not _RFC3339_UTC_RE.fullmatch(expires_at):
+            raise ValueError("--expires-at must be RFC3339 (e.g. 2100-01-01T00:00:00Z)")
+        run_dir = _resolve_run_dir(repo_root=repo_root, workspace_rel=workspace_rel, run_id=run_id, must_exist=True)
+
+        out_arg = str(getattr(args, "out", "") or "").strip()
+        if out_arg:
+            waiver_path = resolve_repo_rel_path(
+                repo_root,
+                out_arg,
+                must_exist=False,
+                must_be_file=None,
+                allow_backslashes=False,
+                forbid_symlinks=True,
+            )
+        else:
+            waiver_path = _run_waivers_dir(run_dir) / f"{waiver_id}.json"
+
+        if waiver_path.exists() and not bool(getattr(args, "force", False)):
+            raise ValueError(f"waiver output already exists: {safe_relpath(repo_root, waiver_path)} (rerun with --force)")
+
+        waiver_obj = {
+            "schema_version": "1.0.0",
+            "waiver_id": waiver_id,
+            "gate_id": gate_id,
+            "rule_id": rule_id,
+            "scope": "path:TODO",
+            "justification": "TODO: human-authored waiver justification",
+            "mitigation": "TODO: deterministic mitigation and sunset plan",
+            "approver": "human:TODO",
+            "created_at": "1970-01-01T00:00:00Z",
+            "expires_at": expires_at,
+            "audit_trail_ref": {"id": "audit-001", "storage_ref": "waivers/audit.log"},
+            "status": "active",
+        }
+        _assert_valid_waiver_doc(waiver_obj=waiver_obj, label="waiver")
+        _write_json(waiver_path, waiver_obj)
+    except Exception as e:
+        print(f"[belgi waiver new] ERROR: {e}", file=sys.stderr)
+        return 3
+
+    print(f"[belgi waiver new] run_id: {run_id}", file=sys.stderr)
+    print(f"[belgi waiver new] created: {safe_relpath(repo_root, waiver_path)}", file=sys.stderr)
+    print(f"[belgi waiver new] open: {waiver_path.resolve()}", file=sys.stderr)
+    return 0
+
+
+def cmd_waiver_apply(args: argparse.Namespace) -> int:
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+
+    repo_root = Path(str(args.repo)).resolve()
+    if not repo_root.exists():
+        print(f"[belgi waiver apply] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
+        return 3
+    if not repo_root.is_dir():
+        print(f"[belgi waiver apply] ERROR: repo path is not a directory: {repo_root}", file=sys.stderr)
+        return 3
+    if repo_root.is_symlink():
+        print(f"[belgi waiver apply] ERROR: symlink repo root not allowed: {repo_root}", file=sys.stderr)
+        return 3
+
+    try:
+        workspace_rel, _ = _resolve_workspace_dir(
+            repo_root,
+            getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
+            must_exist=True,
+        )
+        run_id = _validate_run_id(str(args.run_id))
+        run_dir = _resolve_run_dir(repo_root=repo_root, workspace_rel=workspace_rel, run_id=run_id, must_exist=True)
+        waiver_path = resolve_repo_rel_path(
+            repo_root,
+            str(args.waiver),
+            must_exist=True,
+            must_be_file=True,
+            allow_backslashes=False,
+            forbid_symlinks=True,
+        )
+        waiver_rel = safe_relpath(repo_root, waiver_path)
+        waiver_obj = json.loads(waiver_path.read_text(encoding="utf-8", errors="strict"))
+        _assert_valid_waiver_doc(waiver_obj=waiver_obj, label=f"waiver:{waiver_rel}")
+        applied_path = _run_waivers_applied_path(run_dir)
+        existed = applied_path.exists()
+        refs = _load_run_waivers_applied_refs(repo_root=repo_root, run_dir=run_dir, run_id=run_id)
+        if waiver_rel not in refs:
+            refs.append(waiver_rel)
+        _write_json(applied_path, _render_run_waivers_applied_doc(run_id=run_id, waivers=refs))
+    except Exception as e:
+        print(f"[belgi waiver apply] ERROR: {e}", file=sys.stderr)
+        return 3
+
+    print(f"[belgi waiver apply] run_id: {run_id}", file=sys.stderr)
+    print(f"[belgi waiver apply] waiver: {waiver_rel}", file=sys.stderr)
+    print(
+        f"[belgi waiver apply] {'updated' if existed else 'created'}: {safe_relpath(repo_root, applied_path)}",
+        file=sys.stderr,
+    )
+    print(
+        f"[belgi waiver apply] next: belgi run --repo . --tier tier-1 --intent-spec {safe_relpath(repo_root, _run_intent_path(run_dir))} --base-revision <SHA40>",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -1349,6 +1606,43 @@ def _load_adversarial_signal_from_policy_report(policy_report_path: Path) -> tup
     if findings_present != (finding_count_raw > 0):
         raise ValueError("policy.adversarial_scan findings_present inconsistent with finding_count")
     return findings_present, finding_count_raw
+
+
+def _load_next_instruction_from_gate_verdict(path: Path) -> str | None:
+    if not path.exists() or path.is_symlink() or not path.is_file():
+        return None
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8", errors="strict"))
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    remediation = obj.get("remediation")
+    if not isinstance(remediation, dict):
+        return None
+    next_instruction = remediation.get("next_instruction")
+    if not isinstance(next_instruction, str) or not next_instruction.strip():
+        return None
+    return next_instruction.strip()
+
+
+def _emit_run_failure_links(
+    *,
+    level: str,
+    tier_id: str | None,
+    run_key: str | None,
+    primary_reason: str,
+    remediation_next_instruction: str,
+    open_paths: list[Path],
+) -> None:
+    lines = [
+        f"verdict=NO-GO tier={tier_id or 'UNKNOWN'} run_id={run_key or 'UNKNOWN'}",
+        f"primary_reason: {primary_reason}",
+        f"remediation.next_instruction: {remediation_next_instruction}",
+    ]
+    for path in open_paths:
+        lines.append(f"Open: {path.resolve()}")
+    _emit_human_status(prefix="[belgi run]", level=level, lines=lines)
 
 
 def _write_run_summary_if_ready(
@@ -1436,6 +1730,38 @@ def cmd_run(args: argparse.Namespace) -> int:
     findings_signal_emittable = False
     waivers_applied_count: int | None = None
     waivers_applied_refs: list[str] | None = None
+    intent_open_path: Path | None = None
+    requested_waiver_refs: list[str] = []
+
+    def _collect_open_paths() -> list[Path]:
+        candidates: list[Path] = []
+        if chain_out_dir is not None:
+            candidates.extend(
+                [
+                    chain_out_dir / "GateVerdict.Q.json",
+                    chain_out_dir / "GateVerdict.R.json",
+                    chain_out_dir / "GateVerdict.S.json",
+                    chain_out_dir / "EvidenceManifest.json",
+                ]
+            )
+        if intent_open_path is not None:
+            candidates.append(intent_open_path)
+        elif chain_repo_dir is not None:
+            candidates.append(chain_repo_dir / "IntentSpec.core.md")
+        if waivers_applied_refs:
+            if chain_repo_dir is not None:
+                candidates.extend(chain_repo_dir / Path(*ref.split("/")) for ref in waivers_applied_refs)
+        elif requested_waiver_refs:
+            candidates.extend(repo_root / Path(*ref.split("/")) for ref in requested_waiver_refs)
+        out: list[Path] = []
+        seen: set[str] = set()
+        for path in candidates:
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(path)
+        return out
 
     try:
         if not repo_root.exists():
@@ -1484,6 +1810,23 @@ def cmd_run(args: argparse.Namespace) -> int:
                 raise ValueError("intent spec symlink not allowed")
             intent_bytes = intent_path.read_bytes()
             intent_source_rel = safe_relpath(repo_root, intent_path)
+            intent_open_path = intent_path
+            run_scope_run_id = _infer_run_id_from_intent_source(
+                workspace_rel=workspace_rel,
+                intent_source_rel=intent_source_rel,
+            )
+            if run_scope_run_id is not None:
+                run_scope_dir = _resolve_run_dir(
+                    repo_root=repo_root,
+                    workspace_rel=workspace_rel,
+                    run_id=run_scope_run_id,
+                    must_exist=True,
+                )
+                requested_waiver_refs = _load_run_waivers_applied_refs(
+                    repo_root=repo_root,
+                    run_dir=run_scope_dir,
+                    run_id=run_scope_run_id,
+                )
         else:
             intent_bytes = render_default_intent_spec(tier_id=tier_id)
             intent_source_rel = "(auto)"
@@ -1535,6 +1878,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 upstream_ref=upstream_ref,
                 intent_bytes=intent_bytes,
                 protocol=protocol,
+                applied_waiver_refs=requested_waiver_refs if requested_waiver_refs else None,
             )
         chain_repo_dir = chain_result.chain_repo_dir
         chain_out_dir = chain_result.chain_out_dir
@@ -1621,7 +1965,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        _emit_human_status(prefix="[belgi run]", level="USER_ERROR", lines=[reason])
+        next_instruction = "Do fix input arguments or repository state, then re-run `belgi run --help`."
+        _emit_run_failure_links(
+            level="USER_ERROR",
+            tier_id=tier_id,
+            run_key=run_key,
+            primary_reason=reason,
+            remediation_next_instruction=next_instruction,
+            open_paths=_collect_open_paths(),
+        )
         return RC_USER_ERROR
     except ValueError as e:
         reason = str(e)
@@ -1658,7 +2010,22 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        _emit_human_status(prefix="[belgi run]", level="NO-GO", lines=[reason])
+        next_instruction = ""
+        if chain_out_dir is not None:
+            for gate_name in ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json"):
+                next_instruction = _load_next_instruction_from_gate_verdict(chain_out_dir / gate_name) or ""
+                if next_instruction:
+                    break
+        if not next_instruction:
+            next_instruction = "Do inspect the gate verdict and follow remediation.next_instruction before re-run."
+        _emit_run_failure_links(
+            level="NO-GO",
+            tier_id=tier_id,
+            run_key=run_key,
+            primary_reason=reason,
+            remediation_next_instruction=next_instruction,
+            open_paths=_collect_open_paths(),
+        )
         return RC_NO_GO
     except Exception as e:
         reason = str(e)
@@ -1695,7 +2062,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        _emit_human_status(prefix="[belgi run]", level="INTERNAL_ERROR", lines=[reason])
+        _emit_run_failure_links(
+            level="INTERNAL_ERROR",
+            tier_id=tier_id,
+            run_key=run_key,
+            primary_reason=reason,
+            remediation_next_instruction=(
+                "Do inspect generated artifacts and logs, then fix the internal error before re-run."
+            ),
+            open_paths=_collect_open_paths(),
+        )
         return RC_INTERNAL_ERROR
 
     _emit_machine_result(
@@ -2808,6 +3184,41 @@ def main(argv: list[str] | None = None) -> int:
         help="Overwrite existing run workspace files deterministically",
     )
 
+    # waiver (subparser group)
+    p_waiver = subparsers.add_parser("waiver", help="Waiver wizard helpers (human-controlled)")
+    waiver_subs = p_waiver.add_subparsers(dest="waiver_command", help="Waiver subcommand")
+
+    p_waiver_new = waiver_subs.add_parser("new", help="Create a schema-valid waiver draft JSON")
+    p_waiver_new.add_argument("--repo", default=".", help="Repo root (default: .)")
+    p_waiver_new.add_argument(
+        "--workspace",
+        default=DEFAULT_WORKSPACE_REL,
+        help=f"Repo-relative workspace root (default: {DEFAULT_WORKSPACE_REL})",
+    )
+    p_waiver_new.add_argument("--run-id", required=True, help="Run workspace identifier")
+    p_waiver_new.add_argument("--gate", required=True, choices=("Q", "R"), help="Gate identifier")
+    p_waiver_new.add_argument("--rule-id", required=True, help="Rule identifier for this waiver")
+    p_waiver_new.add_argument("--waiver-id", required=True, help="Deterministic waiver id")
+    p_waiver_new.add_argument("--expires-at", required=True, help="RFC3339 expiry timestamp")
+    p_waiver_new.add_argument(
+        "--out",
+        default=None,
+        help="Optional repo-relative output path (default: .belgi/runs/<run_id>/inputs/waivers/<waiver_id>.json)",
+    )
+    p_waiver_new.add_argument("--force", action="store_true", help="Overwrite output if it already exists")
+
+    p_waiver_apply = waiver_subs.add_parser(
+        "apply", help="Record a waiver reference in run-local waiver inputs for C1 consumption"
+    )
+    p_waiver_apply.add_argument("--repo", default=".", help="Repo root (default: .)")
+    p_waiver_apply.add_argument(
+        "--workspace",
+        default=DEFAULT_WORKSPACE_REL,
+        help=f"Repo-relative workspace root (default: {DEFAULT_WORKSPACE_REL})",
+    )
+    p_waiver_apply.add_argument("--run-id", required=True, help="Run workspace identifier")
+    p_waiver_apply.add_argument("--waiver", required=True, help="Repo-relative path to waiver JSON")
+
     # verify
     p_verify = subparsers.add_parser("verify", help="Verify deterministic run summaries and manifests")
     p_verify.add_argument("--repo", default=".", help="Repo root (default: .)")
@@ -3061,6 +3472,17 @@ def main(argv: list[str] | None = None) -> int:
             rc = _emit_cli_user_error_result(
                 primary_reason="missing run mode: provide `run new` or `run --tier`",
                 parser=p_run,
+                help_to_stderr=True,
+            )
+    elif args.command == "waiver":
+        if args.waiver_command == "new":
+            rc = cmd_waiver_new(args)
+        elif args.waiver_command == "apply":
+            rc = cmd_waiver_apply(args)
+        else:
+            rc = _emit_cli_user_error_result(
+                primary_reason="missing waiver subcommand",
+                parser=p_waiver,
                 help_to_stderr=True,
             )
     elif args.command == "verify":

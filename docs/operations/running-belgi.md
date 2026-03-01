@@ -21,11 +21,15 @@ Core intent contract (v1):
 Minimum branch workflow:
 1. Start from your normal branch and initialize repo-local BELGI surfaces once:
    - `belgi init --repo .`
-2. Run the canonical path:
-   - `belgi run --repo . --tier tier-1`
-3. Inspect the latest attempt under:
+2. Create a run-local input workspace:
+   - `belgi run new --repo . --run-id run-001`
+3. Edit intent in run inputs:
+   - `.belgi/runs/run-001/inputs/intent/IntentSpec.core.md`
+4. Run the canonical path:
+   - `belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md`
+5. Inspect the latest attempt under:
    - `.belgi/runs/<run_key>/<attempt_id>/`
-4. Optional integrity replay check:
+6. Optional integrity replay check:
    - `belgi verify --repo .`
 
 Revision semantics in `belgi run` (deterministic, fail-closed):
@@ -53,7 +57,10 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
 ## 0) Inputs
 
 ### 0.1 IntentSpec (required input artifact)
-Create `IntentSpec.core.md` from the core template (`belgi/templates/IntentSpec.core.template.md`) and place it at the **repo root** (alongside `CANONICALS.md`). (**NEW**, v1 hardening: canonical on-disk location)
+For operator CLI mode, create run inputs via `belgi run new --run-id <id>` and edit:
+- `.belgi/runs/<run_id>/inputs/intent/IntentSpec.core.md`
+
+The stage-level examples below use `IntentSpec.core.md` as an artifact name shorthand; direct `chain.*` invocations may use any repo-relative path that resolves to the same bytes.
 
 Deterministic requirements (enforced by Gate Q):
 - The file MUST contain exactly one fenced YAML block and only that block is machine-parsed.

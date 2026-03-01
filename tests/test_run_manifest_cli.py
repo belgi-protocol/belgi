@@ -47,10 +47,10 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
 
     run_id = "run-demo-001"
     run_dir = tmp_path / ".belgi" / "runs" / run_id
-    intent_path = run_dir / "IntentSpec.core.md"
-    intent_template_path = run_dir / "IntentSpec.md"
-    waivers_template_path = run_dir / "Waivers.md"
+    intent_path = run_dir / "inputs" / "intent" / "IntentSpec.core.md"
+    waivers_dir = run_dir / "inputs" / "waivers"
     runbook_template_path = run_dir / "RUN.md"
+    deprecated_intent_template_path = run_dir / "IntentSpec.md"
     tolerances_path = run_dir / "tolerances.json"
     toolchain_path = run_dir / "toolchain.json"
     evidence_manifest_path = run_dir / "EvidenceManifest.json"
@@ -58,17 +58,19 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     rc1 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
     assert rc1 == 0
     assert intent_path.exists()
-    assert intent_template_path.exists()
-    assert waivers_template_path.exists()
+    assert waivers_dir.exists()
+    assert waivers_dir.is_dir()
+    assert list(waivers_dir.iterdir()) == []
     assert runbook_template_path.exists()
-    assert "# IntentSpec" in intent_template_path.read_text(encoding="utf-8", errors="strict")
-    assert "human-authored; required before running." in intent_template_path.read_text(encoding="utf-8", errors="strict")
-    assert "draft-only; applying waivers requires explicit human approval." in waivers_template_path.read_text(
-        encoding="utf-8", errors="strict"
-    )
-    assert "belgi run --repo . --tier tier-1 --base-revision" in runbook_template_path.read_text(
-        encoding="utf-8", errors="strict"
-    )
+    assert not deprecated_intent_template_path.exists()
+    runbook_text = runbook_template_path.read_text(encoding="utf-8", errors="strict")
+    assert "belgi waiver new --repo . --run-id" in runbook_text
+    assert "belgi waiver apply --repo . --run-id" in runbook_text
+    assert "belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/" in runbook_text
+    assert "--base-revision" in runbook_text
+    assert "inputs/intent/IntentSpec.core.md" in runbook_text
+    assert "inputs/waivers/waiver-001.json" in runbook_text
+    assert "Artifacts are created under `.belgi/runs/<run_key>/<attempt_id>/`." in runbook_text
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
     assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
     assert evidence_manifest_path.exists()
@@ -82,8 +84,6 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
 
     baseline = {
         "intent": intent_path.read_bytes(),
-        "intent_template": intent_template_path.read_bytes(),
-        "waivers_template": waivers_template_path.read_bytes(),
         "runbook_template": runbook_template_path.read_bytes(),
         "tolerances": tolerances_path.read_bytes(),
         "toolchain": toolchain_path.read_bytes(),
@@ -91,30 +91,62 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     }
 
     intent_path.write_text("custom-intent\n", encoding="utf-8", errors="strict", newline="\n")
-    intent_template_path.write_text("custom-intent-template\n", encoding="utf-8", errors="strict", newline="\n")
-    waivers_template_path.write_text("custom-waivers-template\n", encoding="utf-8", errors="strict", newline="\n")
     runbook_template_path.write_text("custom-runbook-template\n", encoding="utf-8", errors="strict", newline="\n")
     tolerances_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
     evidence_manifest_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
+    waiver_path = waivers_dir / "custom-waiver.json"
+    waiver_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
 
     rc2 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
     assert rc2 == 0
     assert intent_path.read_text(encoding="utf-8", errors="strict") == "custom-intent\n"
-    assert intent_template_path.read_text(encoding="utf-8", errors="strict") == "custom-intent-template\n"
-    assert waivers_template_path.read_text(encoding="utf-8", errors="strict") == "custom-waivers-template\n"
     assert runbook_template_path.read_text(encoding="utf-8", errors="strict") == "custom-runbook-template\n"
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
     assert evidence_manifest_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
+    assert waiver_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
 
     rc3 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id, "--force"])
     assert rc3 == 0
     assert intent_path.read_bytes() == baseline["intent"]
-    assert intent_template_path.read_bytes() == baseline["intent_template"]
-    assert waivers_template_path.read_bytes() == baseline["waivers_template"]
     assert runbook_template_path.read_bytes() == baseline["runbook_template"]
     assert tolerances_path.read_bytes() == baseline["tolerances"]
     assert toolchain_path.read_bytes() == baseline["toolchain"]
     assert evidence_manifest_path.read_bytes() == baseline["evidence_manifest"]
+    assert waiver_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
+
+
+def test_run_new_layout_no_intentspec_md(tmp_path: Path) -> None:
+    rc_init = belgi_main(["init", "--repo", str(tmp_path)])
+    assert rc_init == 0
+
+    run_id = "run-layout-001"
+    rc_new = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
+    assert rc_new == 0
+
+    run_dir = tmp_path / ".belgi" / "runs" / run_id
+    assert not (run_dir / "IntentSpec.md").exists()
+    assert (run_dir / "inputs" / "intent" / "IntentSpec.core.md").is_file()
+    assert (run_dir / "inputs" / "waivers").is_dir()
+    assert (run_dir / "RUN.md").is_file()
+    assert not (run_dir / "inputs" / "waivers_applied.json").exists()
+
+
+def test_run_new_force_restores_runbook_template(tmp_path: Path) -> None:
+    rc_init = belgi_main(["init", "--repo", str(tmp_path)])
+    assert rc_init == 0
+
+    run_id = "run-layout-force-001"
+    run_dir = tmp_path / ".belgi" / "runs" / run_id
+    runbook_path = run_dir / "RUN.md"
+
+    rc_new = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
+    assert rc_new == 0
+    baseline = runbook_path.read_text(encoding="utf-8", errors="strict")
+
+    runbook_path.write_text("custom-runbook\n", encoding="utf-8", errors="strict", newline="\n")
+    rc_force = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id, "--force"])
+    assert rc_force == 0
+    assert runbook_path.read_text(encoding="utf-8", errors="strict") == baseline
 
 
 def test_manifest_add_deterministic_and_hash_correct(tmp_path: Path) -> None:
