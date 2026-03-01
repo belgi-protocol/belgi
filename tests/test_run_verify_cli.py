@@ -408,6 +408,28 @@ def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     assert machine["finding_count"] == 0
 
 
+def test_run_non_tty_human_output_has_no_ansi_and_machine_first_line_is_plain_json(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
+    assert rc_run == 0
+    captured = capsys.readouterr()
+
+    first_line = captured.out.splitlines()[0]
+    machine = json.loads(first_line)
+    assert machine["ok"] is True
+    assert "\x1b[" not in first_line
+    assert "\x1b[" not in captured.err
+
+
 def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
     head_sha = _git_rev_parse(repo, "HEAD")

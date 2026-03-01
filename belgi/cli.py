@@ -65,6 +65,13 @@ _CI_BASE_SHA_ENV_ORDER: tuple[str, ...] = (
     "BELGI_BASE_SHA",
     "GITHUB_BASE_SHA",
 )
+_ANSI_RESET = "\x1b[0m"
+_ANSI_STATUS_COLORS: dict[str, str] = {
+    "GO": "\x1b[32m",
+    "NO-GO": "\x1b[31m",
+    "USER_ERROR": "\x1b[33m",
+    "INTERNAL_ERROR": "\x1b[35m",
+}
 _STAGE_FORWARDER_NOTE = (
     "Strict forwarder to repo-local canonical chain entrypoints (`python -m chain.*`). "
     "May be unavailable in wheel-only installs where `chain/*` is not present."
@@ -123,6 +130,42 @@ def _emit_machine_result(
     print(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
 
 
+def _stderr_supports_color() -> bool:
+    if os.environ.get("NO_COLOR") is not None or os.environ.get("BELGI_NO_COLOR") is not None:
+        return False
+    isatty = getattr(sys.stderr, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except Exception:
+        return False
+
+
+def _colorize_status_token(token: str, *, enabled: bool) -> str:
+    if not enabled:
+        return token
+    color = _ANSI_STATUS_COLORS.get(token)
+    if not color:
+        return token
+    return f"{color}{token}{_ANSI_RESET}"
+
+
+def _emit_human_status(*, prefix: str, level: str, lines: list[str]) -> None:
+    normalized_lines = [str(line) for line in lines if str(line) != ""]
+    if not normalized_lines:
+        normalized_lines = [""]
+    status_token = str(level or "INFO").upper()
+    colored_token = _colorize_status_token(status_token, enabled=_stderr_supports_color())
+    first_line = normalized_lines[0]
+    if first_line:
+        print(f"{prefix} {colored_token}: {first_line}", file=sys.stderr)
+    else:
+        print(f"{prefix} {colored_token}", file=sys.stderr)
+    for extra in normalized_lines[1:]:
+        print(f"{prefix} {extra}", file=sys.stderr)
+
+
 def _emit_cli_user_error_result(
     *,
     primary_reason: str,
@@ -146,7 +189,7 @@ def _emit_cli_user_error_result(
         prog = str(getattr(parser, "prog", "belgi") or "belgi")
     else:
         prog = "belgi"
-    print(f"{prog}: error: {primary_reason}", file=sys.stderr)
+    _emit_human_status(prefix=prog, level="USER_ERROR", lines=[primary_reason])
     return RC_USER_ERROR
 
 
@@ -1019,6 +1062,68 @@ def _validate_run_id(raw: str) -> str:
     return rid
 
 
+def _render_run_intent_template(*, run_id: str) -> str:
+    return (
+        "# IntentSpec\n\n"
+        f"Run ID: `{run_id}`\n\n"
+        "human-authored; required before running.\n\n"
+        "## Objective\n"
+        "- TODO: describe objective delta.\n\n"
+        "## Scope Fence\n"
+        "- TODO: define in-scope and out-of-scope changes.\n\n"
+        "## Acceptance\n"
+        "- TODO: list testable acceptance criteria.\n\n"
+        "## Evidence Obligations\n"
+        "- TODO: list proof commands and expected artifacts.\n"
+    )
+
+
+def _render_run_waivers_template(*, run_id: str) -> str:
+    return (
+        "# Waivers\n\n"
+        f"Run ID: `{run_id}`\n\n"
+        "draft-only; applying waivers requires explicit human approval.\n\n"
+        "| waiver_id | reason | expiry_utc | approver |\n"
+        "| --- | --- | --- | --- |\n"
+        "| TODO | TODO | YYYY-MM-DDTHH:MM:SSZ | human:<name> |\n"
+    )
+
+
+def _render_runbook_template(*, run_id: str) -> str:
+    return (
+        "# RUN\n\n"
+        f"Run ID: `{run_id}`\n\n"
+        "Minimal operator loop:\n\n"
+        "1. Edit `IntentSpec.md` and `IntentSpec.core.md`.\n"
+        "2. (Optional) Draft waivers in `Waivers.md` (drafts are not auto-applied).\n"
+        "3. Resolve a stable SHA40:\n\n"
+        "```bash\n"
+        "BASE_SHA40=\"$(git rev-parse HEAD)\"\n"
+        "```\n\n"
+        "4. Run BELGI:\n\n"
+        "```bash\n"
+        "belgi run --repo . --tier tier-1 --base-revision \"${BASE_SHA40}\"\n"
+        "```\n\n"
+        "5. Verify and triage:\n\n"
+        "```bash\n"
+        "belgi verify --repo .\n"
+        "```\n\n"
+        "Artifacts are created under `.belgi/runs/<run_key>/<attempt_id>/`.\n"
+    )
+
+
+def _write_text_template(path: Path, payload: str, *, force: bool) -> str | None:
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"invalid path in run workspace: {path}")
+        if not force:
+            return None
+        _write_text(path, payload)
+        return "updated"
+    _write_text(path, payload)
+    return "created"
+
+
 def _write_json_placeholder(path: Path, *, force: bool) -> str | None:
     payload = "{}\n"
     if path.exists():
@@ -1057,6 +1162,9 @@ def _seed_run_workspace(
     force: bool,
 ) -> tuple[list[Path], list[Path], list[Path]]:
     intent_path = run_dir / "IntentSpec.core.md"
+    intent_template_path = run_dir / "IntentSpec.md"
+    waivers_template_path = run_dir / "Waivers.md"
+    runbook_template_path = run_dir / "RUN.md"
     placeholders = [
         run_dir / "tolerances.json",
         run_dir / "toolchain.json",
@@ -1084,6 +1192,18 @@ def _seed_run_workspace(
         intent_path.write_bytes(intent_bytes)
         created.append(intent_path)
 
+    template_payloads = [
+        (intent_template_path, _render_run_intent_template(run_id=run_id)),
+        (waivers_template_path, _render_run_waivers_template(run_id=run_id)),
+        (runbook_template_path, _render_runbook_template(run_id=run_id)),
+    ]
+    for path, payload in template_payloads:
+        state = _write_text_template(path, payload, force=force)
+        if state == "created":
+            created.append(path)
+        elif state == "updated":
+            updated.append(path)
+
     for path in placeholders:
         state = _write_json_placeholder(path, force=force)
         if state == "created":
@@ -1101,8 +1221,22 @@ def _seed_run_workspace(
     elif manifest_state == "updated":
         updated.append(evidence_manifest_path)
 
-    seeded_paths = [intent_path, *placeholders, evidence_manifest_path]
+    seeded_paths = [
+        intent_path,
+        intent_template_path,
+        waivers_template_path,
+        runbook_template_path,
+        *placeholders,
+        evidence_manifest_path,
+    ]
     return created, updated, seeded_paths
+
+
+def _best_effort_file_uri(path: Path) -> str | None:
+    try:
+        return path.resolve().as_uri()
+    except ValueError:
+        return None
 
 
 def cmd_run_new(args: argparse.Namespace) -> int:
@@ -1140,7 +1274,7 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             raise ValueError(f"invalid run workspace path: {run_dir}")
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        created, updated, _ = _seed_run_workspace(
+        created, updated, seeded_paths = _seed_run_workspace(
             run_dir=run_dir,
             run_id=run_id,
             intent_bytes=template_bytes,
@@ -1162,6 +1296,13 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             print(f"[belgi run new] updated: {safe_relpath(repo_root, p)}", file=sys.stderr)
     if not created and not updated:
         print("[belgi run new] no changes (already initialized)", file=sys.stderr)
+    template_names = {"IntentSpec.md", "Waivers.md", "RUN.md"}
+    template_paths = [p for p in seeded_paths if p.name in template_names]
+    for template_path in template_paths:
+        print(f"[belgi run new] template: {template_path.resolve()}", file=sys.stderr)
+        uri = _best_effort_file_uri(template_path)
+        if uri:
+            print(f"[belgi run new] template_uri: {uri}", file=sys.stderr)
     return 0
 
 
@@ -1480,7 +1621,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        print(f"[belgi run] USER_ERROR: {reason}", file=sys.stderr)
+        _emit_human_status(prefix="[belgi run]", level="USER_ERROR", lines=[reason])
         return RC_USER_ERROR
     except ValueError as e:
         reason = str(e)
@@ -1517,7 +1658,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        print(f"[belgi run] NO-GO: {reason}", file=sys.stderr)
+        _emit_human_status(prefix="[belgi run]", level="NO-GO", lines=[reason])
         return RC_NO_GO
     except Exception as e:
         reason = str(e)
@@ -1554,7 +1695,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        print(f"[belgi run] ERROR: {reason}", file=sys.stderr)
+        _emit_human_status(prefix="[belgi run]", level="INTERNAL_ERROR", lines=[reason])
         return RC_INTERNAL_ERROR
 
     _emit_machine_result(
@@ -1569,23 +1710,20 @@ def cmd_run(args: argparse.Namespace) -> int:
         findings_present=adversarial_findings_present if findings_signal_emittable else None,
         finding_count=adversarial_findings_count if findings_signal_emittable else None,
     )
-    print(f"[belgi run] repo: {repo_root}", file=sys.stderr)
-    print(f"[belgi run] workspace: {workspace_rel}", file=sys.stderr)
-    print(f"[belgi run] tier: {tier_id}", file=sys.stderr)
-    print(f"[belgi run] run_key: {run_key}", file=sys.stderr)
-    print(f"[belgi run] attempt_id: {attempt_id}", file=sys.stderr)
-    print(f"[belgi run] created: {safe_relpath(repo_root, summary_path)}", file=sys.stderr)
-    print(
-        f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_evidence_final)}",
-        file=sys.stderr,
-    )
-    print(
-        f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_seal)}",
-        file=sys.stderr,
-    )
-    print(
-        f"[belgi run] created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_gate_s)}",
-        file=sys.stderr,
+    _emit_human_status(
+        prefix="[belgi run]",
+        level="GO",
+        lines=[
+            f"repo: {repo_root}",
+            f"workspace: {workspace_rel}",
+            f"tier: {tier_id}",
+            f"run_key: {run_key}",
+            f"attempt_id: {attempt_id}",
+            f"created: {safe_relpath(repo_root, summary_path)}",
+            f"created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_evidence_final)}",
+            f"created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_seal)}",
+            f"created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_gate_s)}",
+        ],
     )
     return RC_GO
 
@@ -1831,7 +1969,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             run_key=run_key,
             attempt_id=attempt_id,
         )
-        print(f"[belgi verify] USER_ERROR: {e}", file=sys.stderr)
+        _emit_human_status(prefix="[belgi verify]", level="USER_ERROR", lines=[str(e)])
         return RC_USER_ERROR
     except ValueError as e:
         _emit_machine_result(
@@ -1842,7 +1980,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             run_key=run_key,
             attempt_id=attempt_id,
         )
-        print(f"[belgi verify] NO-GO: {e}", file=sys.stderr)
+        _emit_human_status(prefix="[belgi verify]", level="NO-GO", lines=[str(e)])
         return RC_NO_GO
     except Exception as e:
         _emit_machine_result(
@@ -1853,7 +1991,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
             run_key=run_key,
             attempt_id=attempt_id,
         )
-        print(f"[belgi verify] ERROR: {e}", file=sys.stderr)
+        _emit_human_status(prefix="[belgi verify]", level="INTERNAL_ERROR", lines=[str(e)])
         return RC_INTERNAL_ERROR
 
     _emit_machine_result(
@@ -1864,10 +2002,15 @@ def cmd_verify(args: argparse.Namespace) -> int:
         run_key=run_key,
         attempt_id=attempt_id,
     )
-    for ref in verified:
-        print(f"[belgi verify] GO: {ref}", file=sys.stderr)
-    print(f"[belgi verify] PASS: verified {len(verified)} attempt(s)", file=sys.stderr)
-    print(f"[belgi verify] source: {safe_relpath(repo_root, target)}", file=sys.stderr)
+    _emit_human_status(
+        prefix="[belgi verify]",
+        level="GO",
+        lines=[
+            f"verified attempts: {len(verified)}",
+            *[f"verified: {ref}" for ref in verified],
+            f"source: {safe_relpath(repo_root, target)}",
+        ],
+    )
     return RC_GO
 
 
