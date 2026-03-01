@@ -84,11 +84,18 @@ Artifact produced:
 - ObjectRef addressing the waiver content (used by `SealManifest.waivers[]` and potentially by evidence refs).
 
 ### 3.4 Apply to a run (LockedSpec.waivers_applied)
-- A human updates the candidate LockedSpec to include the waiver document **storage reference** in `LockedSpec.waivers_applied[]`.
-  - Each entry MUST be a repo/bundle-relative `storage_ref` string that resolves to the waiver JSON bytes.
+- Operator CLI flow (human-controlled):
+  1) Draft a waiver JSON:
+     - `belgi waiver new --repo . --run-id <run_id> --gate <Q|R> --rule-id <RULE> --waiver-id <id> --expires-at <RFC3339>`
+  2) Apply waiver to run-local inputs:
+     - `belgi waiver apply --repo . --run-id <run_id> --waiver .belgi/runs/<run_id>/inputs/waivers/<id>.json`
+- `belgi waiver apply` records repo-relative refs in:
+  - `.belgi/runs/<run_id>/inputs/waivers_applied.json`
+- During `belgi run --intent-spec .belgi/runs/<run_id>/inputs/intent/IntentSpec.core.md`, C1 consumes these refs and populates `LockedSpec.waivers_applied[]` deterministically.
 
 Artifacts produced:
-- Candidate `LockedSpec.json` (schema: `LockedSpec.schema.json`) referencing waiver IDs.
+- Run-local waiver refs document (`.belgi/runs/<run_id>/inputs/waivers_applied.json`).
+- Candidate `LockedSpec.json` (schema: `LockedSpec.schema.json`) referencing waiver storage refs.
 
 Evidence kinds to record:
 - `schema_validation` (LockedSpec validates)
