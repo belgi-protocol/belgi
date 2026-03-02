@@ -1860,6 +1860,34 @@ def _gate_verdict_paths(chain_out_dir: Path | None) -> dict[str, Path | None]:
     return out
 
 
+def _gate_verdict_outcome(path: Path) -> str | None:
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8", errors="strict"))
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    raw = obj.get("verdict")
+    if not isinstance(raw, str):
+        return None
+    verdict = raw.strip()
+    if verdict in {"GO", "NO-GO"}:
+        return verdict
+    return None
+
+
+def _gate_status_map(gate_paths: dict[str, Path | None]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for gate in ("Q", "R", "S"):
+        p = gate_paths.get(gate)
+        if p is None:
+            out[gate] = "missing"
+            continue
+        outcome = _gate_verdict_outcome(p)
+        out[gate] = outcome if outcome is not None else "present"
+    return out
+
+
 def _primary_gate_verdict_path(chain_out_dir: Path | None, *, primary_reason: str | None = None) -> Path | None:
     if chain_out_dir is None:
         return None
@@ -1913,7 +1941,8 @@ def _osc8_link(*, label: str, path: Path) -> str | None:
     if _contains_control_chars(label):
         return None
     esc = "\x1b"
-    return f"{esc}]8;;{uri}{esc}\\{label}{esc}]8;;{esc}\\"
+    st = f"{esc}\\"
+    return f"{esc}]8;;{uri}{st}{label}{esc}]8;;{st}"
 
 
 def _quote_double(raw: str) -> str:
@@ -2058,7 +2087,7 @@ def _emit_run_failure_links(
     primary_gate = _gate_letter_from_verdict_path(gate_verdict_path)
     if primary_gate is None:
         primary_gate = _gate_letter_from_verdict_name(_preferred_gate_verdict_order(primary_reason)[0]) or "R"
-    gate_presence = {gate: ("present" if gate_paths[gate] is not None else "missing") for gate in ("Q", "R", "S")}
+    gate_status = _gate_status_map(gate_paths)
     next_instruction = str(remediation_next_instruction or "").strip()
     if not next_instruction:
         next_instruction = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
@@ -2070,11 +2099,7 @@ def _emit_run_failure_links(
         "",
         "evidence:",
         f"  gate: {primary_gate}",
-        (
-            f"  gate_verdicts: Q={gate_presence['Q']} "
-            f"R={gate_presence['R']} "
-            f"S={gate_presence['S']}"
-        ),
+        f"  gate_status: Q={gate_status['Q']} R={gate_status['R']} S={gate_status['S']}",
     ]
 
     verdict_ptr, evidence_ptr = _run_workspace_pointer_targets(run_workspace_dir)
@@ -2169,6 +2194,148 @@ def _emit_run_failure_links(
             lines.append(f"  evidence_manifest_path: {evidence_manifest_path.resolve()}")
 
     _emit_human_status(prefix="[belgi run]", level=level, lines=lines)
+
+
+def _emit_run_success_links(
+    *,
+    repo_root: Path,
+    tier_id: str | None,
+    run_ref: str | None,
+    run_key: str | None,
+    attempt_id: str | None,
+    run_workspace_dir: Path | None,
+    chain_out_dir: Path | None,
+    chain_repo_dir: Path | None,
+    intent_open_path: Path | None,
+    verbose: bool,
+) -> None:
+    family = _platform_family()
+    show_all_open = _show_all_open_helpers(verbose=verbose)
+    run_tokens = [f"verdict=GO", f"tier={tier_id or 'UNKNOWN'}"]
+    if run_ref:
+        run_tokens.append(f"run={run_ref}")
+    run_tokens.append(f"key={_short_run_key(run_key) or 'UNKNOWN'}")
+    run_tokens.append(f"attempt={_short_attempt_id(attempt_id) or 'UNKNOWN'}")
+
+    gate_r_path: Path | None = None
+    manifest_path: Path | None = None
+    seal_path: Path | None = None
+    if chain_out_dir is not None:
+        maybe_r = chain_out_dir / "GateVerdict.R.json"
+        if maybe_r.exists() and maybe_r.is_file() and not maybe_r.is_symlink():
+            gate_r_path = maybe_r
+        maybe_manifest = chain_out_dir / "EvidenceManifest.json"
+        if maybe_manifest.exists() and maybe_manifest.is_file() and not maybe_manifest.is_symlink():
+            manifest_path = maybe_manifest
+        maybe_seal = chain_out_dir / "SealManifest.json"
+        if maybe_seal.exists() and maybe_seal.is_file() and not maybe_seal.is_symlink():
+            seal_path = maybe_seal
+
+    verdict_ptr, evidence_ptr = _run_workspace_pointer_targets(run_workspace_dir)
+    verdict_display = verdict_ptr if (verdict_ptr is not None and not verbose) else gate_r_path
+    manifest_display = evidence_ptr if (evidence_ptr is not None and not verbose) else manifest_path
+
+    if intent_open_path is not None and intent_open_path.exists() and intent_open_path.is_file() and not intent_open_path.is_symlink():
+        intent_target: Path | None = intent_open_path
+    elif chain_repo_dir is not None:
+        maybe_intent = chain_repo_dir / "IntentSpec.core.md"
+        intent_target = maybe_intent if maybe_intent.exists() and maybe_intent.is_file() and not maybe_intent.is_symlink() else None
+    else:
+        intent_target = None
+
+    waivers_target: Path | None = None
+    if run_workspace_dir is not None:
+        maybe_waivers = _run_waivers_dir(run_workspace_dir)
+        if maybe_waivers.exists() and maybe_waivers.is_dir() and not maybe_waivers.is_symlink():
+            waivers_target = maybe_waivers
+    if waivers_target is None and chain_repo_dir is not None:
+        maybe_waivers_applied = chain_repo_dir / "out" / "inputs" / "waivers_applied"
+        if maybe_waivers_applied.exists() and maybe_waivers_applied.is_file() and not maybe_waivers_applied.is_symlink():
+            waivers_target = maybe_waivers_applied
+        else:
+            maybe_inputs = chain_repo_dir / "out" / "inputs"
+            if maybe_inputs.exists() and maybe_inputs.is_dir() and not maybe_inputs.is_symlink():
+                waivers_target = maybe_inputs
+
+    lines = [
+        "summary: " + " ".join(run_tokens),
+        "",
+        "evidence:",
+    ]
+
+    if verdict_display is not None:
+        verdict_rel = _repo_rel_display(repo_root, verdict_display.resolve()) or str(verdict_display.resolve())
+        lines.append(f"  verdict_R: {verdict_rel}")
+    else:
+        lines.append("  verdict_R: missing")
+
+    if manifest_display is not None:
+        manifest_rel = _repo_rel_display(repo_root, manifest_display.resolve()) or str(manifest_display.resolve())
+        lines.append(f"  manifest: {manifest_rel}")
+    else:
+        lines.append("  manifest: missing")
+
+    if seal_path is not None:
+        seal_rel = _repo_rel_display(repo_root, seal_path.resolve()) or str(seal_path.resolve())
+        lines.append(f"  seal: {seal_rel}")
+    else:
+        lines.append("  seal: missing")
+
+    lines.append("")
+    lines.append("open:")
+
+    targets: list[tuple[str, Path, Path]] = []
+    if gate_r_path is not None and verdict_display is not None:
+        targets.append(("verdict_R", verdict_display, gate_r_path))
+    if manifest_path is not None and manifest_display is not None:
+        targets.append(("manifest", manifest_display, manifest_path))
+    if intent_target is not None:
+        targets.append(("intent", intent_target, intent_target))
+    if waivers_target is not None:
+        targets.append(("waivers", waivers_target, waivers_target))
+
+    seen_target: set[str] = set()
+    for label, display_path, open_path in targets:
+        display_resolved = display_path.resolve()
+        open_resolved = open_path.resolve()
+        key = f"{label}:{display_resolved}:{open_resolved}"
+        if key in seen_target:
+            continue
+        seen_target.add(key)
+        rel = _repo_rel_display(repo_root, display_resolved) or str(display_resolved)
+        display_label = label
+        if _hyperlinks_enabled():
+            maybe_link = _osc8_link(label=label, path=open_resolved)
+            if maybe_link is not None:
+                display_label = maybe_link
+
+        if show_all_open:
+            mac, linux, windows = _open_command_lines(path=open_resolved)
+            lines.append(f"  {display_label}: {rel}")
+            lines.append(f"    open_macos: {mac}")
+            lines.append(f"    open_linux: {linux}")
+            lines.append(f"    open_windows: {windows}")
+            continue
+
+        platform_name, cmd = _open_command_for_platform(path=open_resolved, family=family)
+        lines.append(f"  {display_label}: {rel}")
+        lines.append(f"    open_{platform_name}: {cmd}")
+
+    if verbose:
+        lines.append("")
+        lines.append("details:")
+        if run_key is not None:
+            lines.append(f"  run_key: {run_key}")
+        if attempt_id is not None:
+            lines.append(f"  attempt_id: {attempt_id}")
+        if gate_r_path is not None:
+            lines.append(f"  verdict_R_path: {gate_r_path.resolve()}")
+        if manifest_path is not None:
+            lines.append(f"  manifest_path: {manifest_path.resolve()}")
+        if seal_path is not None:
+            lines.append(f"  seal_path: {seal_path.resolve()}")
+
+    _emit_human_status(prefix="[belgi run]", level="GO", lines=lines)
 
 
 def _write_run_summary_if_ready(
@@ -2681,20 +2848,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         findings_present=adversarial_findings_present if findings_signal_emittable else None,
         finding_count=adversarial_findings_count if findings_signal_emittable else None,
     )
-    _emit_human_status(
-        prefix="[belgi run]",
-        level="GO",
-        lines=[
-            f"repo: {repo_root}",
-            f"workspace: {workspace_rel}",
-            f"tier: {tier_id}",
-            f"run_key: {run_key}",
-            f"attempt_id: {attempt_id}",
-            f"created: {safe_relpath(repo_root, summary_path)}",
-            f"created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_evidence_final)}",
-            f"created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_seal)}",
-            f"created: {safe_relpath(repo_root, chain_repo_dir / chain_result.rel_gate_s)}",
-        ],
+    _emit_run_success_links(
+        repo_root=repo_root,
+        tier_id=tier_id,
+        run_ref=run_ref,
+        run_key=run_key,
+        attempt_id=attempt_id,
+        run_workspace_dir=run_workspace_dir,
+        chain_out_dir=chain_out_dir,
+        chain_repo_dir=chain_repo_dir,
+        intent_open_path=intent_open_path,
+        verbose=verbose,
     )
     return RC_GO
 

@@ -52,7 +52,7 @@ Boundary:
 
 When `belgi run` returns `NO-GO`, inspect in this order:
 1. `next` (authoritative next step)
-2. `evidence.gate` + `evidence.gate_verdicts` summary
+2. `evidence.gate` + `evidence.gate_status` summary
 3. `open.verdict_<gate>` target
 
 Human output mode:
@@ -78,6 +78,19 @@ Evidence manifest behavior:
 - manifest open target is omitted in default and only shown in verbose mode when present
 
 Authoritative store paths remain available under `--verbose` (`verdict_Q_path`, `verdict_R_path`, `verdict_S_path`, `manifest_path`).
+
+## GO Output
+
+Default GO output is compact and sectioned:
+- `summary`
+- `evidence` (`verdict_R`, `manifest`, `seal`)
+- `open` (`verdict_R`, `manifest`, `intent`, `waivers`)
+
+Verbose GO output includes authoritative absolute paths (`verdict_R_path`, `manifest_path`, `seal_path`) and expanded open helper variants.
+
+Hyperlinks:
+- OSC-8 links are opt-in only (`BELGI_HYPERLINKS=1`).
+- Copy/paste open commands are always printed for terminal compatibility.
 
 ## Wheel vs Source Checkout
 
