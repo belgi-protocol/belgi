@@ -54,7 +54,9 @@ belgi verify --repo .
 `belgi verify` selection is deterministic and sorted:
 1. explicit: `--run-key` (and optional `--attempt-id`) verifies exactly that target
 2. pointer: latest run workspace id with `last_attempt.txt` uses `run_key.txt` + `last_attempt.txt`
-3. latest: lexicographically max run_key under `.belgi/store/runs/`, then max attempt id
+  - invalid pointer targets are skipped deterministically
+3. store: lexicographically max run_key under `.belgi/store/runs/`, then max attempt id
+  - used only when no valid pointer target remains
 
 ## Layout Map
 

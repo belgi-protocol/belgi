@@ -1188,7 +1188,7 @@ def test_verify_selection_pointer_and_open_command_targets_real_verdict(
     assert f'open_linux: xdg-open "{pointer_path.resolve()}"' not in captured.err
 
 
-def test_verify_selection_latest_uses_lexicographic_run_key_then_attempt(
+def test_verify_selection_store_uses_lexicographic_run_key_then_attempt(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _fresh_repo_clone(tmp_path)
@@ -1227,9 +1227,87 @@ def test_verify_selection_latest_uses_lexicographic_run_key_then_attempt(
     assert rc_verify == 0
     captured = capsys.readouterr()
 
-    assert "selected_by=latest" in captured.err
+    assert "selected_by=store" in captured.err
     assert f"verified_key={expected_run_key[:10]}" in captured.err
     assert "verified_attempt=0001" in captured.err
+
+
+def test_verify_selection_skips_stale_pointer_and_uses_next_valid_pointer(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", "run-001"]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", "run-002"]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = repo / ".belgi" / "runs" / "run-001" / "inputs" / "intent" / "IntentSpec.core.md"
+    intent_path.write_bytes(run_orchestrator.render_default_intent_spec(tier_id="tier-0"))
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            ".belgi/runs/run-001/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc_run == 0
+    machine = json.loads(capsys.readouterr().out.splitlines()[0])
+    expected_key = str(machine["run_key"])
+
+    # run-002 pointers stay stale (PENDING), verify must skip them and use run-001 pointer target.
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    captured = capsys.readouterr()
+    assert "selected_by=pointer" in captured.err
+    assert f"verified_key={expected_key[:10]}" in captured.err
+
+
+def test_verify_selection_all_stale_pointers_falls_back_to_store(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", "run-001"]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", "run-002"]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
+    assert rc_run == 0
+    machine = json.loads(capsys.readouterr().out.splitlines()[0])
+    expected_key = str(machine["run_key"])
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    captured = capsys.readouterr()
+    assert "selected_by=store" in captured.err
+    assert f"verified_key={expected_key[:10]}" in captured.err
+
+
+def test_verify_selection_all_stale_pointers_and_empty_store_fails_closed(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", "run-001"]) == 0
+    _ = capsys.readouterr()
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert "no valid pointer target" in str(machine.get("primary_reason") or "")
 
 
 def test_waiver_helpers_emit_created_open_and_strict_match_reminder(tmp_path: Path, capsys: object) -> None:

@@ -3006,16 +3006,20 @@ def _select_verify_attempt_dir(
         candidates: list[tuple[str, Path]] = []
         for run_dir in _list_dirs_sorted(runs_dir):
             run_id = run_dir.name
+            run_key_path = _run_pointer_run_key_path(run_dir)
             last_attempt_path = _run_pointer_last_attempt_path(run_dir)
-            if not last_attempt_path.exists():
+            if not run_key_path.exists() or not last_attempt_path.exists():
                 continue
-            attempt_id = _validate_attempt_id_arg(_read_pointer_text(last_attempt_path, label=f"{run_id} last_attempt"))
-            run_key = _validate_run_key_arg(_read_pointer_text(_run_pointer_run_key_path(run_dir), label=f"{run_id} run_key"))
+            try:
+                attempt_id = _validate_attempt_id_arg(
+                    _read_pointer_text(last_attempt_path, label=f"{run_id} last_attempt")
+                )
+                run_key = _validate_run_key_arg(_read_pointer_text(run_key_path, label=f"{run_id} run_key"))
+            except _UserInputError:
+                continue
             attempt_dir = store_runs_dir / run_key / attempt_id
             if not attempt_dir.exists() or attempt_dir.is_symlink() or not attempt_dir.is_dir():
-                raise _UserInputError(
-                    f"pointer target missing for run {run_id}: .belgi/store/runs/{run_key}/{attempt_id}"
-                )
+                continue
             candidates.append((run_id, attempt_dir))
         if candidates:
             candidates.sort(key=lambda item: item[0])
@@ -3029,11 +3033,11 @@ def _select_verify_attempt_dir(
             raise _UserInputError(f"unexpected store run_key directory name: {run_key_dir.name}")
         run_key_candidates.append(run_key_dir)
     if not run_key_candidates:
-        raise _UserInputError("no run attempts found under .belgi/store/runs")
+        raise _UserInputError("no valid pointer target and no run attempts found under .belgi/store/runs")
     run_key_candidates.sort(key=lambda p: p.name)
     latest_run_key_dir = run_key_candidates[-1]
     latest_attempt_id = _max_attempt_id_in_run_key_dir(latest_run_key_dir)
-    return latest_run_key_dir / latest_attempt_id, "latest", None
+    return latest_run_key_dir / latest_attempt_id, "store", None
 
 
 def _resolve_run_workspace_for_attempt(
@@ -3342,7 +3346,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     run_ref: str | None = None
     run_key: str | None = None
     attempt_id: str | None = None
-    selected_by = "latest"
+    selected_by = "store"
     workspace_dir: Path | None = None
     attempt_dir: Path | None = None
 
