@@ -59,7 +59,7 @@ Artifact-backed release in capability buckets: infra orchestration/verify, tier+
   - `scripts/belgi_latest_run.ps1`
   - `scripts/belgi_latest_run.sh`
   - `scripts/belgi_wip_commit_run_reset.ps1`
-  - `docs/operations/triage.md`
+  - `docs/operations/cli.md`
 
 ### Changed
 - Run/verify contract hardening:

@@ -2,6 +2,11 @@
 
 DEFAULT: **NO-GO** unless an independent third party can replay the verification within the declared Environment Envelope using only the artifacts produced by this run.
 
+Operator CLI SSOT:
+- `docs/operations/cli.md`
+
+This document remains the chain-module reference surface (`python -m chain.*`).
+
 This runbook is grounded in:
 - Canonical chain and terms: `../../CANONICALS.md`
 - Trust boundaries: `../../trust-model.md`

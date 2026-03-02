@@ -66,12 +66,11 @@ Canonical trigger:
 - belgi/templates/IntentSpec.core.template.md
 - schemas/IntentSpec.schema.json
 - docs/research/experiment-design.md
+- docs/operations/cli.md
 - docs/operations/running-belgi.md
 - docs/operations/evidence-bundles.md
 - docs/operations/evidence-ownership.md
 - docs/operations/exit-codes.md
-- docs/operations/runbook_dev_tier.md
-- docs/operations/triage.md
 - docs/operations/waivers.md
 - docs/operations/security.md
 - docs/operations/workflows.md
@@ -81,9 +80,9 @@ Canonical trigger:
 - belgi/canonicals/terminology.md
 - belgi/canonicals/trust-model.md
 - belgi/canonicals/docs/operations/consistency-sweep.md
+- belgi/canonicals/docs/operations/cli.md
 - belgi/canonicals/docs/operations/evidence-bundles.md
 - belgi/canonicals/docs/operations/evidence-ownership.md
-- belgi/canonicals/docs/operations/runbook_dev_tier.md
 - belgi/canonicals/docs/operations/running-belgi.md
 - belgi/canonicals/docs/operations/security.md
 - belgi/canonicals/docs/operations/waivers.md
@@ -204,9 +203,9 @@ Canonical trigger:
      - `terminology.md` → `belgi/canonicals/terminology.md`
      - `trust-model.md` → `belgi/canonicals/trust-model.md`
      - `docs/operations/consistency-sweep.md` → `belgi/canonicals/docs/operations/consistency-sweep.md`
+     - `docs/operations/cli.md` → `belgi/canonicals/docs/operations/cli.md`
      - `docs/operations/evidence-bundles.md` → `belgi/canonicals/docs/operations/evidence-bundles.md`
      - `docs/operations/evidence-ownership.md` → `belgi/canonicals/docs/operations/evidence-ownership.md`
-     - `docs/operations/runbook_dev_tier.md` → `belgi/canonicals/docs/operations/runbook_dev_tier.md`
      - `docs/operations/running-belgi.md` → `belgi/canonicals/docs/operations/running-belgi.md`
      - `docs/operations/security.md` → `belgi/canonicals/docs/operations/security.md`
      - `docs/operations/waivers.md` → `belgi/canonicals/docs/operations/waivers.md`

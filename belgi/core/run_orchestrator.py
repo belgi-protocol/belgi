@@ -44,16 +44,16 @@ _C3_CANONICAL_PACKAGE_BINDINGS: tuple[tuple[str, str], ...] = (
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/consistency-sweep.md",
     ),
     (
+        "canonicals/docs/operations/cli.md",
+        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/cli.md",
+    ),
+    (
         "canonicals/docs/operations/evidence-bundles.md",
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-bundles.md",
     ),
     (
         "canonicals/docs/operations/evidence-ownership.md",
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-ownership.md",
-    ),
-    (
-        "canonicals/docs/operations/runbook_dev_tier.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/runbook_dev_tier.md",
     ),
     (
         "canonicals/docs/operations/running-belgi.md",
