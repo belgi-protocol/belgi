@@ -53,7 +53,7 @@ def _parse_yaml_scalar(raw: str) -> Any:
         quote = v[0]
         inner = v[1:-1]
         if quote == '"':
-            inner = inner.replace('\\"', '"').replace('\\n', '\n').replace('\\t', '\t').replace('\\\\', '\\')
+            inner = inner.replace('\\"', '"').replace('\\n', "\n").replace("\\t", "\t").replace("\\\\", "\\")
         else:
             inner = inner.replace("''", "'")
         return inner
@@ -97,11 +97,18 @@ def parse_yaml_subset(yaml_text: str) -> Any:
     def _raise_at(*, line_idx: int, column_idx: int, message: str) -> None:
         raise YamlParseError(f"line {line_idx + 1}, column {column_idx + 1}: {message}")
 
+    def _is_comment_only(line: str) -> bool:
+        return line.lstrip(" ").startswith("#")
+
     def parse_block(start: int, indent: int) -> tuple[Any, int]:
         i = start
-        # Skip blank lines
-        while i < len(raw_lines) and raw_lines[i][1].strip() == "":
-            i += 1
+        # Skip blank/comment-only lines.
+        while i < len(raw_lines):
+            ln = raw_lines[i][1]
+            if ln.strip() == "" or _is_comment_only(ln):
+                i += 1
+                continue
+            break
         if i >= len(raw_lines):
             return {}, i
 
@@ -119,6 +126,9 @@ def parse_yaml_subset(yaml_text: str) -> Any:
             while i < len(raw_lines):
                 ln = raw_lines[i][1]
                 if ln.strip() == "":
+                    i += 1
+                    continue
+                if _is_comment_only(ln):
                     i += 1
                     continue
                 try:
@@ -152,6 +162,9 @@ def parse_yaml_subset(yaml_text: str) -> Any:
         while i < len(raw_lines):
             ln = raw_lines[i][1]
             if ln.strip() == "":
+                i += 1
+                continue
+            if _is_comment_only(ln):
                 i += 1
                 continue
             try:

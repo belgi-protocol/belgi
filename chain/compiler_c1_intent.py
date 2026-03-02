@@ -38,7 +38,7 @@ from belgi.core.jail import normalize_repo_rel, resolve_repo_rel_path
 from belgi.core.schema import SchemaError, validate_schema
 from belgi.protocol.pack import ProtocolContext, get_builtin_protocol_context, load_protocol_context_from_dir
 
-from chain.logic.q_checks.yaml_subset import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
+from belgi.core.intent_yaml import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
 
 
 
