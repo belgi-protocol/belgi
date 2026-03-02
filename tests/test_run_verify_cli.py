@@ -129,6 +129,23 @@ def _extract_run_human_block(stderr: str, *, level: str = "NO-GO") -> list[str]:
     return out
 
 
+def _extract_verify_human_block(stderr: str, *, level: str = "GO") -> list[str]:
+    lines = stderr.splitlines()
+    start = -1
+    for idx, line in enumerate(lines):
+        if line.startswith(f"[belgi verify] {level}:"):
+            start = idx
+            break
+    if start < 0:
+        return []
+    out: list[str] = []
+    for line in lines[start:]:
+        if line and not line.startswith("[belgi verify]"):
+            break
+        out.append(line)
+    return out
+
+
 def _open_target_labels(stderr: str) -> list[str]:
     labels: list[str] = []
     in_open = False
@@ -1028,6 +1045,241 @@ def test_verify_emits_machine_result_line(tmp_path: Path, capsys: object) -> Non
     assert machine["tier_id"] is None
     assert isinstance(machine["run_key"], str) and len(machine["run_key"]) == 64
     assert machine["attempt_id"] == "attempt-0001"
+
+
+def test_init_output_points_to_readme_and_next_command(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    rc = belgi_main(["init", "--repo", str(repo)])
+    assert rc == 0
+    captured = capsys.readouterr()
+
+    lines = [line for line in captured.err.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert lines[0].startswith("[belgi init] next:")
+    assert ".belgi/README.md" in lines[0]
+    assert "belgi run new --repo . --run-id run-001" in lines[0]
+
+
+def test_run_new_output_is_deterministic_and_has_no_open_uri(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-new-001"
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc = belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "open_uri:" not in captured.err
+
+    expected_labels = [
+        f"[belgi run new]   runbook: .belgi/runs/{run_id}/RUN.md",
+        f"[belgi run new]   intent: .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+        f"[belgi run new]   waivers: .belgi/runs/{run_id}/inputs/waivers",
+    ]
+    labels = [
+        line
+        for line in captured.err.splitlines()
+        if line.startswith("[belgi run new]   ") and "open_" not in line
+    ]
+    assert labels == expected_labels
+    assert captured.err.count("open_linux:") == 3
+    assert "open_macos:" not in captured.err
+    assert "open_windows:" not in captured.err
+
+
+def test_about_output_is_bounded_and_contains_pack_identity(tmp_path: Path, capsys: object) -> None:
+    _ = tmp_path
+    rc = belgi_main(["about"])
+    assert rc == 0
+    captured = capsys.readouterr()
+
+    lines = [line for line in captured.out.splitlines() if line.strip()]
+    assert len(lines) <= 8
+    assert any(line.startswith("protocol_pack: ") for line in lines)
+    assert any(line.startswith("pack_id: ") for line in lines)
+    assert any(line.startswith("manifest_sha256: ") for line in lines)
+    assert "resources: belgi/_protocol_packs/v1" in lines
+
+
+def test_verify_selection_explicit_flags_and_summary_tokens(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    assert belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha]) == 0
+    run_first = json.loads(capsys.readouterr().out.splitlines()[0])
+    run_key = str(run_first["run_key"])
+
+    assert belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha]) == 0
+    _ = capsys.readouterr()
+
+    rc_verify = belgi_main(
+        [
+            "verify",
+            "--repo",
+            str(repo),
+            "--run-key",
+            run_key,
+            "--attempt-id",
+            "attempt-0001",
+        ]
+    )
+    assert rc_verify == 0
+    captured = capsys.readouterr()
+
+    assert "summary: verdict=GO" in captured.err
+    assert f"verified_key={run_key[:10]}" in captured.err
+    assert "verified_attempt=0001" in captured.err
+    assert "selected_by=explicit" in captured.err
+
+
+def test_verify_selection_pointer_and_open_command_targets_real_verdict(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    run_id = "run-verify-pointer-001"
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    intent_path.write_bytes(run_orchestrator.render_default_intent_spec(tier_id="tier-0"))
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc_run == 0
+    run_machine = json.loads(capsys.readouterr().out.splitlines()[0])
+    run_key = str(run_machine["run_key"])
+    attempt_id = str(run_machine["attempt_id"])
+    verdict_path = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "GateVerdict.R.json"
+    pointer_path = repo / ".belgi" / "runs" / run_id / "open_verdict.txt"
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    captured = capsys.readouterr()
+
+    assert "selected_by=pointer" in captured.err
+    assert f"verified_key={run_key[:10]}" in captured.err
+    assert "open_linux:" in captured.err
+    assert f'open_linux: xdg-open "{verdict_path.resolve()}"' in captured.err
+    assert f'open_linux: xdg-open "{pointer_path.resolve()}"' not in captured.err
+
+
+def test_verify_selection_latest_uses_lexicographic_run_key_then_attempt(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_a = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
+    assert rc_a == 0
+    run_a = json.loads(capsys.readouterr().out.splitlines()[0])
+    run_key_a = str(run_a["run_key"])
+
+    intent_custom_rel = "intent_custom.md"
+    (repo / intent_custom_rel).write_bytes(run_orchestrator.render_default_intent_spec(tier_id="tier-0"))
+    rc_b = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            intent_custom_rel,
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc_b == 0
+    run_b = json.loads(capsys.readouterr().out.splitlines()[0])
+    run_key_b = str(run_b["run_key"])
+
+    expected_run_key = max(run_key_a, run_key_b)
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    captured = capsys.readouterr()
+
+    assert "selected_by=latest" in captured.err
+    assert f"verified_key={expected_run_key[:10]}" in captured.err
+    assert "verified_attempt=0001" in captured.err
+
+
+def test_waiver_helpers_emit_created_open_and_strict_match_reminder(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-waiver-output-001"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    rc_new = belgi_main(
+        [
+            "waiver",
+            "new",
+            "--repo",
+            str(repo),
+            "--run-id",
+            run_id,
+            "--gate",
+            "R",
+            "--rule-id",
+            "RULE-STRICT-001",
+            "--waiver-id",
+            "waiver-001",
+            "--expires-at",
+            "2100-01-01T00:00:00Z",
+        ]
+    )
+    assert rc_new == 0
+    captured_new = capsys.readouterr()
+    assert "[belgi waiver new] created: .belgi/runs/run-waiver-output-001/inputs/waivers/waiver-001.json" in captured_new.err
+    assert "[belgi waiver new] open: " in captured_new.err
+    assert "reminder: strict match rule_id=RULE-STRICT-001 scope=path:<repo-rel-path> expires_at=2100-01-01T00:00:00Z" in captured_new.err
+
+    rc_apply = belgi_main(
+        [
+            "waiver",
+            "apply",
+            "--repo",
+            str(repo),
+            "--run-id",
+            run_id,
+            "--waiver",
+            f".belgi/runs/{run_id}/inputs/waivers/waiver-001.json",
+        ]
+    )
+    assert rc_apply == 0
+    captured_apply = capsys.readouterr()
+    assert "[belgi waiver apply] open: " in captured_apply.err
+    assert "reminder: strict match gate=R rule_id=RULE-STRICT-001" in captured_apply.err
 
 
 def test_tier0_emits_findings_signal_in_summary_and_machine_json(tmp_path: Path, capsys: object) -> None:

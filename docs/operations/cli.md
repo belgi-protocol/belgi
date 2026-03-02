@@ -11,6 +11,18 @@ This is the operator SSOT for CLI usage. Keep this file focused on:
 For chain module reference commands, use:
 - `docs/operations/running-belgi.md`
 
+## CLI Tiers
+
+| Tier | Commands | Status |
+|---|---|---|
+| A (operator-critical) | `about`, `init`, `run`, `waiver`, `verify` | v1.4.0 operator UX closure target |
+| B (operator-support) | `policy`, `bundle`, `pack` | stable, not polished for operator UX |
+| C (expert-only) | `manifest`, `stage`, `supplychain-scan`, `adversarial-scan` | stable, expert surface |
+
+Guarantee scope:
+- v1.4.0 guarantees Tier A operator UX closure.
+- Tier B and Tier C remain stable, but are not polished operator surfaces.
+
 ## Quickstart
 
 ```bash
@@ -36,6 +48,13 @@ belgi run \
 # 6) Verify run outputs
 belgi verify --repo .
 ```
+
+## Verify Selection Priority
+
+`belgi verify` selection is deterministic and sorted:
+1. explicit: `--run-key` (and optional `--attempt-id`) verifies exactly that target
+2. pointer: latest run workspace id with `last_attempt.txt` uses `run_key.txt` + `last_attempt.txt`
+3. latest: lexicographically max run_key under `.belgi/store/runs/`, then max attempt id
 
 ## Layout Map
 
