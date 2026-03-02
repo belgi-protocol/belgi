@@ -50,10 +50,13 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     intent_path = run_dir / "inputs" / "intent" / "IntentSpec.core.md"
     waivers_dir = run_dir / "inputs" / "waivers"
     runbook_template_path = run_dir / "RUN.md"
+    run_key_pointer_path = run_dir / "run_key.txt"
+    last_attempt_pointer_path = run_dir / "last_attempt.txt"
+    open_verdict_pointer_path = run_dir / "open_verdict.txt"
+    open_evidence_pointer_path = run_dir / "open_evidence.txt"
     deprecated_intent_template_path = run_dir / "IntentSpec.md"
     tolerances_path = run_dir / "tolerances.json"
     toolchain_path = run_dir / "toolchain.json"
-    evidence_manifest_path = run_dir / "EvidenceManifest.json"
 
     rc1 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id])
     assert rc1 == 0
@@ -70,30 +73,33 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert "--base-revision" in runbook_text
     assert "inputs/intent/IntentSpec.core.md" in runbook_text
     assert "inputs/waivers/waiver-001.json" in runbook_text
-    assert "Artifacts are created under `.belgi/runs/<run_key>/<attempt_id>/`." in runbook_text
+    assert "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`." in runbook_text
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
     assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
-    assert evidence_manifest_path.exists()
-    assert json.loads(evidence_manifest_path.read_text(encoding="utf-8", errors="strict")) == {
-        "schema_version": "1.0.0",
-        "run_id": run_id,
-        "artifacts": [],
-        "commands_executed": [],
-        "envelope_attestation": None,
-    }
+    assert not (run_dir / "EvidenceManifest.json").exists()
+    assert run_key_pointer_path.read_text(encoding="utf-8", errors="strict") == "PENDING\n"
+    assert last_attempt_pointer_path.read_text(encoding="utf-8", errors="strict") == "PENDING\n"
+    assert open_verdict_pointer_path.read_text(encoding="utf-8", errors="strict") == "PENDING\n"
+    assert open_evidence_pointer_path.read_text(encoding="utf-8", errors="strict") == "PENDING\n"
 
     baseline = {
         "intent": intent_path.read_bytes(),
         "runbook_template": runbook_template_path.read_bytes(),
         "tolerances": tolerances_path.read_bytes(),
         "toolchain": toolchain_path.read_bytes(),
-        "evidence_manifest": evidence_manifest_path.read_bytes(),
+        "run_key_pointer": run_key_pointer_path.read_bytes(),
+        "last_attempt_pointer": last_attempt_pointer_path.read_bytes(),
+        "open_verdict_pointer": open_verdict_pointer_path.read_bytes(),
+        "open_evidence_pointer": open_evidence_pointer_path.read_bytes(),
     }
 
     intent_path.write_text("custom-intent\n", encoding="utf-8", errors="strict", newline="\n")
     runbook_template_path.write_text("custom-runbook-template\n", encoding="utf-8", errors="strict", newline="\n")
     tolerances_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
-    evidence_manifest_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
+    run_key_pointer_path.write_text("x\n", encoding="utf-8", errors="strict", newline="\n")
+    last_attempt_pointer_path.write_text("y\n", encoding="utf-8", errors="strict", newline="\n")
+    open_verdict_pointer_path.write_text("z\n", encoding="utf-8", errors="strict", newline="\n")
+    open_evidence_pointer_path.write_text("w\n", encoding="utf-8", errors="strict", newline="\n")
     waiver_path = waivers_dir / "custom-waiver.json"
     waiver_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
 
@@ -102,7 +108,10 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert intent_path.read_text(encoding="utf-8", errors="strict") == "custom-intent\n"
     assert runbook_template_path.read_text(encoding="utf-8", errors="strict") == "custom-runbook-template\n"
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
-    assert evidence_manifest_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
+    assert run_key_pointer_path.read_text(encoding="utf-8", errors="strict") == "x\n"
+    assert last_attempt_pointer_path.read_text(encoding="utf-8", errors="strict") == "y\n"
+    assert open_verdict_pointer_path.read_text(encoding="utf-8", errors="strict") == "z\n"
+    assert open_evidence_pointer_path.read_text(encoding="utf-8", errors="strict") == "w\n"
     assert waiver_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
 
     rc3 = belgi_main(["run", "new", "--repo", str(tmp_path), "--run-id", run_id, "--force"])
@@ -111,7 +120,10 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert runbook_template_path.read_bytes() == baseline["runbook_template"]
     assert tolerances_path.read_bytes() == baseline["tolerances"]
     assert toolchain_path.read_bytes() == baseline["toolchain"]
-    assert evidence_manifest_path.read_bytes() == baseline["evidence_manifest"]
+    assert run_key_pointer_path.read_bytes() == baseline["run_key_pointer"]
+    assert last_attempt_pointer_path.read_bytes() == baseline["last_attempt_pointer"]
+    assert open_verdict_pointer_path.read_bytes() == baseline["open_verdict_pointer"]
+    assert open_evidence_pointer_path.read_bytes() == baseline["open_evidence_pointer"]
     assert waiver_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
 
 
@@ -128,7 +140,12 @@ def test_run_new_layout_no_intentspec_md(tmp_path: Path) -> None:
     assert (run_dir / "inputs" / "intent" / "IntentSpec.core.md").is_file()
     assert (run_dir / "inputs" / "waivers").is_dir()
     assert (run_dir / "RUN.md").is_file()
+    assert (run_dir / "run_key.txt").is_file()
+    assert (run_dir / "last_attempt.txt").is_file()
+    assert (run_dir / "open_verdict.txt").is_file()
+    assert (run_dir / "open_evidence.txt").is_file()
     assert not (run_dir / "inputs" / "waivers_applied.json").exists()
+    assert not (run_dir / "EvidenceManifest.json").exists()
 
 
 def test_run_new_force_restores_runbook_template(tmp_path: Path) -> None:

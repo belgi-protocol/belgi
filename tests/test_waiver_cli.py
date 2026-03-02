@@ -150,6 +150,6 @@ def test_waiver_apply_writes_deterministic_run_refs_and_is_consumed_by_run(tmp_p
     assert machine["verdict"] == "NO-GO"
     run_key = str(machine["run_key"])
     attempt_id = str(machine["attempt_id"])
-    locked_spec_path = repo / ".belgi" / "runs" / run_key / attempt_id / "repo" / "out" / "LockedSpec.json"
+    locked_spec_path = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "LockedSpec.json"
     locked_obj = json.loads(locked_spec_path.read_text(encoding="utf-8", errors="strict"))
     assert locked_obj.get("waivers_applied") == ["out/inputs/waivers_applied/waiver-001.json"]

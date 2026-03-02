@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -130,7 +131,7 @@ def _run_tier1_and_get_attempt(repo: Path, capsys: object) -> tuple[dict[str, ob
     machine = json.loads(captured.out.splitlines()[0])
     run_key = str(machine["run_key"])
     attempt_id = str(machine["attempt_id"])
-    attempt_dir = repo / ".belgi" / "runs" / run_key / attempt_id
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
     assert attempt_dir.is_dir()
     return machine, attempt_dir
 
@@ -178,7 +179,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     rc1 = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc1 == 0
 
-    runs_root = repo / ".belgi" / "runs"
+    runs_root = repo / ".belgi" / "store" / "runs"
     run_dirs = _list_dirs(runs_root)
     assert len(run_dirs) == 1
     run_key_dir = run_dirs[0]
@@ -250,7 +251,7 @@ def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) ->
     )
     assert rc_run == 0
 
-    runs_root = repo / ".belgi_alt" / "runs"
+    runs_root = repo / ".belgi_alt" / "store" / "runs"
     run_dirs = _list_dirs(runs_root)
     assert len(run_dirs) == 1
     attempts = _list_dirs(run_dirs[0])
@@ -258,6 +259,128 @@ def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) ->
 
     rc_verify = belgi_main(["verify", "--repo", str(repo), "--workspace", ".belgi_alt"])
     assert rc_verify == 0
+
+
+def test_run_updates_run_workspace_pointer_files_deterministically(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    run_id = "run-pointers-001"
+    rc_new = belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id])
+    assert rc_new == 0
+    _ = capsys.readouterr()
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    intent_path.write_bytes(run_orchestrator.render_default_intent_spec(tier_id="tier-0"))
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc_run == 0
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+
+    run_workspace = repo / ".belgi" / "runs" / run_id
+    assert (run_workspace / "run_key.txt").read_text(encoding="utf-8", errors="strict") == f"{run_key}\n"
+    assert (run_workspace / "last_attempt.txt").read_text(encoding="utf-8", errors="strict") == f"{attempt_id}\n"
+
+    open_verdict_rel = (run_workspace / "open_verdict.txt").read_text(encoding="utf-8", errors="strict").strip()
+    open_evidence_rel = (run_workspace / "open_evidence.txt").read_text(encoding="utf-8", errors="strict").strip()
+    assert open_verdict_rel
+    assert open_evidence_rel
+    assert (repo / Path(*open_verdict_rel.split("/"))).is_file()
+    assert (repo / Path(*open_evidence_rel.split("/"))).is_file()
+    assert open_evidence_rel == f".belgi/store/runs/{run_key}/{attempt_id}/repo/out/EvidenceManifest.json"
+
+
+def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+    attempt_out = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out"
+    verdict_path = attempt_out / "GateVerdict.R.json"
+    evidence_path = attempt_out / "EvidenceManifest.json"
+    verdict_obj = json.loads(verdict_path.read_text(encoding="utf-8", errors="strict"))
+    remediation = str(verdict_obj.get("remediation", {}).get("next_instruction", ""))
+    assert remediation
+
+    assert f"gate_verdict_path: {verdict_path.resolve()}" in captured.err
+    assert f"evidence_manifest_path: {evidence_path.resolve()}" in captured.err
+    assert f"remediation.next_instruction: {remediation}" in captured.err
+
+
+def test_run_migrates_legacy_run_key_directory_to_store(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha]) == 0
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+
+    store_dir = repo / ".belgi" / "store" / "runs" / run_key
+    legacy_dir = repo / ".belgi" / "runs" / run_key
+    store_dir.rename(legacy_dir)
+    assert legacy_dir.is_dir()
+    assert not store_dir.exists()
+
+    rc_second = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
+    assert rc_second == 0
+    _ = capsys.readouterr()
+    assert store_dir.is_dir()
+    assert not legacy_dir.exists()
+
+
+def test_run_fails_closed_on_legacy_store_collision(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha]) == 0
+    captured = capsys.readouterr()
+    machine_first = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine_first["run_key"])
+
+    store_dir = repo / ".belgi" / "store" / "runs" / run_key
+    legacy_dir = repo / ".belgi" / "runs" / run_key
+    shutil.copytree(store_dir, legacy_dir)
+    assert store_dir.is_dir()
+    assert legacy_dir.is_dir()
+
+    rc = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
+    assert rc == 20
+    captured_fail = capsys.readouterr()
+    machine = json.loads(captured_fail.out.splitlines()[0])
+    reason = str(machine.get("primary_reason") or "")
+    assert "legacy/store run directory collision" in reason
 
 
 def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> None:
@@ -269,7 +392,7 @@ def test_verify_fails_closed_on_mutated_evidence_manifest(tmp_path: Path) -> Non
     rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha])
     assert rc_run == 0
 
-    runs_root = repo / ".belgi" / "runs"
+    runs_root = repo / ".belgi" / "store" / "runs"
     run_key_dir = _list_dirs(runs_root)[0]
     attempt_dir = _list_dirs(run_key_dir)[0]
     manifest_path = attempt_dir / "repo" / "out" / "EvidenceManifest.json"
@@ -315,6 +438,45 @@ def test_run_fails_closed_when_base_revision_is_unavailable(
     assert "--base-revision <40-hex SHA>" in reason
 
 
+def test_run_intentspec_yaml_parse_error_includes_line_and_column(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-bad-intent-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    intent_path.write_text(
+        "# bad\n\n```yaml\nintent_id \"missing-colon\"\n```\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    rc = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc == 10
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    reason = str(machine.get("primary_reason") or "")
+    assert "chain.compiler_c1_intent returned rc=3" in reason
+    assert "IntentSpec YAML parse error" in captured.err
+    assert "line " in captured.err and "column " in captured.err
+
+
 def test_run_revision_binding_is_authoritative_for_base_and_evaluated(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -336,7 +498,7 @@ def test_run_revision_binding_is_authoritative_for_base_and_evaluated(
     machine = json.loads(captured.out.splitlines()[0])
     run_key = str(machine["run_key"])
     attempt_id = str(machine["attempt_id"])
-    attempt_dir = repo / ".belgi" / "runs" / run_key / attempt_id
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
 
     locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
     assert str(locked_spec.get("upstream_state", {}).get("commit_sha", "")) == base_sha
@@ -469,7 +631,7 @@ def test_tier0_emits_findings_signal_in_summary_and_machine_json(tmp_path: Path,
 
     machine = json.loads(captured.out.splitlines()[0])
     run_key = machine["run_key"]
-    attempt_dir = repo / ".belgi" / "runs" / run_key / "attempt-0001"
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / "attempt-0001"
 
     summary_obj = json.loads((attempt_dir / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     adv = summary_obj.get("adversarial_scan")
@@ -646,7 +808,7 @@ def test_tier1_passes_with_valid_applied_waiver(tmp_path: Path, capsys: object) 
 
     run_key = str(machine["run_key"])
     attempt_id = str(machine["attempt_id"])
-    attempt_dir = repo / ".belgi" / "runs" / run_key / attempt_id
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
 
     summary_obj = json.loads((attempt_dir / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     waivers_summary = summary_obj.get("waivers_applied")
@@ -732,7 +894,7 @@ def test_run_summary_exists_on_run_tests_failure(
     assert "run-tests" in str(machine_run["primary_reason"])
     assert "rc=1" in str(machine_run["primary_reason"])
 
-    summary_path = repo / ".belgi" / "runs" / run_key / attempt_id / "run.summary.json"
+    summary_path = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "run.summary.json"
     assert summary_path.is_file()
     summary = json.loads(summary_path.read_text(encoding="utf-8", errors="strict"))
     assert summary.get("verdict") == "NO-GO"

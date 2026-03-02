@@ -57,11 +57,18 @@ ABOUT_REPO_URL = "https://github.com/belgi-protocol/belgi"
 DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
+RUN_KEY_DIR_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
 RUN_INPUTS_DIRNAME = "inputs"
+RUN_STORE_DIRNAME = "store"
+RUN_STORE_RUNS_REPO_REL = "store/runs"
 RUN_INTENT_REPO_REL = "inputs/intent/IntentSpec.core.md"
 RUN_WAIVERS_DIR_REPO_REL = "inputs/waivers"
 RUN_WAIVERS_APPLIED_REPO_REL = "inputs/waivers_applied.json"
+RUN_POINTER_RUN_KEY_REPO_REL = "run_key.txt"
+RUN_POINTER_LAST_ATTEMPT_REPO_REL = "last_attempt.txt"
+RUN_POINTER_OPEN_VERDICT_REPO_REL = "open_verdict.txt"
+RUN_POINTER_OPEN_EVIDENCE_REPO_REL = "open_evidence.txt"
 RC_GO = 0
 RC_NO_GO = 10
 RC_USER_ERROR = 20
@@ -850,15 +857,29 @@ def _render_adopter_toml(
 
 def _render_adopter_readme(*, workspace_rel: str) -> str:
     run_root = f"{workspace_rel}/runs"
+    store_root = f"{workspace_rel}/store/runs"
     return (
         "# BELGI Local Layout\n\n"
         f"- `{workspace_rel}/adopter.toml`: one-time defaults for this repository (not per-run state)\n"
-        f"- `{workspace_rel}/templates/IntentSpec.core.template.md`: local template copied from BELGI package at init time\n"
-        f"- `{run_root}/<run_key>/<attempt_id>/`: run-local workspace (authoritative per-run files)\n"
+        f"- `{workspace_rel}/templates/IntentSpec.core.template.md`: local seed/reset template copied at init time\n"
+        f"- `{run_root}/<run_id>/`: human workspace and refs (`inputs/`, `RUN.md`, pointer files)\n"
+        f"- `{store_root}/<run_key>/<attempt_id>/`: immutable authoritative run artifacts\n"
         "- `belgi_pack/DomainPackManifest.json`: adopter-owned overlay checks for optional strict verification\n\n"
         "Rules:\n"
         "- Do not copy BELGI canonicals (`schemas/`, `gates/`, `tiers/`) into this repository.\n"
-        f"- Keep per-run files under `{run_root}/<run_key>/<attempt_id>/` and freeze them into LockedSpec/evidence artifacts.\n"
+        f"- Treat `{store_root}/` as authoritative object storage.\n"
+        f"- Treat `{run_root}/<run_id>/` as operator workspace only (no authoritative GateVerdict/EvidenceManifest copies).\n\n"
+        "NO-GO triage:\n"
+        "- Check printed `gate_verdict_path` and `evidence_manifest_path` lines from `belgi run` output.\n"
+    )
+
+
+def _render_templates_readme(*, workspace_rel: str) -> str:
+    return (
+        "# BELGI Template Seeds\n\n"
+        f"- `{workspace_rel}/templates/IntentSpec.core.template.md` is a local seed/reset template.\n"
+        "- `belgi run new` copies template bytes into run inputs.\n"
+        "- Editing template files does not alter immutable run artifacts already in `.belgi/store/runs/`.\n"
     )
 
 
@@ -914,17 +935,17 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     adopter_dir = workspace_dir
     runs_dir = adopter_dir / "runs"
-    cache_dir = adopter_dir / "cache"
-    config_dir = adopter_dir / "config"
+    store_runs_dir = adopter_dir / "store" / "runs"
     overlay_dir = repo_root / "belgi_pack"
     templates_dir = adopter_dir / "templates"
     adopter_toml_path = adopter_dir / "adopter.toml"
     adopter_readme_path = adopter_dir / "README.md"
+    templates_readme_path = templates_dir / "README.md"
     overlay_manifest_path = overlay_dir / "DomainPackManifest.json"
     intent_template_path = templates_dir / "IntentSpec.core.template.md"
 
     # Guard against symlink directories and conflicting file paths.
-    for d in (adopter_dir, runs_dir, cache_dir, config_dir, overlay_dir, templates_dir):
+    for d in (adopter_dir, runs_dir, store_runs_dir, overlay_dir, templates_dir):
         if d.exists() and not d.is_dir():
             print(f"[belgi init] ERROR: expected directory path but found non-directory: {d}", file=sys.stderr)
             return 3
@@ -934,8 +955,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     adopter_dir.mkdir(parents=True, exist_ok=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    config_dir.mkdir(parents=True, exist_ok=True)
+    store_runs_dir.mkdir(parents=True, exist_ok=True)
     templates_dir.mkdir(parents=True, exist_ok=True)
     overlay_dir.mkdir(parents=True, exist_ok=True)
 
@@ -960,6 +980,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         # Template provisioning for adopter repos (repo-local path).
         if _write_text_if_missing(intent_template_path, _read_builtin_intent_template_text()):
             created.append(intent_template_path)
+        if _write_text_if_missing(templates_readme_path, _render_templates_readme(workspace_rel=workspace_rel)):
+            created.append(templates_readme_path)
 
         if adopter_toml_path.exists():
             if adopter_toml_path.is_symlink() or not adopter_toml_path.is_file():
@@ -1066,6 +1088,8 @@ def _validate_run_id(raw: str) -> str:
         raise ValueError("--run-id missing/invalid")
     if ":" in rid or "\x00" in rid:
         raise ValueError("--run-id contains forbidden characters")
+    if RUN_KEY_DIR_PATTERN.fullmatch(rid.lower()):
+        raise ValueError("--run-id must not be a 64-hex run_key value")
     return rid
 
 
@@ -1092,6 +1116,96 @@ def _run_waivers_dir(run_dir: Path) -> Path:
 
 def _run_waivers_applied_path(run_dir: Path) -> Path:
     return run_dir.joinpath(*RUN_WAIVERS_APPLIED_REPO_REL.split("/"))
+
+
+def _run_pointer_run_key_path(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_POINTER_RUN_KEY_REPO_REL.split("/"))
+
+
+def _run_pointer_last_attempt_path(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_POINTER_LAST_ATTEMPT_REPO_REL.split("/"))
+
+
+def _run_pointer_open_verdict_path(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_POINTER_OPEN_VERDICT_REPO_REL.split("/"))
+
+
+def _run_pointer_open_evidence_path(run_dir: Path) -> Path:
+    return run_dir.joinpath(*RUN_POINTER_OPEN_EVIDENCE_REPO_REL.split("/"))
+
+
+def _resolve_store_runs_dir(*, workspace_dir: Path, must_exist: bool) -> Path:
+    store_dir = workspace_dir / RUN_STORE_DIRNAME
+    if store_dir.exists() and (store_dir.is_symlink() or not store_dir.is_dir()):
+        raise ValueError(f"invalid store directory: {store_dir}")
+    runs_dir = store_dir / "runs"
+    if runs_dir.exists() and (runs_dir.is_symlink() or not runs_dir.is_dir()):
+        raise ValueError(f"invalid store runs directory: {runs_dir}")
+    if must_exist and not runs_dir.exists():
+        raise ValueError(f"store runs directory missing: {runs_dir}")
+    return runs_dir
+
+
+def _is_legacy_run_key_dir(path: Path) -> bool:
+    if path.is_symlink() or not path.is_dir():
+        return False
+    if not RUN_KEY_DIR_PATTERN.fullmatch(path.name.lower()):
+        return False
+    attempts: list[Path] = []
+    for child in sorted(path.iterdir(), key=lambda p: p.name):
+        if child.name.startswith(".") and not child.is_symlink():
+            continue
+        if child.is_symlink() or not child.is_dir():
+            return False
+        if ATTEMPT_ID_PATTERN.fullmatch(child.name) is None:
+            return False
+        summary = child / RUN_SUMMARY_FILENAME
+        if not summary.exists() or summary.is_symlink() or not summary.is_file():
+            return False
+        attempts.append(child)
+    return len(attempts) > 0
+
+
+def _migrate_legacy_run_key_dirs(
+    *,
+    workspace_runs_dir: Path,
+    store_runs_dir: Path,
+    repo_root: Path,
+) -> list[str]:
+    from belgi.core.jail import safe_relpath
+
+    if workspace_runs_dir.exists() and (workspace_runs_dir.is_symlink() or not workspace_runs_dir.is_dir()):
+        raise ValueError(f"invalid runs directory: {workspace_runs_dir}")
+    workspace_runs_dir.mkdir(parents=True, exist_ok=True)
+
+    if store_runs_dir.exists() and (store_runs_dir.is_symlink() or not store_runs_dir.is_dir()):
+        raise ValueError(f"invalid store runs directory: {store_runs_dir}")
+    store_runs_dir.mkdir(parents=True, exist_ok=True)
+
+    migrated: list[str] = []
+    for child in sorted(workspace_runs_dir.iterdir(), key=lambda p: p.name):
+        if child.name.startswith(".") and not child.is_symlink():
+            continue
+        if not _is_legacy_run_key_dir(child):
+            continue
+        target = store_runs_dir / child.name
+        if target.exists():
+            raise _UserInputError(
+                "legacy/store run directory collision for run_key "
+                f"{child.name}: both `{safe_relpath(repo_root, child)}` and "
+                f"`{safe_relpath(repo_root, target)}` exist. "
+                "Do keep only one authoritative copy under `.belgi/store/runs/` and retry."
+            )
+        try:
+            child.rename(target)
+        except OSError as e:
+            raise _UserInputError(
+                "legacy run directory migration failed for "
+                f"`{safe_relpath(repo_root, child)}` -> `{safe_relpath(repo_root, target)}`: {e}. "
+                "Do move it manually, then rerun."
+            ) from e
+        migrated.append(child.name)
+    return migrated
 
 
 def _resolve_run_dir(*, repo_root: Path, workspace_rel: str, run_id: str, must_exist: bool) -> Path:
@@ -1199,7 +1313,7 @@ def _render_runbook_template(*, run_id: str) -> str:
         "```bash\n"
         "belgi verify --repo .\n"
         "```\n\n"
-        "Artifacts are created under `.belgi/runs/<run_key>/<attempt_id>/`.\n"
+        "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`.\n"
     )
 
 
@@ -1281,18 +1395,14 @@ def _seed_run_workspace(
     intent_path = _run_intent_path(run_dir)
     waivers_dir = _run_waivers_dir(run_dir)
     runbook_template_path = run_dir / "RUN.md"
+    run_key_pointer_path = _run_pointer_run_key_path(run_dir)
+    last_attempt_pointer_path = _run_pointer_last_attempt_path(run_dir)
+    open_verdict_pointer_path = _run_pointer_open_verdict_path(run_dir)
+    open_evidence_pointer_path = _run_pointer_open_evidence_path(run_dir)
     placeholders = [
         run_dir / "tolerances.json",
         run_dir / "toolchain.json",
     ]
-    evidence_manifest_path = run_dir / "EvidenceManifest.json"
-    evidence_manifest_obj = {
-        "schema_version": "1.0.0",
-        "run_id": run_id,
-        "artifacts": [],
-        "commands_executed": [],
-        "envelope_attestation": None,
-    }
 
     created: list[Path] = []
     updated: list[Path] = []
@@ -1335,22 +1445,28 @@ def _seed_run_workspace(
         elif state == "updated":
             updated.append(path)
 
-    manifest_state = _write_json_object(
-        evidence_manifest_path,
-        evidence_manifest_obj,
-        force=force,
+    pointer_payloads = (
+        (run_key_pointer_path, "PENDING\n"),
+        (last_attempt_pointer_path, "PENDING\n"),
+        (open_verdict_pointer_path, "PENDING\n"),
+        (open_evidence_pointer_path, "PENDING\n"),
     )
-    if manifest_state == "created":
-        created.append(evidence_manifest_path)
-    elif manifest_state == "updated":
-        updated.append(evidence_manifest_path)
+    for pointer_path, payload in pointer_payloads:
+        pointer_state = _write_text_template(pointer_path, payload, force=force)
+        if pointer_state == "created":
+            created.append(pointer_path)
+        elif pointer_state == "updated":
+            updated.append(pointer_path)
 
     seeded_paths = [
         intent_path,
         waivers_dir,
         runbook_template_path,
         *placeholders,
-        evidence_manifest_path,
+        run_key_pointer_path,
+        last_attempt_pointer_path,
+        open_verdict_pointer_path,
+        open_evidence_pointer_path,
     ]
     return created, updated, seeded_paths
 
@@ -1366,6 +1482,7 @@ def cmd_run_new(args: argparse.Namespace) -> int:
     from belgi.core.jail import safe_relpath
 
     repo_root = Path(str(args.repo)).resolve()
+    migrated_keys: list[str] = []
     if not repo_root.exists():
         print(f"[belgi run new] ERROR: repo path does not exist: {repo_root}", file=sys.stderr)
         return 3
@@ -1382,6 +1499,13 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
             must_exist=True,
         )
+        runs_dir = workspace_dir / "runs"
+        store_runs_dir = _resolve_store_runs_dir(workspace_dir=workspace_dir, must_exist=False)
+        migrated_keys = _migrate_legacy_run_key_dirs(
+            workspace_runs_dir=runs_dir,
+            store_runs_dir=store_runs_dir,
+            repo_root=repo_root,
+        )
         run_id = _validate_run_id(str(args.run_id))
         force = bool(getattr(args, "force", False))
 
@@ -1392,7 +1516,7 @@ def cmd_run_new(args: argparse.Namespace) -> int:
             )
         template_bytes = template_path.read_bytes()
 
-        run_dir = workspace_dir / "runs" / run_id
+        run_dir = runs_dir / run_id
         if run_dir.exists() and (run_dir.is_symlink() or not run_dir.is_dir()):
             raise ValueError(f"invalid run workspace path: {run_dir}")
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -1411,6 +1535,12 @@ def cmd_run_new(args: argparse.Namespace) -> int:
     print(f"[belgi run new] repo: {repo_root}", file=sys.stderr)
     print(f"[belgi run new] workspace: {workspace_rel}", file=sys.stderr)
     print(f"[belgi run new] run_id: {run_id}", file=sys.stderr)
+    if migrated_keys:
+        for run_key in migrated_keys:
+            print(
+                f"[belgi run new] migrated legacy run_key to store: {run_key}",
+                file=sys.stderr,
+            )
     if created:
         for p in created:
             print(f"[belgi run new] created: {safe_relpath(repo_root, p)}", file=sys.stderr)
@@ -1423,6 +1553,10 @@ def cmd_run_new(args: argparse.Namespace) -> int:
         _run_intent_path(run_dir),
         _run_waivers_dir(run_dir),
         run_dir / "RUN.md",
+        _run_pointer_run_key_path(run_dir),
+        _run_pointer_last_attempt_path(run_dir),
+        _run_pointer_open_verdict_path(run_dir),
+        _run_pointer_open_evidence_path(run_dir),
     ]
     for pointer_path in pointer_paths:
         print(f"[belgi run new] open: {pointer_path.resolve()}", file=sys.stderr)
@@ -1447,10 +1581,15 @@ def cmd_waiver_new(args: argparse.Namespace) -> int:
         return 3
 
     try:
-        workspace_rel, _ = _resolve_workspace_dir(
+        workspace_rel, workspace_dir = _resolve_workspace_dir(
             repo_root,
             getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
             must_exist=True,
+        )
+        _migrate_legacy_run_key_dirs(
+            workspace_runs_dir=workspace_dir / "runs",
+            store_runs_dir=_resolve_store_runs_dir(workspace_dir=workspace_dir, must_exist=False),
+            repo_root=repo_root,
         )
         run_id = _validate_run_id(str(args.run_id))
         gate_id = str(getattr(args, "gate", "") or "").strip().upper()
@@ -1522,10 +1661,15 @@ def cmd_waiver_apply(args: argparse.Namespace) -> int:
         return 3
 
     try:
-        workspace_rel, _ = _resolve_workspace_dir(
+        workspace_rel, workspace_dir = _resolve_workspace_dir(
             repo_root,
             getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
             must_exist=True,
+        )
+        _migrate_legacy_run_key_dirs(
+            workspace_runs_dir=workspace_dir / "runs",
+            store_runs_dir=_resolve_store_runs_dir(workspace_dir=workspace_dir, must_exist=False),
+            repo_root=repo_root,
         )
         run_id = _validate_run_id(str(args.run_id))
         run_dir = _resolve_run_dir(repo_root=repo_root, workspace_rel=workspace_rel, run_id=run_id, must_exist=True)
@@ -1626,6 +1770,46 @@ def _load_next_instruction_from_gate_verdict(path: Path) -> str | None:
     return next_instruction.strip()
 
 
+def _primary_gate_verdict_path(chain_out_dir: Path | None) -> Path | None:
+    if chain_out_dir is None:
+        return None
+    for name in ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json"):
+        p = chain_out_dir / name
+        if p.exists() and not p.is_symlink() and p.is_file():
+            return p
+    return chain_out_dir / "GateVerdict.R.json"
+
+
+def _evidence_manifest_path(chain_out_dir: Path | None) -> Path | None:
+    if chain_out_dir is None:
+        return None
+    return chain_out_dir / "EvidenceManifest.json"
+
+
+def _write_run_workspace_pointers(
+    *,
+    repo_root: Path,
+    run_workspace_dir: Path | None,
+    run_key: str | None,
+    attempt_id: str | None,
+    chain_out_dir: Path | None,
+) -> None:
+    from belgi.core.jail import safe_relpath
+
+    if run_workspace_dir is None or run_key is None or attempt_id is None:
+        return
+
+    gate_verdict_path = _primary_gate_verdict_path(chain_out_dir)
+    evidence_path = _evidence_manifest_path(chain_out_dir)
+    gate_verdict_rel = safe_relpath(repo_root, gate_verdict_path) if gate_verdict_path is not None else "PENDING"
+    evidence_rel = safe_relpath(repo_root, evidence_path) if evidence_path is not None else "PENDING"
+
+    _write_text(_run_pointer_run_key_path(run_workspace_dir), f"{run_key}\n")
+    _write_text(_run_pointer_last_attempt_path(run_workspace_dir), f"{attempt_id}\n")
+    _write_text(_run_pointer_open_verdict_path(run_workspace_dir), f"{gate_verdict_rel}\n")
+    _write_text(_run_pointer_open_evidence_path(run_workspace_dir), f"{evidence_rel}\n")
+
+
 def _emit_run_failure_links(
     *,
     level: str,
@@ -1633,6 +1817,8 @@ def _emit_run_failure_links(
     run_key: str | None,
     primary_reason: str,
     remediation_next_instruction: str,
+    gate_verdict_path: Path | None,
+    evidence_manifest_path: Path | None,
     open_paths: list[Path],
 ) -> None:
     lines = [
@@ -1640,6 +1826,10 @@ def _emit_run_failure_links(
         f"primary_reason: {primary_reason}",
         f"remediation.next_instruction: {remediation_next_instruction}",
     ]
+    if gate_verdict_path is not None:
+        lines.append(f"gate_verdict_path: {gate_verdict_path.resolve()}")
+    if evidence_manifest_path is not None:
+        lines.append(f"evidence_manifest_path: {evidence_manifest_path.resolve()}")
     for path in open_paths:
         lines.append(f"Open: {path.resolve()}")
     _emit_human_status(prefix="[belgi run]", level=level, lines=lines)
@@ -1714,6 +1904,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     run_key: str | None = None
     attempt_id: str | None = None
     workspace_rel: str | None = None
+    run_workspace_dir: Path | None = None
     run_key_dir: Path | None = None
     attempt_dir: Path | None = None
     summary_path: Path | None = None
@@ -1785,10 +1976,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         except ValueError as e:
             raise _UserInputError(str(e)) from e
 
-        runs_dir = workspace_dir / "runs"
-        if runs_dir.exists() and (runs_dir.is_symlink() or not runs_dir.is_dir()):
-            raise ValueError(f"invalid runs directory: {runs_dir}")
-        runs_dir.mkdir(parents=True, exist_ok=True)
+        workspace_runs_dir = workspace_dir / "runs"
+        store_runs_dir = _resolve_store_runs_dir(workspace_dir=workspace_dir, must_exist=False)
+        migrated_keys = _migrate_legacy_run_key_dirs(
+            workspace_runs_dir=workspace_runs_dir,
+            store_runs_dir=store_runs_dir,
+            repo_root=repo_root,
+        )
+        if migrated_keys:
+            for migrated_key in migrated_keys:
+                print(f"[belgi run] migrated legacy run_key to store: {migrated_key}", file=sys.stderr)
 
         template_path = workspace_dir / "templates" / "IntentSpec.core.template.md"
         if not template_path.exists() or not template_path.is_file() or template_path.is_symlink():
@@ -1822,6 +2019,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                     run_id=run_scope_run_id,
                     must_exist=True,
                 )
+                run_workspace_dir = run_scope_dir
                 requested_waiver_refs = _load_run_waivers_applied_refs(
                     repo_root=repo_root,
                     run_dir=run_scope_dir,
@@ -1854,7 +2052,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         run_key = _compute_run_key_from_preimage(preimage)
 
-        run_key_dir = runs_dir / run_key
+        run_key_dir = store_runs_dir / run_key
         if run_key_dir.exists() and (run_key_dir.is_symlink() or not run_key_dir.is_dir()):
             raise ValueError(f"invalid run_key directory: {run_key_dir}")
         run_key_dir.mkdir(parents=True, exist_ok=True)
@@ -1865,11 +2063,13 @@ def cmd_run(args: argparse.Namespace) -> int:
             raise ValueError(f"attempt directory already exists: {attempt_dir}")
         attempt_dir.mkdir(parents=False, exist_ok=False)
         summary_path = attempt_dir / RUN_SUMMARY_FILENAME
+        chain_repo_dir = attempt_dir / CHAIN_REPO_DIRNAME
+        chain_out_dir = chain_repo_dir / CHAIN_OUT_DIRNAME
 
         with contextlib.redirect_stdout(sys.stderr):
             chain_result = orchestrate_chain_run(
                 source_repo_root=repo_root,
-                chain_repo_dir=attempt_dir / CHAIN_REPO_DIRNAME,
+                chain_repo_dir=chain_repo_dir,
                 run_key=run_key,
                 tier_id=tier_id,
                 base_revision=base_revision,
@@ -1929,6 +2129,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         if not wrote_summary:
             raise ValueError("internal error: failed to finalize run summary for attempt")
+        _write_run_workspace_pointers(
+            repo_root=repo_root,
+            run_workspace_dir=run_workspace_dir,
+            run_key=run_key,
+            attempt_id=attempt_id,
+            chain_out_dir=chain_out_dir,
+        )
 
     except _UserInputError as e:
         reason = str(e)
@@ -1966,12 +2173,21 @@ def cmd_run(args: argparse.Namespace) -> int:
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
         next_instruction = "Do fix input arguments or repository state, then re-run `belgi run --help`."
+        _write_run_workspace_pointers(
+            repo_root=repo_root,
+            run_workspace_dir=run_workspace_dir,
+            run_key=run_key,
+            attempt_id=attempt_id,
+            chain_out_dir=chain_out_dir,
+        )
         _emit_run_failure_links(
             level="USER_ERROR",
             tier_id=tier_id,
             run_key=run_key,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
+            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir),
+            evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             open_paths=_collect_open_paths(),
         )
         return RC_USER_ERROR
@@ -2016,14 +2232,21 @@ def cmd_run(args: argparse.Namespace) -> int:
                 next_instruction = _load_next_instruction_from_gate_verdict(chain_out_dir / gate_name) or ""
                 if next_instruction:
                     break
-        if not next_instruction:
-            next_instruction = "Do inspect the gate verdict and follow remediation.next_instruction before re-run."
+        _write_run_workspace_pointers(
+            repo_root=repo_root,
+            run_workspace_dir=run_workspace_dir,
+            run_key=run_key,
+            attempt_id=attempt_id,
+            chain_out_dir=chain_out_dir,
+        )
         _emit_run_failure_links(
             level="NO-GO",
             tier_id=tier_id,
             run_key=run_key,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
+            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir),
+            evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             open_paths=_collect_open_paths(),
         )
         return RC_NO_GO
@@ -2052,6 +2275,13 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
         except Exception as summary_err:
             reason = f"{reason}; summary_finalize_error={summary_err}"
+        _write_run_workspace_pointers(
+            repo_root=repo_root,
+            run_workspace_dir=run_workspace_dir,
+            run_key=run_key,
+            attempt_id=attempt_id,
+            chain_out_dir=chain_out_dir,
+        )
         _emit_machine_result(
             ok=False,
             verdict="NO-GO",
@@ -2070,6 +2300,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             remediation_next_instruction=(
                 "Do inspect generated artifacts and logs, then fix the internal error before re-run."
             ),
+            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir),
+            evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             open_paths=_collect_open_paths(),
         )
         return RC_INTERNAL_ERROR
@@ -2311,19 +2543,17 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 raise _UserInputError(str(e)) from e
         else:
             try:
-                workspace_rel, _ = _resolve_workspace_dir(
+                workspace_rel, workspace_dir = _resolve_workspace_dir(
                     repo_root,
                     getattr(args, "workspace", DEFAULT_WORKSPACE_REL),
                     must_exist=True,
                 )
-                target = resolve_repo_rel_path(
-                    repo_root,
-                    f"{workspace_rel}/runs",
-                    must_exist=True,
-                    must_be_file=False,
-                    allow_backslashes=False,
-                    forbid_symlinks=True,
+                _migrate_legacy_run_key_dirs(
+                    workspace_runs_dir=workspace_dir / "runs",
+                    store_runs_dir=_resolve_store_runs_dir(workspace_dir=workspace_dir, must_exist=False),
+                    repo_root=repo_root,
                 )
+                target = _resolve_store_runs_dir(workspace_dir=workspace_dir, must_exist=True)
             except ValueError as e:
                 raise _UserInputError(str(e)) from e
 

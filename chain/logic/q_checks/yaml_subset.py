@@ -94,6 +94,9 @@ def parse_yaml_subset(yaml_text: str) -> Any:
     # Strip blank lines.
     raw_lines = [(i, ln.rstrip("\r\n")) for i, ln in enumerate(lines)]
 
+    def _raise_at(*, line_idx: int, column_idx: int, message: str) -> None:
+        raise YamlParseError(f"line {line_idx + 1}, column {column_idx + 1}: {message}")
+
     def parse_block(start: int, indent: int) -> tuple[Any, int]:
         i = start
         # Skip blank lines
@@ -103,7 +106,10 @@ def parse_yaml_subset(yaml_text: str) -> Any:
             return {}, i
 
         ln = raw_lines[i][1]
-        cur_indent = _count_indent(ln)
+        try:
+            cur_indent = _count_indent(ln)
+        except YamlParseError as e:
+            _raise_at(line_idx=raw_lines[i][0], column_idx=0, message=str(e))
         if cur_indent < indent:
             return {}, i
 
@@ -115,11 +121,14 @@ def parse_yaml_subset(yaml_text: str) -> Any:
                 if ln.strip() == "":
                     i += 1
                     continue
-                cur_indent = _count_indent(ln)
+                try:
+                    cur_indent = _count_indent(ln)
+                except YamlParseError as e:
+                    _raise_at(line_idx=raw_lines[i][0], column_idx=0, message=str(e))
                 if cur_indent < indent:
                     break
                 if cur_indent != indent:
-                    raise YamlParseError("inconsistent indentation")
+                    _raise_at(line_idx=raw_lines[i][0], column_idx=cur_indent, message="inconsistent indentation")
                 stripped = ln.lstrip(" ")
                 if not stripped.startswith("-"):
                     break
@@ -130,7 +139,11 @@ def parse_yaml_subset(yaml_text: str) -> Any:
                     items.append(nested)
                     i = i2
                     continue
-                items.append(_parse_yaml_scalar(rest))
+                scalar_col = indent + 2
+                try:
+                    items.append(_parse_yaml_scalar(rest))
+                except YamlParseError as e:
+                    _raise_at(line_idx=raw_lines[i][0], column_idx=scalar_col, message=str(e))
                 i += 1
             return items, i
 
@@ -141,29 +154,38 @@ def parse_yaml_subset(yaml_text: str) -> Any:
             if ln.strip() == "":
                 i += 1
                 continue
-            cur_indent = _count_indent(ln)
+            try:
+                cur_indent = _count_indent(ln)
+            except YamlParseError as e:
+                _raise_at(line_idx=raw_lines[i][0], column_idx=0, message=str(e))
             if cur_indent < indent:
                 break
             if cur_indent != indent:
-                raise YamlParseError("inconsistent indentation")
+                _raise_at(line_idx=raw_lines[i][0], column_idx=cur_indent, message="inconsistent indentation")
             stripped = ln.lstrip(" ")
             if stripped.startswith("-"):
                 break
             if ":" not in stripped:
-                raise YamlParseError("expected ':' in mapping")
+                _raise_at(line_idx=raw_lines[i][0], column_idx=indent, message="expected ':' in mapping")
             key, rest = stripped.split(":", 1)
             key = key.strip()
             if not key:
-                raise YamlParseError("empty mapping key")
+                _raise_at(line_idx=raw_lines[i][0], column_idx=indent, message="empty mapping key")
             if key in obj:
-                raise YamlParseError(f"duplicate key: {key}")
+                _raise_at(line_idx=raw_lines[i][0], column_idx=indent, message=f"duplicate key: {key}")
             rest = rest.strip()
             if rest == "":
                 nested, i2 = parse_block(i + 1, indent + 2)
                 obj[key] = nested
                 i = i2
                 continue
-            obj[key] = _parse_yaml_scalar(rest)
+            scalar_col = indent + len(stripped.split(":", 1)[0]) + 1
+            while scalar_col < len(ln) and ln[scalar_col] == " ":
+                scalar_col += 1
+            try:
+                obj[key] = _parse_yaml_scalar(rest)
+            except YamlParseError as e:
+                _raise_at(line_idx=raw_lines[i][0], column_idx=scalar_col, message=str(e))
             i += 1
         return obj, i
 
@@ -174,7 +196,8 @@ def parse_yaml_subset(yaml_text: str) -> Any:
     while i < len(raw_lines) and raw_lines[i][1].strip() == "":
         i += 1
     if i < len(raw_lines):
-        raise YamlParseError("trailing unparsed content")
+        trailing_indent = len(raw_lines[i][1]) - len(raw_lines[i][1].lstrip(" "))
+        _raise_at(line_idx=raw_lines[i][0], column_idx=trailing_indent, message="trailing unparsed content")
 
     return parsed
 

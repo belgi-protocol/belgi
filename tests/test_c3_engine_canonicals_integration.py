@@ -95,7 +95,7 @@ def test_tier0_run_uses_engine_canonicals_when_repo_has_collision(
 
     machine = json.loads(captured.out.splitlines()[0])
     run_key = machine["run_key"]
-    attempt_repo = repo / ".belgi" / "runs" / run_key / "attempt-0001" / "repo"
+    attempt_repo = repo / ".belgi" / "store" / "runs" / run_key / "attempt-0001" / "repo"
 
     staged_term = attempt_repo / ".belgi" / "engine" / "c3_canonicals" / "terminology.md"
     bundled_term = attempt_repo / "out" / "bundle" / "terminology.md"

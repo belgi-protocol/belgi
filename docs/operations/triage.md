@@ -21,7 +21,7 @@ Helpers in `scripts/` are convenience only. BELGI verifiers and gate verdict art
 
 BELGI run artifacts are repo-local under the workspace runs root, typically:
 
-- `.belgi/runs/<run_key>/<attempt_id>/`
+- `.belgi/store/runs/<run_key>/<attempt_id>/`
 
 ## Inspection order
 
