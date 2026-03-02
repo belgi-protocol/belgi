@@ -306,10 +306,13 @@ def test_run_updates_run_workspace_pointer_files_deterministically(tmp_path: Pat
     assert open_evidence_rel == f".belgi/store/runs/{run_key}/{attempt_id}/repo/out/EvidenceManifest.json"
 
 
-def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(tmp_path: Path, capsys: object) -> None:
+def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _fresh_repo_clone(tmp_path)
     _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
     base_sha = _git_rev_parse(repo, "HEAD~1")
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
 
     rc_init = belgi_main(["init", "--repo", str(repo)])
     assert rc_init == 0
@@ -329,16 +332,19 @@ def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(tmp_path: Path,
     remediation = str(verdict_obj.get("remediation", {}).get("next_instruction", ""))
     assert remediation
 
-    assert f"gate_verdict_path: {verdict_path.resolve()}" in captured.err
-    assert f"gate_verdict_rel: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/GateVerdict.R.json" in captured.err
-    assert f"evidence_manifest_path: {evidence_path.resolve()}" in captured.err
-    assert f"evidence_manifest_rel: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/EvidenceManifest.json" in captured.err
-    assert f"  remediation.next_instruction: {remediation}" in captured.err
-    assert f'gate_verdict_open_macos: open "{verdict_path.resolve()}"' in captured.err
-    assert f'gate_verdict_open_linux: xdg-open "{verdict_path.resolve()}"' in captured.err
-    assert "gate_verdict_open_windows: powershell -NoProfile -Command " in captured.err
-    assert f'evidence_manifest_open_macos: open "{evidence_path.resolve()}"' in captured.err
-    assert f'evidence_manifest_open_linux: xdg-open "{evidence_path.resolve()}"' in captured.err
+    assert "summary: verdict=NO-GO tier=tier-0" in captured.err
+    assert f"key={run_key[:10]}" in captured.err
+    assert "attempt=0001" in captured.err
+    assert "run_id:" not in captured.err
+    assert f"cause: {machine['primary_reason']}" in captured.err
+    assert f"next: {remediation}" in captured.err
+    assert f"  verdict: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/GateVerdict.R.json" in captured.err
+    assert "manifest: missing" in captured.err
+    assert f"  verdict: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/GateVerdict.R.json" in captured.err
+    assert "open_linux:" in captured.err
+    assert "open_macos:" not in captured.err
+    assert "open_windows:" not in captured.err
+    assert f"evidence_manifest_path: {evidence_path.resolve()}" not in captured.err
 
 
 def test_run_migrates_legacy_run_key_directory_to_store(tmp_path: Path, capsys: object) -> None:
@@ -482,7 +488,7 @@ def test_run_intentspec_yaml_parse_error_includes_line_and_column(tmp_path: Path
     assert "chain.compiler_c1_intent returned rc=3" in reason
     assert "IntentSpec YAML parse error" in captured.err
     assert "line " in captured.err and "column " in captured.err
-    remediation_match = re.search(r"remediation\.next_instruction:\s+(.+)", captured.err)
+    remediation_match = re.search(r"next:\s+(.+)", captured.err)
     assert remediation_match is not None
     remediation_line = remediation_match.group(1).strip()
     assert remediation_line != ""
@@ -490,7 +496,7 @@ def test_run_intentspec_yaml_parse_error_includes_line_and_column(tmp_path: Path
     assert "line " in remediation_line and "column " in remediation_line
     assert "key: value" in remediation_line
     assert "gate_verdict_path:" not in captured.err
-    assert "gate_verdict: unavailable (no GateVerdict file produced)" in captured.err
+    assert "verdict: unavailable (no GateVerdict file produced)" in captured.err
 
 
 def test_run_no_go_hyperlinks_opt_in(tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -507,8 +513,8 @@ def test_run_no_go_hyperlinks_opt_in(tmp_path: Path, capsys: object, monkeypatch
     rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
     assert rc_run == 10
     captured = capsys.readouterr()
-    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\Open gate verdict\x1b\]8;;\x1b\\", captured.err)
-    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\Open evidence manifest\x1b\]8;;\x1b\\", captured.err)
+    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\verdict\x1b\]8;;\x1b\\", captured.err)
+    assert "\x1b]8;;" in captured.err
 
 
 def test_run_no_go_hyperlinks_absent_when_unset(
@@ -623,11 +629,61 @@ def test_run_no_go_open_helpers_include_intent_and_waiver_paths(
     captured = capsys.readouterr()
 
     assert f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md" in captured.err
-    assert f".belgi/runs/{run_id}/inputs/waivers/waiver-001.json" in captured.err
-    assert f'open "{intent_path.resolve()}"' in captured.err
-    assert f'xdg-open "{intent_path.resolve()}"' in captured.err
-    assert f'open "{waiver_path.resolve()}"' in captured.err
-    assert f'xdg-open "{waiver_path.resolve()}"' in captured.err
+    assert f".belgi/runs/{run_id}/inputs/waivers" in captured.err
+    assert f'open "{intent_path.resolve()}"' in captured.err or f'xdg-open "{intent_path.resolve()}"' in captured.err
+    assert f'open "{waiver_path.parent.resolve()}"' in captured.err or f'xdg-open "{waiver_path.parent.resolve()}"' in captured.err
+
+
+def test_run_no_go_default_emits_single_platform_open_helper(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    monkeypatch.delenv("BELGI_SHOW_ALL_OPEN", raising=False)
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+
+    assert "open_linux:" in captured.err
+    assert "open_macos:" not in captured.err
+    assert "open_windows:" not in captured.err
+
+
+def test_run_no_go_verbose_includes_store_paths_and_all_open_helpers(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha, "--verbose"])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+    verdict_abs = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "GateVerdict.R.json"
+
+    assert "details:" in captured.err
+    assert f"run_key: {run_key}" in captured.err
+    assert f"attempt_id: {attempt_id}" in captured.err
+    assert f"verdict_store_path: {verdict_abs.resolve()}" in captured.err
+    assert "open_macos:" in captured.err
+    assert "open_linux:" in captured.err
+    assert "open_windows:" in captured.err
 
 
 def test_run_revision_binding_is_authoritative_for_base_and_evaluated(

@@ -1908,11 +1908,75 @@ def _open_command_lines(*, path: Path) -> tuple[str, str, str]:
     )
 
 
+def _platform_family() -> str:
+    plat = str(sys.platform or "").lower()
+    if plat.startswith("darwin"):
+        return "macos"
+    if plat.startswith("win"):
+        return "windows"
+    return "linux"
+
+
+def _show_all_open_helpers(*, verbose: bool) -> bool:
+    return bool(verbose) or _env_truthy("BELGI_SHOW_ALL_OPEN")
+
+
+def _open_command_for_platform(*, path: Path, family: str | None = None) -> tuple[str, str]:
+    mac, linux, windows = _open_command_lines(path=path)
+    fam = family or _platform_family()
+    if fam == "macos":
+        return "macos", mac
+    if fam == "windows":
+        return "windows", windows
+    return "linux", linux
+
+
 def _repo_rel_display(repo_root: Path, path: Path) -> str | None:
     try:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except Exception:
         return None
+
+
+def _short_run_key(run_key: str | None) -> str | None:
+    if not run_key:
+        return None
+    return run_key[:10]
+
+
+def _short_attempt_id(attempt_id: str | None) -> str | None:
+    if not attempt_id:
+        return None
+    m = ATTEMPT_ID_PATTERN.fullmatch(str(attempt_id))
+    if m is None:
+        return attempt_id
+    return m.group(1)
+
+
+def _best_waiver_open_target(
+    *,
+    run_workspace_dir: Path | None,
+    open_paths: list[Path],
+) -> Path | None:
+    if run_workspace_dir is not None:
+        waivers_dir = _run_waivers_dir(run_workspace_dir)
+        if waivers_dir.exists() and waivers_dir.is_dir() and not waivers_dir.is_symlink():
+            return waivers_dir
+    for p in open_paths:
+        rel = p.as_posix()
+        if "/waivers/" in rel or rel.endswith("/waivers_applied.json"):
+            return p
+    return None
+
+
+def _run_workspace_pointer_targets(run_workspace_dir: Path | None) -> tuple[Path | None, Path | None]:
+    if run_workspace_dir is None:
+        return None, None
+    verdict_ptr = _run_pointer_open_verdict_path(run_workspace_dir)
+    evidence_ptr = _run_pointer_open_evidence_path(run_workspace_dir)
+    out_verdict = verdict_ptr if verdict_ptr.exists() and verdict_ptr.is_file() and not verdict_ptr.is_symlink() else None
+    out_evidence = evidence_ptr if evidence_ptr.exists() and evidence_ptr.is_file() and not evidence_ptr.is_symlink() else None
+    return out_verdict, out_evidence
 
 
 def _write_run_workspace_pointers(
@@ -1944,87 +2008,133 @@ def _emit_run_failure_links(
     repo_root: Path,
     level: str,
     tier_id: str | None,
+    run_ref: str | None,
     run_key: str | None,
+    attempt_id: str | None,
     primary_reason: str,
     remediation_next_instruction: str,
     gate_verdict_path: Path | None,
     evidence_manifest_path: Path | None,
+    run_workspace_dir: Path | None,
     open_paths: list[Path],
+    verbose: bool,
 ) -> None:
+    family = _platform_family()
+    show_all_open = _show_all_open_helpers(verbose=verbose)
+    run_tokens = [f"verdict=NO-GO", f"tier={tier_id or 'UNKNOWN'}"]
+    if run_ref:
+        run_tokens.append(f"run={run_ref}")
+    run_tokens.append(f"key={_short_run_key(run_key) or 'UNKNOWN'}")
+    run_tokens.append(f"attempt={_short_attempt_id(attempt_id) or 'UNKNOWN'}")
     lines = [
-        "Summary:",
-        f"  verdict: NO-GO",
-        f"  tier: {tier_id or 'UNKNOWN'}",
-        f"  run_id: {run_key or 'UNKNOWN'}",
-        "Primary reason:",
-        f"  {primary_reason}",
-        "Remediation:",
-        f"  remediation.next_instruction: {remediation_next_instruction}",
-        "Evidence pointers:",
+        "summary: " + " ".join(run_tokens),
+        f"cause: {primary_reason}",
+        f"next: {remediation_next_instruction}",
+        "evidence:",
     ]
-    emitted_abs_paths: set[str] = set()
+
+    verdict_ptr, evidence_ptr = _run_workspace_pointer_targets(run_workspace_dir)
 
     if gate_verdict_path is not None:
-        gate_resolved = gate_verdict_path.resolve()
-        emitted_abs_paths.add(str(gate_resolved))
-        lines.append(f"  gate_verdict_path: {gate_resolved}")
-        gate_rel = _repo_rel_display(repo_root, gate_resolved)
-        if gate_rel is not None:
-            lines.append(f"  gate_verdict_rel: {gate_rel}")
-        mac, linux, windows = _open_command_lines(path=gate_resolved)
-        lines.append(f"  gate_verdict_open_macos: {mac}")
-        lines.append(f"  gate_verdict_open_linux: {linux}")
-        lines.append(f"  gate_verdict_open_windows: {windows}")
-        if _hyperlinks_enabled():
-            link = _osc8_link(label="Open gate verdict", path=gate_resolved)
-            if link is not None:
-                lines.append(f"  gate_verdict_link: {link}")
-    else:
-        lines.append("  gate_verdict: unavailable (no GateVerdict file produced)")
-    if evidence_manifest_path is not None:
-        evidence_resolved = evidence_manifest_path.resolve()
-        emitted_abs_paths.add(str(evidence_resolved))
-        lines.append(f"  evidence_manifest_path: {evidence_resolved}")
-        evidence_rel = _repo_rel_display(repo_root, evidence_resolved)
-        if evidence_rel is not None:
-            lines.append(f"  evidence_manifest_rel: {evidence_rel}")
-        if evidence_manifest_path.exists() and evidence_manifest_path.is_file() and not evidence_manifest_path.is_symlink():
-            lines.append("  evidence_manifest_status: present")
+        if verdict_ptr is not None and not verbose:
+            verdict_rel = _repo_rel_display(repo_root, verdict_ptr.resolve()) or str(verdict_ptr.resolve())
+            lines.append(f"  verdict: {verdict_rel}")
         else:
-            lines.append("  evidence_manifest_status: missing")
-        mac, linux, windows = _open_command_lines(path=evidence_resolved)
-        lines.append(f"  evidence_manifest_open_macos: {mac}")
-        lines.append(f"  evidence_manifest_open_linux: {linux}")
-        lines.append(f"  evidence_manifest_open_windows: {windows}")
-        if _hyperlinks_enabled():
-            link = _osc8_link(label="Open evidence manifest", path=evidence_resolved)
-            if link is not None:
-                lines.append(f"  evidence_manifest_link: {link}")
+            gate_rel = _repo_rel_display(repo_root, gate_verdict_path.resolve()) or str(gate_verdict_path.resolve())
+            lines.append(f"  verdict: {gate_rel}")
+        if verbose:
+            lines.append(f"  verdict_store_path: {gate_verdict_path.resolve()}")
     else:
-        lines.append("  evidence_manifest: unavailable (no EvidenceManifest file produced)")
-    if open_paths:
-        lines.append("Open helpers:")
-        display_idx = 0
-        for path in open_paths:
-            resolved = path.resolve()
-            abs_s = str(resolved)
-            if abs_s in emitted_abs_paths:
+        lines.append("  verdict: unavailable (no GateVerdict file produced)")
+
+    evidence_present = (
+        evidence_manifest_path is not None
+        and evidence_manifest_path.exists()
+        and evidence_manifest_path.is_file()
+        and not evidence_manifest_path.is_symlink()
+    )
+    if evidence_present and evidence_manifest_path is not None:
+        if evidence_ptr is not None and not verbose:
+            manifest_rel = _repo_rel_display(repo_root, evidence_ptr.resolve()) or str(evidence_ptr.resolve())
+            lines.append(f"  manifest: {manifest_rel}")
+        else:
+            evidence_rel = _repo_rel_display(repo_root, evidence_manifest_path.resolve()) or str(
+                evidence_manifest_path.resolve()
+            )
+            lines.append(f"  manifest: {evidence_rel}")
+        if verbose:
+            lines.append(f"  manifest_store_path: {evidence_manifest_path.resolve()}")
+    else:
+        lines.append("  manifest: missing")
+
+    intent_target: Path | None = None
+    for path in open_paths:
+        if path.name == "IntentSpec.core.md":
+            intent_target = path
+            break
+    waiver_target = _best_waiver_open_target(run_workspace_dir=run_workspace_dir, open_paths=open_paths)
+    verdict_target = verdict_ptr if verdict_ptr is not None else gate_verdict_path
+
+    targets: list[tuple[str, Path, bool]] = []
+    if verdict_target is not None:
+        targets.append(("verdict", verdict_target, True))
+    if intent_target is not None:
+        targets.append(("intent", intent_target, True))
+    if waiver_target is not None:
+        targets.append(("waivers", waiver_target, True))
+    if verbose and evidence_present and evidence_ptr is not None:
+        targets.append(("manifest", evidence_ptr, True))
+    if verbose:
+        existing_paths = {str(p.resolve()) for (_, p, _) in targets}
+        extra_idx = 0
+        for p in open_paths:
+            resolved = p.resolve()
+            if str(resolved) in existing_paths:
                 continue
-            emitted_abs_paths.add(abs_s)
-            display_idx += 1
-            label = f"open_path_{display_idx:02d}"
-            lines.append(f"  {label}_path: {resolved}")
-            rel = _repo_rel_display(repo_root, resolved)
-            if rel is not None:
-                lines.append(f"  {label}_rel: {rel}")
+            extra_idx += 1
+            existing_paths.add(str(resolved))
+            targets.append((f"extra_{extra_idx:02d}", p, True))
+
+    lines.append("open:")
+    seen_target: set[str] = set()
+    for label, path, include in targets:
+        if not include:
+            continue
+        resolved = path.resolve()
+        key = f"{label}:{resolved}"
+        if key in seen_target:
+            continue
+        seen_target.add(key)
+        rel = _repo_rel_display(repo_root, resolved) or str(resolved)
+        display_label = label
+        if _hyperlinks_enabled():
+            maybe_link = _osc8_link(label=label, path=resolved)
+            if maybe_link is not None:
+                display_label = maybe_link
+
+        if show_all_open:
             mac, linux, windows = _open_command_lines(path=resolved)
-            lines.append(f"  {label}_open_macos: {mac}")
-            lines.append(f"  {label}_open_linux: {linux}")
-            lines.append(f"  {label}_open_windows: {windows}")
-            if _hyperlinks_enabled():
-                link = _osc8_link(label=f"Open {label}", path=resolved)
-                if link is not None:
-                    lines.append(f"  {label}_link: {link}")
+            lines.append(f"  {display_label}: {rel}")
+            lines.append(f"    open_macos: {mac}")
+            lines.append(f"    open_linux: {linux}")
+            lines.append(f"    open_windows: {windows}")
+            continue
+
+        platform_name, cmd = _open_command_for_platform(path=resolved, family=family)
+        lines.append(f"  {display_label}: {rel}")
+        lines.append(f"    open_{platform_name}: {cmd}")
+
+    if verbose:
+        lines.append("details:")
+        if run_key is not None:
+            lines.append(f"  run_key: {run_key}")
+        if attempt_id is not None:
+            lines.append(f"  attempt_id: {attempt_id}")
+        if gate_verdict_path is not None:
+            lines.append(f"  gate_verdict_path: {gate_verdict_path.resolve()}")
+        if evidence_manifest_path is not None:
+            lines.append(f"  evidence_manifest_path: {evidence_manifest_path.resolve()}")
+
     _emit_human_status(prefix="[belgi run]", level=level, lines=lines)
 
 
@@ -2114,8 +2224,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     findings_signal_emittable = False
     waivers_applied_count: int | None = None
     waivers_applied_refs: list[str] | None = None
+    run_ref: str | None = None
     intent_open_path: Path | None = None
     requested_waiver_refs: list[str] = []
+    verbose = bool(getattr(args, "verbose", False))
 
     def _collect_open_paths() -> list[Path]:
         candidates: list[Path] = []
@@ -2208,6 +2320,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 intent_source_rel=intent_source_rel,
             )
             if run_scope_run_id is not None:
+                run_ref = run_scope_run_id
                 run_scope_dir = _resolve_run_dir(
                     repo_root=repo_root,
                     workspace_rel=workspace_rel,
@@ -2379,12 +2492,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             repo_root=repo_root,
             level="USER_ERROR",
             tier_id=tier_id,
+            run_ref=run_ref,
             run_key=run_key,
+            attempt_id=attempt_id,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
             gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
+            run_workspace_dir=run_workspace_dir,
             open_paths=_collect_open_paths(),
+            verbose=verbose,
         )
         return RC_USER_ERROR
     except ValueError as e:
@@ -2443,12 +2560,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             repo_root=repo_root,
             level="NO-GO",
             tier_id=tier_id,
+            run_ref=run_ref,
             run_key=run_key,
+            attempt_id=attempt_id,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
             gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
+            run_workspace_dir=run_workspace_dir,
             open_paths=_collect_open_paths(),
+            verbose=verbose,
         )
         return RC_NO_GO
     except Exception as e:
@@ -2497,14 +2618,18 @@ def cmd_run(args: argparse.Namespace) -> int:
             repo_root=repo_root,
             level="INTERNAL_ERROR",
             tier_id=tier_id,
+            run_ref=run_ref,
             run_key=run_key,
+            attempt_id=attempt_id,
             primary_reason=reason,
             remediation_next_instruction=(
                 "Do inspect generated artifacts and logs, then fix the internal error before re-run."
             ),
             gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
+            run_workspace_dir=run_workspace_dir,
             open_paths=_collect_open_paths(),
+            verbose=verbose,
         )
         return RC_INTERNAL_ERROR
 
@@ -3599,6 +3724,7 @@ def main(argv: list[str] | None = None) -> int:
             "discovery are unavailable"
         ),
     )
+    p_run.add_argument("--verbose", action="store_true", help="Verbose human output (deep paths and full open helpers)")
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")
 
     # run new
