@@ -2,6 +2,11 @@
 
 DEFAULT: **NO-GO** unless an independent third party can replay the verification within the declared Environment Envelope using only the artifacts produced by this run.
 
+Operator CLI SSOT:
+- `docs/operations/cli.md`
+
+This document remains the chain-module reference surface (`python -m chain.*`).
+
 This runbook is grounded in:
 - Canonical chain and terms: `../../CANONICALS.md`
 - Trust boundaries: `../../trust-model.md`
@@ -21,16 +26,20 @@ Core intent contract (v1):
 Minimum branch workflow:
 1. Start from your normal branch and initialize repo-local BELGI surfaces once:
    - `belgi init --repo .`
-2. Run the canonical path:
-   - `belgi run --repo . --tier tier-1`
-3. Inspect the latest attempt under:
-   - `.belgi/runs/<run_key>/<attempt_id>/`
-4. Optional integrity replay check:
+2. Create a run-local input workspace:
+   - `belgi run new --repo . --run-id run-001`
+3. Edit intent in run inputs:
+   - `.belgi/runs/run-001/inputs/intent/IntentSpec.core.md`
+4. Run the canonical path:
+   - `belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md`
+5. Inspect the latest attempt under:
+   - `.belgi/store/runs/<run_key>/<attempt_id>/`
+6. Optional integrity replay check:
    - `belgi verify --repo .`
 
 Revision semantics in `belgi run` (deterministic, fail-closed):
 - `evaluated_revision` is resolved from current `HEAD` (40-hex SHA) and bound into evidence via `policy.revision_binding` at:
-  - `.belgi/runs/<run_key>/<attempt_id>/repo/out/artifacts/policy.revision_binding.json`
+  - `.belgi/store/runs/<run_key>/<attempt_id>/repo/out/artifacts/policy.revision_binding.json`
 - `base_revision` discovery order:
   1. CI env (`BELGI_BASE_SHA`, then `GITHUB_BASE_SHA`)
   2. upstream merge-base (`merge-base(HEAD, @{u})`)
@@ -40,9 +49,10 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
 ## What BELGI creates
 
 - `.belgi/`:
-  - run workspace and attempt outputs
-  - canonical attempt layout: `.belgi/runs/<run_key>/<attempt_id>/`
-  - includes run summary, engine staging repo (`repo/`), and produced artifacts (`repo/out/...`)
+  - run workspace and object store
+  - operator workspace: `.belgi/runs/<run_id>/` (inputs + pointers only)
+  - canonical attempt layout: `.belgi/store/runs/<run_key>/<attempt_id>/`
+  - attempt root includes run summary, engine staging repo (`repo/`), and produced artifacts (`repo/out/...`)
 - `belgi_pack/`:
   - repo-local overlay pack bootstrap created by `belgi init`
   - operator-provisioned surface used by overlay checks
@@ -53,7 +63,10 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
 ## 0) Inputs
 
 ### 0.1 IntentSpec (required input artifact)
-Create `IntentSpec.core.md` from the core template (`belgi/templates/IntentSpec.core.template.md`) and place it at the **repo root** (alongside `CANONICALS.md`). (**NEW**, v1 hardening: canonical on-disk location)
+For operator CLI mode, create run inputs via `belgi run new --run-id <id>` and edit:
+- `.belgi/runs/<run_id>/inputs/intent/IntentSpec.core.md`
+
+The stage-level examples below use `IntentSpec.core.md` as an artifact name shorthand; direct `chain.*` invocations may use any repo-relative path that resolves to the same bytes.
 
 Deterministic requirements (enforced by Gate Q):
 - The file MUST contain exactly one fenced YAML block and only that block is machine-parsed.
@@ -557,6 +570,18 @@ Guidelines:
 ### 5.2 What gets re-run (Q vs R)
 - Re-run **Q** if remediation changes the locked contract: intent, invariants, constraints, tier selection, environment envelope, or waivers.
 - Re-run **R** if remediation changes evidence or proposed state under the same LockedSpec.
+
+### 5.3 CLI NO-GO pointer block (human output)
+- `belgi run` keeps the first output line as machine JSON.
+- Human lines include:
+  - grouped summary and primary reason
+  - `remediation.next_instruction` text
+  - `gate_verdict_path` / `gate_verdict_rel`
+  - `evidence_manifest_path` / `evidence_manifest_rel`
+  - copy/paste open commands for macOS, Linux, and Windows
+  - `open_path_*` entries for operator-critical files (for example intent and waiver refs)
+- Optional file hyperlinks are available with `BELGI_HYPERLINKS=1` (off by default).
+- Color output is TTY-only and disabled when `NO_COLOR` (or `BELGI_NO_COLOR`) is set.
 
 ## 6) Operator Checklist (strict)
 

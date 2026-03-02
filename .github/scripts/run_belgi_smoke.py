@@ -99,6 +99,23 @@ def _assert_success(cp: subprocess.CompletedProcess[str], *, label: str) -> None
     )
 
 
+def _repo_relative(repo_root: Path, target: Path) -> str:
+    try:
+        return str(target.relative_to(repo_root))
+    except ValueError:
+        return target.name
+
+
+def _compute_attempt_paths(repo_root: Path, run_key: str, attempt_id: str) -> tuple[Path, Path]:
+    attempt_rel = Path(".belgi") / "store" / "runs" / run_key / attempt_id
+    attempt_abs = repo_root / attempt_rel
+    return attempt_rel, attempt_abs
+
+
+def _output_path(path: Path) -> str:
+    return path.as_posix()
+
+
 def _append_github_output(*, run_key: str, attempt_id: str, attempt_dir: Path, run_log: Path) -> None:
     out_path = os.environ.get("GITHUB_OUTPUT", "").strip()
     if not out_path:
@@ -106,8 +123,8 @@ def _append_github_output(*, run_key: str, attempt_id: str, attempt_dir: Path, r
     with Path(out_path).open("a", encoding="utf-8", errors="strict") as handle:
         handle.write(f"run_key={run_key}\n")
         handle.write(f"attempt_id={attempt_id}\n")
-        handle.write(f"attempt_dir={attempt_dir.as_posix()}\n")
-        handle.write(f"run_log={run_log.as_posix()}\n")
+        handle.write(f"attempt_dir={_output_path(attempt_dir)}\n")
+        handle.write(f"run_log={_output_path(run_log)}\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -137,7 +154,8 @@ def main(argv: list[str] | None = None) -> int:
 
     workspace_dir = repo_root / ".belgi"
     workspace_dir.mkdir(parents=True, exist_ok=True)
-    run_log_path = workspace_dir / "run.stdout.log"
+    run_log_rel = Path(".belgi") / "run.stdout.log"
+    run_log_path = repo_root / run_log_rel
 
     cp_init = _run([belgi_bin, "init", "--repo", "."], cwd=repo_root)
     try:
@@ -175,15 +193,18 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(attempt_id, str) or not attempt_id:
         return _fail("belgi run: missing attempt_id in machine JSON")
 
-    attempt_dir = workspace_dir / "runs" / run_key / attempt_id
+    attempt_dir_rel, attempt_dir = _compute_attempt_paths(repo_root, run_key, attempt_id)
     if not attempt_dir.is_dir():
-        return _fail(f"missing attempt directory: {attempt_dir}")
+        return _fail(
+            "missing attempt directory under .belgi/store/runs "
+            f"for run_key={run_key} attempt_id={attempt_id}: {attempt_dir_rel}"
+        )
     summary_path = attempt_dir / "run.summary.json"
     if not summary_path.is_file():
-        return _fail(f"missing run.summary.json: {summary_path}")
+        return _fail(f"missing run.summary.json: {_repo_relative(repo_root, summary_path)}")
     out_dir = attempt_dir / "repo" / "out"
     if not out_dir.is_dir():
-        return _fail(f"missing chain out directory: {out_dir}")
+        return _fail(f"missing chain out directory: {_repo_relative(repo_root, out_dir)}")
 
     cp_verify = _run([belgi_bin, "verify", "--repo", "."], cwd=repo_root)
     try:
@@ -203,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
                 "bundle",
                 "check",
                 "--in",
-                out_dir.as_posix(),
+                str(out_dir),
                 "--demo",
                 "--verbose",
             ],
@@ -217,8 +238,8 @@ def main(argv: list[str] | None = None) -> int:
     _append_github_output(
         run_key=run_key,
         attempt_id=attempt_id,
-        attempt_dir=attempt_dir,
-        run_log=run_log_path,
+        attempt_dir=attempt_dir_rel,
+        run_log=run_log_rel,
     )
 
     print(
@@ -228,8 +249,8 @@ def main(argv: list[str] | None = None) -> int:
                 "tier": ns.tier,
                 "run_key": run_key,
                 "attempt_id": attempt_id,
-                "attempt_dir": attempt_dir.as_posix(),
-                "run_log": run_log_path.as_posix(),
+                "attempt_dir": _output_path(attempt_dir_rel),
+                "run_log": _output_path(run_log_rel),
             },
             sort_keys=True,
             separators=(",", ":"),

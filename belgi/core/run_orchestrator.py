@@ -16,7 +16,7 @@ from belgi.commands.adversarial_scan import run_adversarial_scan
 from belgi.commands.supplychain_scan import run_supplychain_scan
 from belgi.core.command_log import append_command_to_manifest
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
+from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
 
 
@@ -44,16 +44,16 @@ _C3_CANONICAL_PACKAGE_BINDINGS: tuple[tuple[str, str], ...] = (
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/consistency-sweep.md",
     ),
     (
+        "canonicals/docs/operations/cli.md",
+        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/cli.md",
+    ),
+    (
         "canonicals/docs/operations/evidence-bundles.md",
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-bundles.md",
     ),
     (
         "canonicals/docs/operations/evidence-ownership.md",
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-ownership.md",
-    ),
-    (
-        "canonicals/docs/operations/runbook_dev_tier.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/runbook_dev_tier.md",
     ),
     (
         "canonicals/docs/operations/running-belgi.md",
@@ -466,8 +466,41 @@ def _discover_applied_waiver_files(*, source_repo_root: Path) -> list[Path]:
     return waiver_files
 
 
-def stage_applied_waivers(*, source_repo_root: Path, chain_repo_root: Path) -> list[str]:
-    source_files = _discover_applied_waiver_files(source_repo_root=source_repo_root)
+def _resolve_applied_waiver_files_from_refs(*, source_repo_root: Path, waiver_refs: list[str]) -> list[Path]:
+    source_files: list[Path] = []
+    seen_refs: set[str] = set()
+    for raw in waiver_refs:
+        ref = str(raw or "").strip()
+        if not ref:
+            raise ValueError("empty applied waiver ref")
+        if ref in seen_refs:
+            raise ValueError(f"duplicate applied waiver ref: {ref}")
+        seen_refs.add(ref)
+        try:
+            source_file = resolve_storage_ref(source_repo_root, ref)
+        except ValueError as e:
+            raise ValueError(f"invalid applied waiver ref: {ref}: {e}") from e
+        if not source_file.exists() or source_file.is_symlink() or not source_file.is_file():
+            raise ValueError(f"applied waiver ref missing/invalid: {ref}")
+        if source_file.suffix.lower() != ".json":
+            raise ValueError(f"applied waiver ref must target .json file: {ref}")
+        source_files.append(source_file)
+    return sorted(source_files, key=lambda p: safe_relpath(source_repo_root, p))
+
+
+def stage_applied_waivers(
+    *,
+    source_repo_root: Path,
+    chain_repo_root: Path,
+    explicit_waiver_refs: list[str] | None = None,
+) -> list[str]:
+    if explicit_waiver_refs is None:
+        source_files = _discover_applied_waiver_files(source_repo_root=source_repo_root)
+    else:
+        source_files = _resolve_applied_waiver_files_from_refs(
+            source_repo_root=source_repo_root,
+            waiver_refs=explicit_waiver_refs,
+        )
     if not source_files:
         return []
 
@@ -623,6 +656,7 @@ def orchestrate_chain_run(
     upstream_ref: str | None,
     intent_bytes: bytes,
     protocol: Any,
+    applied_waiver_refs: list[str] | None = None,
 ) -> RunOrchestrationResult:
     base_revision = _require_commit_sha40(base_revision, label="base_revision")
     evaluated_revision = _require_commit_sha40(evaluated_revision, label="evaluated_revision")
@@ -688,6 +722,7 @@ def orchestrate_chain_run(
     applied_waiver_refs = stage_applied_waivers(
         source_repo_root=source_repo_root,
         chain_repo_root=chain_repo_dir,
+        explicit_waiver_refs=applied_waiver_refs,
     )
 
     intent_in_chain = chain_repo_dir / "IntentSpec.core.md"

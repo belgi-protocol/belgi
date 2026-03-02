@@ -31,7 +31,7 @@ from chain.logic.base import CheckResult, load_json, verify_protocol_identity
 from chain.logic.tier_packs import load_tier_params
 from chain.logic.q_checks.context import QCheckContext
 from chain.logic.q_checks.registry import get_checks
-from chain.logic.q_checks.yaml_subset import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
+from belgi.core.intent_yaml import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
 
 from belgi.protocol.pack import (
     ProtocolContext,

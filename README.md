@@ -133,9 +133,9 @@ Example (what this looks like in practice):
 
 If CI fails on sweep/fixtures, run the local fixer and commit the resulting changes. CI only verifies what’s in the repo; it must not mutate artifacts during verification.
 
-Canonical chain runbook (exact `chain/*` commands + when-to-run-what): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
+Operator CLI quickstart and NO-GO triage SSOT: [docs/operations/cli.md](docs/operations/cli.md)
 
-Adopter dev-tier runbook (`belgi init`, run-local workspace, Gate R overlay mode): [docs/operations/runbook_dev_tier.md](docs/operations/runbook_dev_tier.md)
+Chain-module reference commands (`python -m chain.*`): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
 
 Local CI proof (Docker + `act`) is recommended before pushing workflow changes:
 

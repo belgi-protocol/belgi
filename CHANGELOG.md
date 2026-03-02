@@ -2,6 +2,32 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.0 — 2026-03-02
+
+### Summary
+Release focused on operator-facing run ergonomics, deterministic evidence navigation, and verification-path hardening.
+
+### Added
+- Operator-oriented CLI output refinements for clearer GO/NO-GO status reading:
+  - compact status blocks with deterministic evidence pointers
+  - bounded open-helper guidance with optional link-capable rendering where supported
+- Deterministic run workspace guidance and pointer-bridge behavior for operator-facing paths under `.belgi/runs/`.
+- Waiver helper ergonomics for deterministic draft/apply flows with strict matching posture and explicit human approval control.
+
+### Changed
+- `belgi verify` selection flow hardening:
+  - deterministic selection precedence (`explicit`, `pointer`, `latest`)
+  - stale/invalid pointer candidates are skipped deterministically
+  - fail-closed user error when no valid pointer/store candidate exists
+- Machine first-line JSON contract for CLI result output remains stable.
+- Operator documentation consolidation and CLI usage/triage flow clarity in operations docs.
+
+### Notes
+- No protocol semantics changes.
+- No gate ordering changes.
+- No schema contract expansion.
+- Public summary remains adopter-agnostic and verification-first.
+
 ## 1.3.0 — 2026-02-28
 
 ### Summary
@@ -59,7 +85,7 @@ Artifact-backed release in capability buckets: infra orchestration/verify, tier+
   - `scripts/belgi_latest_run.ps1`
   - `scripts/belgi_latest_run.sh`
   - `scripts/belgi_wip_commit_run_reset.ps1`
-  - `docs/operations/triage.md`
+  - `docs/operations/cli.md`
 
 ### Changed
 - Run/verify contract hardening:

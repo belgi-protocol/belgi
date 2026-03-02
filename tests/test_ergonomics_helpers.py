@@ -12,7 +12,7 @@ ERGONOMIC_FILES = [
     REPO_ROOT / "scripts" / "belgi_latest_run.sh",
     REPO_ROOT / "scripts" / "belgi_latest_run.py",
     REPO_ROOT / "scripts" / "belgi_wip_commit_run_reset.ps1",
-    REPO_ROOT / "docs" / "operations" / "triage.md",
+    REPO_ROOT / "docs" / "operations" / "cli.md",
 ]
 
 
