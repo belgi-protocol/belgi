@@ -127,6 +127,47 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert waiver_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
 
 
+def test_init_creates_operator_readme_with_required_sections(tmp_path: Path) -> None:
+    assert belgi_main(["init", "--repo", str(tmp_path)]) == 0
+    readme_path = tmp_path / ".belgi" / "README.md"
+    assert readme_path.is_file()
+
+    text = readme_path.read_text(encoding="utf-8", errors="strict")
+    assert "## Quickstart" in text
+    assert "belgi init --repo ." in text
+    assert "belgi run new --repo . --run-id run-001" in text
+    assert "belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md --base-revision <SHA40>" in text
+    assert "belgi verify --repo ." in text
+    assert "## Layout map" in text
+    assert ".belgi/runs/<run_id>/" in text
+    assert ".belgi/store/runs/<run_key>/<attempt_id>/" in text
+    assert "open_verdict.txt" in text
+    assert "open_evidence.txt" in text
+    assert "## On NO-GO" in text
+    assert "gate_verdict_path" in text
+    assert "evidence_manifest_path" in text
+    assert "remediation.next_instruction" in text
+    assert "## What this is" in text
+    assert "## What this is not" in text
+
+
+def test_init_rewrites_operator_readme_deterministically(tmp_path: Path) -> None:
+    assert belgi_main(["init", "--repo", str(tmp_path)]) == 0
+    readme_path = tmp_path / ".belgi" / "README.md"
+    baseline = readme_path.read_bytes()
+    assert b"\r\n" not in baseline
+
+    readme_path.write_text("drifted-content\n", encoding="utf-8", errors="strict", newline="\n")
+    assert belgi_main(["init", "--repo", str(tmp_path)]) == 0
+    repaired = readme_path.read_bytes()
+    assert repaired == baseline
+
+    hash_before = sha256_bytes(repaired)
+    assert belgi_main(["init", "--repo", str(tmp_path)]) == 0
+    hash_after = sha256_bytes(readme_path.read_bytes())
+    assert hash_after == hash_before
+
+
 def test_run_new_layout_no_intentspec_md(tmp_path: Path) -> None:
     rc_init = belgi_main(["init", "--repo", str(tmp_path)])
     assert rc_init == 0

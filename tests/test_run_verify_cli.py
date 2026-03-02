@@ -331,7 +331,12 @@ def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(tmp_path: Path,
 
     assert f"gate_verdict_path: {verdict_path.resolve()}" in captured.err
     assert f"evidence_manifest_path: {evidence_path.resolve()}" in captured.err
-    assert f"remediation.next_instruction: {remediation}" in captured.err
+    assert f"  remediation.next_instruction: {remediation}" in captured.err
+    assert f'gate_verdict_open_macos: open "{verdict_path.resolve()}"' in captured.err
+    assert f'gate_verdict_open_linux: xdg-open "{verdict_path.resolve()}"' in captured.err
+    assert "gate_verdict_open_windows: powershell -NoProfile -Command " in captured.err
+    assert f'evidence_manifest_open_macos: open "{evidence_path.resolve()}"' in captured.err
+    assert f'evidence_manifest_open_linux: xdg-open "{evidence_path.resolve()}"' in captured.err
 
 
 def test_run_migrates_legacy_run_key_directory_to_store(tmp_path: Path, capsys: object) -> None:
@@ -475,6 +480,52 @@ def test_run_intentspec_yaml_parse_error_includes_line_and_column(tmp_path: Path
     assert "chain.compiler_c1_intent returned rc=3" in reason
     assert "IntentSpec YAML parse error" in captured.err
     assert "line " in captured.err and "column " in captured.err
+    remediation_match = re.search(r"remediation\.next_instruction:\s+(.+)", captured.err)
+    assert remediation_match is not None
+    remediation_line = remediation_match.group(1).strip()
+    assert remediation_line != ""
+    assert "IntentSpec.core.md" in remediation_line
+    assert "line " in remediation_line and "column " in remediation_line
+    assert "key: value" in remediation_line
+    assert "gate_verdict_path:" not in captured.err
+    assert "gate_verdict: unavailable (no GateVerdict file produced)" in captured.err
+
+
+def test_run_no_go_hyperlinks_opt_in(tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    monkeypatch.setenv("BELGI_HYPERLINKS", "1")
+    monkeypatch.setattr(belgi_cli, "_stderr_supports_color", lambda: True)
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    assert "\x1b]8;;file://" in captured.err
+
+
+def test_run_no_go_plain_output_has_no_color_codes(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    assert "\x1b[31m" not in captured.err
+    assert "\x1b[32m" not in captured.err
+    assert "\x1b[33m" not in captured.err
+    assert "\x1b[35m" not in captured.err
 
 
 def test_run_revision_binding_is_authoritative_for_base_and_evaluated(

@@ -46,6 +46,7 @@ from chain.logic.q_checks.yaml_subset import YamlParseError, extract_single_fenc
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 COMPILER_ID = "chain/compiler_c1_intent.py"
 COMPILER_VERSION = "1.0"
+INTENT_PARSE_DIAGNOSTIC_FILENAME = "C1IntentParseError.json"
 
 
 class _UserInputError(RuntimeError):
@@ -143,6 +144,45 @@ def _safe_relpath(repo_root: Path, p: Path) -> str:
         return p.resolve().relative_to(repo_root.resolve()).as_posix()
     except Exception:
         return p.as_posix()
+
+
+def _parse_yaml_error_location(raw: str) -> tuple[int | None, int | None, str]:
+    msg = str(raw or "").strip()
+    m = re.match(r"^line\s+(\d+),\s*column\s+(\d+):\s*(.+)$", msg)
+    if not m:
+        return None, None, msg
+    return int(m.group(1)), int(m.group(2)), m.group(3).strip()
+
+
+def _write_intent_parse_diagnostic(
+    *,
+    repo_root: Path,
+    out_path: Path,
+    intent_path: Path,
+    yaml_error: str,
+) -> None:
+    line_no, col_no, detail = _parse_yaml_error_location(yaml_error)
+    intent_rel = _safe_relpath(repo_root, intent_path)
+    location = (
+        f"line {line_no}, column {col_no}"
+        if line_no is not None and col_no is not None
+        else "the fenced YAML block"
+    )
+    next_instruction = (
+        f"Edit `{intent_rel}` and fix YAML mapping syntax at {location}. "
+        "Use `key: value` entries inside a single ```yaml fenced block, then rerun `belgi run`."
+    )
+    diagnostic = {
+        "schema_version": "1.0.0",
+        "error_id": "C1-INTENT-YAML-PARSE",
+        "intent_spec_path": intent_rel,
+        "line": line_no,
+        "column": col_no,
+        "detail": detail,
+        "next_instruction": next_instruction,
+    }
+    diag_path = out_path.parent / INTENT_PARSE_DIAGNOSTIC_FILENAME
+    _atomic_write_json(diag_path, diagnostic)
 
 
 def _git_head_sha(repo_root: Path) -> str:
@@ -557,6 +597,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             parsed = parse_yaml_subset(yaml_text)
         except YamlParseError as e:
+            _write_intent_parse_diagnostic(
+                repo_root=repo_root,
+                out_path=out_path,
+                intent_path=intent_path,
+                yaml_error=str(e),
+            )
             raise _UserInputError(f"IntentSpec YAML parse error: {e}") from e
 
         if not isinstance(parsed, dict):

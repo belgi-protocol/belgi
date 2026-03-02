@@ -781,6 +781,21 @@ def _write_text_if_missing(path: Path, text: str) -> bool:
     return True
 
 
+def _write_text_if_changed(path: Path, text: str) -> str | None:
+    if path.exists():
+        if path.is_symlink():
+            raise ValueError(f"symlink not allowed: {path}")
+        if not path.is_file():
+            raise ValueError(f"expected file path but found non-file: {path}")
+        existing = path.read_text(encoding="utf-8", errors="strict")
+        if existing == text:
+            return None
+        _write_text(path, text)
+        return "updated"
+    _write_text(path, text)
+    return "created"
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", errors="strict", newline="\n")
@@ -858,19 +873,34 @@ def _render_adopter_toml(
 def _render_adopter_readme(*, workspace_rel: str) -> str:
     run_root = f"{workspace_rel}/runs"
     store_root = f"{workspace_rel}/store/runs"
+    intent_path = f"{workspace_rel}/runs/run-001/inputs/intent/IntentSpec.core.md"
     return (
-        "# BELGI Local Layout\n\n"
-        f"- `{workspace_rel}/adopter.toml`: one-time defaults for this repository (not per-run state)\n"
-        f"- `{workspace_rel}/templates/IntentSpec.core.template.md`: local seed/reset template copied at init time\n"
-        f"- `{run_root}/<run_id>/`: human workspace and refs (`inputs/`, `RUN.md`, pointer files)\n"
-        f"- `{store_root}/<run_key>/<attempt_id>/`: immutable authoritative run artifacts\n"
-        "- `belgi_pack/DomainPackManifest.json`: adopter-owned overlay checks for optional strict verification\n\n"
-        "Rules:\n"
-        "- Do not copy BELGI canonicals (`schemas/`, `gates/`, `tiers/`) into this repository.\n"
-        f"- Treat `{store_root}/` as authoritative object storage.\n"
-        f"- Treat `{run_root}/<run_id>/` as operator workspace only (no authoritative GateVerdict/EvidenceManifest copies).\n\n"
-        "NO-GO triage:\n"
-        "- Check printed `gate_verdict_path` and `evidence_manifest_path` lines from `belgi run` output.\n"
+        "# BELGI Quickstart\n\n"
+        "## Quickstart\n"
+        "```bash\n"
+        "belgi init --repo .\n"
+        "belgi run new --repo . --run-id run-001\n"
+        f"# edit: {intent_path}\n"
+        "belgi run --repo . --tier tier-1 --intent-spec "
+        f"{intent_path} --base-revision <SHA40>\n"
+        "belgi verify --repo .\n"
+        "```\n\n"
+        "## Layout map\n"
+        f"- `{run_root}/<run_id>/` = human workspace + pointers.\n"
+        f"- `{store_root}/<run_key>/<attempt_id>/` = authoritative artifacts.\n"
+        "- `open_verdict.txt` and `open_evidence.txt` point to the latest verdict/evidence paths.\n\n"
+        "## On NO-GO\n"
+        "- Check `gate_verdict_path` first.\n"
+        "- Check `evidence_manifest_path` for indexed artifacts and command records.\n"
+        "- `remediation.next_instruction` is the authoritative next step.\n\n"
+        "## What this is\n"
+        "- Deterministic verification workflow for LLM-assisted code changes.\n"
+        "- Machine-readable evidence and replay-oriented artifact structure.\n"
+        "- Fail-closed contract checks across Q/R/S gates.\n\n"
+        "## What this is not\n"
+        "- Not an auto-fixer.\n"
+        "- Not a decision-maker.\n"
+        "- Not a waiver applier.\n"
     )
 
 
@@ -1019,8 +1049,11 @@ def cmd_init(args: argparse.Namespace) -> int:
         ):
             created.append(adopter_toml_path)
 
-        if _write_text_if_missing(adopter_readme_path, _render_adopter_readme(workspace_rel=workspace_rel)):
+        readme_state = _write_text_if_changed(adopter_readme_path, _render_adopter_readme(workspace_rel=workspace_rel))
+        if readme_state == "created":
             created.append(adopter_readme_path)
+        elif readme_state == "updated":
+            updated.append(adopter_readme_path)
 
         if overlay_manifest_path.exists():
             if overlay_manifest_path.is_symlink() or not overlay_manifest_path.is_file():
@@ -1770,20 +1803,108 @@ def _load_next_instruction_from_gate_verdict(path: Path) -> str | None:
     return next_instruction.strip()
 
 
-def _primary_gate_verdict_path(chain_out_dir: Path | None) -> Path | None:
+def _load_next_instruction_from_c1_parse_diagnostic(chain_out_dir: Path | None) -> str | None:
     if chain_out_dir is None:
         return None
-    for name in ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json"):
+    diag_path = chain_out_dir / "C1IntentParseError.json"
+    if not diag_path.exists() or diag_path.is_symlink() or not diag_path.is_file():
+        return None
+    try:
+        obj = json.loads(diag_path.read_text(encoding="utf-8", errors="strict"))
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    next_instruction = obj.get("next_instruction")
+    if not isinstance(next_instruction, str) or not next_instruction.strip():
+        return None
+    return next_instruction.strip()
+
+
+def _preferred_gate_verdict_order(primary_reason: str | None) -> tuple[str, ...]:
+    reason = str(primary_reason or "").lower()
+    if "gate_q" in reason:
+        return ("GateVerdict.Q.json", "GateVerdict.R.json", "GateVerdict.S.json")
+    if "gate_r" in reason:
+        return ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json")
+    if "gate_s" in reason:
+        return ("GateVerdict.S.json", "GateVerdict.R.json", "GateVerdict.Q.json")
+    return ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json")
+
+
+def _primary_gate_verdict_path(chain_out_dir: Path | None, *, primary_reason: str | None = None) -> Path | None:
+    if chain_out_dir is None:
+        return None
+    for name in _preferred_gate_verdict_order(primary_reason):
         p = chain_out_dir / name
         if p.exists() and not p.is_symlink() and p.is_file():
             return p
-    return chain_out_dir / "GateVerdict.R.json"
+    return None
 
 
 def _evidence_manifest_path(chain_out_dir: Path | None) -> Path | None:
     if chain_out_dir is None:
         return None
     return chain_out_dir / "EvidenceManifest.json"
+
+
+def _env_truthy(name: str) -> bool:
+    raw = str(os.environ.get(name, "") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _hyperlinks_enabled() -> bool:
+    return _env_truthy("BELGI_HYPERLINKS") and _stderr_supports_color()
+
+
+def _contains_control_chars(raw: str) -> bool:
+    return any((ord(ch) < 32 or ord(ch) == 127) for ch in raw)
+
+
+def _safe_file_uri(path: Path) -> str | None:
+    try:
+        resolved = path.resolve()
+    except Exception:
+        return None
+    raw = str(resolved)
+    if _contains_control_chars(raw):
+        return None
+    try:
+        uri = resolved.as_uri()
+    except Exception:
+        return None
+    if not uri.startswith("file://"):
+        return None
+    return uri
+
+
+def _osc8_link(*, label: str, path: Path) -> str | None:
+    uri = _safe_file_uri(path)
+    if uri is None:
+        return None
+    if _contains_control_chars(label):
+        return None
+    esc = "\x1b"
+    return f"{esc}]8;;{uri}{esc}\\{label}{esc}]8;;{esc}\\"
+
+
+def _quote_double(raw: str) -> str:
+    return '"' + raw.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _quote_powershell_single(raw: str) -> str:
+    return "'" + raw.replace("'", "''") + "'"
+
+
+def _open_command_lines(*, path: Path) -> tuple[str, str, str]:
+    resolved = str(path.resolve())
+    posix = _quote_double(resolved)
+    pwsh = _quote_powershell_single(resolved)
+    return (
+        f"open {posix}",
+        f"xdg-open {posix}",
+        f"powershell -NoProfile -Command \"Start-Process -FilePath {pwsh}\"",
+    )
 
 
 def _write_run_workspace_pointers(
@@ -1822,16 +1943,50 @@ def _emit_run_failure_links(
     open_paths: list[Path],
 ) -> None:
     lines = [
-        f"verdict=NO-GO tier={tier_id or 'UNKNOWN'} run_id={run_key or 'UNKNOWN'}",
-        f"primary_reason: {primary_reason}",
-        f"remediation.next_instruction: {remediation_next_instruction}",
+        "Summary:",
+        f"  verdict: NO-GO",
+        f"  tier: {tier_id or 'UNKNOWN'}",
+        f"  run_id: {run_key or 'UNKNOWN'}",
+        "Primary reason:",
+        f"  {primary_reason}",
+        "Remediation:",
+        f"  remediation.next_instruction: {remediation_next_instruction}",
+        "Evidence pointers:",
     ]
     if gate_verdict_path is not None:
-        lines.append(f"gate_verdict_path: {gate_verdict_path.resolve()}")
+        gate_resolved = gate_verdict_path.resolve()
+        lines.append(f"  gate_verdict_path: {gate_resolved}")
+        mac, linux, windows = _open_command_lines(path=gate_resolved)
+        lines.append(f"  gate_verdict_open_macos: {mac}")
+        lines.append(f"  gate_verdict_open_linux: {linux}")
+        lines.append(f"  gate_verdict_open_windows: {windows}")
+        if _hyperlinks_enabled():
+            link = _osc8_link(label="Open gate verdict", path=gate_resolved)
+            if link is not None:
+                lines.append(f"  gate_verdict_link: {link}")
+    else:
+        lines.append("  gate_verdict: unavailable (no GateVerdict file produced)")
     if evidence_manifest_path is not None:
-        lines.append(f"evidence_manifest_path: {evidence_manifest_path.resolve()}")
-    for path in open_paths:
-        lines.append(f"Open: {path.resolve()}")
+        evidence_resolved = evidence_manifest_path.resolve()
+        lines.append(f"  evidence_manifest_path: {evidence_resolved}")
+        if evidence_manifest_path.exists() and evidence_manifest_path.is_file() and not evidence_manifest_path.is_symlink():
+            lines.append("  evidence_manifest_status: present")
+        else:
+            lines.append("  evidence_manifest_status: missing")
+        mac, linux, windows = _open_command_lines(path=evidence_resolved)
+        lines.append(f"  evidence_manifest_open_macos: {mac}")
+        lines.append(f"  evidence_manifest_open_linux: {linux}")
+        lines.append(f"  evidence_manifest_open_windows: {windows}")
+        if _hyperlinks_enabled():
+            link = _osc8_link(label="Open evidence manifest", path=evidence_resolved)
+            if link is not None:
+                lines.append(f"  evidence_manifest_link: {link}")
+    else:
+        lines.append("  evidence_manifest: unavailable (no EvidenceManifest file produced)")
+    if open_paths:
+        lines.append("Additional paths:")
+        for path in open_paths:
+            lines.append(f"  Open: {path.resolve()}")
     _emit_human_status(prefix="[belgi run]", level=level, lines=lines)
 
 
@@ -1951,6 +2106,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             if key in seen:
                 continue
             seen.add(key)
+            if not path.exists():
+                continue
             out.append(path)
         return out
 
@@ -2186,7 +2343,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             run_key=run_key,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
-            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir),
+            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             open_paths=_collect_open_paths(),
         )
@@ -2228,10 +2385,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         next_instruction = ""
         if chain_out_dir is not None:
-            for gate_name in ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json"):
+            for gate_name in _preferred_gate_verdict_order(reason):
                 next_instruction = _load_next_instruction_from_gate_verdict(chain_out_dir / gate_name) or ""
                 if next_instruction:
                     break
+            if not next_instruction:
+                next_instruction = _load_next_instruction_from_c1_parse_diagnostic(chain_out_dir) or ""
+        if not next_instruction:
+            next_instruction = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
         _write_run_workspace_pointers(
             repo_root=repo_root,
             run_workspace_dir=run_workspace_dir,
@@ -2245,7 +2406,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             run_key=run_key,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
-            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir),
+            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             open_paths=_collect_open_paths(),
         )
@@ -2300,7 +2461,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             remediation_next_instruction=(
                 "Do inspect generated artifacts and logs, then fix the internal error before re-run."
             ),
-            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir),
+            gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             open_paths=_collect_open_paths(),
         )

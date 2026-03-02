@@ -566,6 +566,16 @@ Guidelines:
 - Re-run **Q** if remediation changes the locked contract: intent, invariants, constraints, tier selection, environment envelope, or waivers.
 - Re-run **R** if remediation changes evidence or proposed state under the same LockedSpec.
 
+### 5.3 CLI NO-GO pointer block (human output)
+- `belgi run` keeps the first output line as machine JSON.
+- Human lines include:
+  - grouped summary and primary reason
+  - `remediation.next_instruction` text
+  - `gate_verdict_path` and `evidence_manifest_path`
+  - copy/paste open commands for macOS, Linux, and Windows
+- Optional file hyperlinks are available with `BELGI_HYPERLINKS=1` (off by default).
+- Color output is TTY-only and disabled when `NO_COLOR` (or `BELGI_NO_COLOR`) is set.
+
 ## 6) Operator Checklist (strict)
 
 - Tier selected (`tier-0`..`tier-3`) and recorded in `LockedSpec.json`.
