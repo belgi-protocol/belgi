@@ -112,11 +112,11 @@ def _unset_upstream_if_present(repo: Path) -> None:
     )
 
 
-def _extract_run_human_block(stderr: str) -> list[str]:
+def _extract_run_human_block(stderr: str, *, level: str = "NO-GO") -> list[str]:
     lines = stderr.splitlines()
     start = -1
     for idx, line in enumerate(lines):
-        if line.startswith("[belgi run] NO-GO:"):
+        if line.startswith(f"[belgi run] {level}:"):
             start = idx
             break
     if start < 0:
@@ -418,7 +418,7 @@ def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(
     assert "\n\n[belgi run] evidence:" in captured.err
     assert "\n\n[belgi run] open:" in captured.err
     assert "[belgi run]   gate: R" in captured.err
-    assert "[belgi run]   gate_verdicts: Q=present R=present S=missing" in captured.err
+    assert "[belgi run]   gate_status: Q=GO R=NO-GO S=missing" in captured.err
     assert "[belgi run]   verdict: .belgi/runs/run-contract-001/open_verdict.txt" in captured.err
     assert "manifest: missing" in captured.err
     labels = _open_target_labels(captured.err)
@@ -766,7 +766,7 @@ def test_run_no_go_verbose_includes_store_paths_and_all_open_helpers(
     attempt_id = str(machine["attempt_id"])
     verdict_abs = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "GateVerdict.R.json"
 
-    assert "[belgi run]   gate_verdicts: Q=present R=present S=missing" in captured.err
+    assert "[belgi run]   gate_status: Q=GO R=NO-GO S=missing" in captured.err
     assert "details:" in captured.err
     assert f"run_key: {run_key}" in captured.err
     assert f"attempt_id: {attempt_id}" in captured.err
@@ -778,6 +778,24 @@ def test_run_no_go_verbose_includes_store_paths_and_all_open_helpers(
     assert "open_macos:" in captured.err
     assert "open_linux:" in captured.err
     assert "open_windows:" in captured.err
+
+
+def test_run_no_go_gate_status_line_is_deterministic(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+
+    assert "[belgi run]   gate_status: Q=GO R=NO-GO S=missing" in captured.err
 
 
 def test_run_revision_binding_is_authoritative_for_base_and_evaluated(
@@ -871,6 +889,100 @@ def test_run_emits_machine_result_line(tmp_path: Path, capsys: object) -> None:
     assert machine["attempt_id"] == "attempt-0001"
     assert machine["findings_present"] is False
     assert machine["finding_count"] == 0
+
+
+def test_run_go_emits_compact_sections_and_line_bound(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    run_id = "run-go-001"
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    intent_path.write_text(
+        (
+            "# IntentSpec\n\n```yaml\n"
+            "intent_id: \"INTENT-GO-001\"\n"
+            "title: \"GO output contract\"\n"
+            "goal: \"Exercise compact GO output contract.\"\n"
+            "scope:\n"
+            "  allowed_dirs:\n"
+            "    - \"main/\"\n"
+            "  forbidden_dirs:\n"
+            "    - \"secrets/\"\n"
+            "acceptance:\n"
+            "  success_criteria:\n"
+            "    - \"GO output is compact and deterministic.\"\n"
+            "tier:\n"
+            "  tier_pack_id: \"tier-1\"\n"
+            "doc_impact:\n"
+            "  required_paths: []\n"
+            "  note_on_empty: \"No docs required.\"\n"
+            "```\n"
+        ),
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    rc = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-1",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+
+    assert "summary: verdict=GO tier=tier-1" in captured.err
+    assert "evidence:" in captured.err
+    assert "  verdict_R:" in captured.err
+    assert "  manifest:" in captured.err
+    assert "  seal:" in captured.err
+    assert "open:" in captured.err
+    assert "  verdict_R:" in captured.err
+    assert "  intent:" in captured.err
+    assert "  waivers:" in captured.err
+    assert "created:" not in captured.err
+
+    block = _extract_run_human_block(captured.err, level="GO")
+    assert block
+    assert len(block) <= 25
+
+
+def test_run_go_verbose_includes_authoritative_paths(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", head_sha, "--verbose"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = str(machine["run_key"])
+    attempt_id = str(machine["attempt_id"])
+    attempt_out = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out"
+
+    assert "details:" in captured.err
+    assert f"verdict_R_path: {(attempt_out / 'GateVerdict.R.json').resolve()}" in captured.err
+    assert f"manifest_path: {(attempt_out / 'EvidenceManifest.json').resolve()}" in captured.err
+    assert f"seal_path: {(attempt_out / 'SealManifest.json').resolve()}" in captured.err
 
 
 def test_run_non_tty_human_output_has_no_ansi_and_machine_first_line_is_plain_json(
