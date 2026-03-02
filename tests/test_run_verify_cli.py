@@ -330,7 +330,9 @@ def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(tmp_path: Path,
     assert remediation
 
     assert f"gate_verdict_path: {verdict_path.resolve()}" in captured.err
+    assert f"gate_verdict_rel: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/GateVerdict.R.json" in captured.err
     assert f"evidence_manifest_path: {evidence_path.resolve()}" in captured.err
+    assert f"evidence_manifest_rel: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/EvidenceManifest.json" in captured.err
     assert f"  remediation.next_instruction: {remediation}" in captured.err
     assert f'gate_verdict_open_macos: open "{verdict_path.resolve()}"' in captured.err
     assert f'gate_verdict_open_linux: xdg-open "{verdict_path.resolve()}"' in captured.err
@@ -505,7 +507,27 @@ def test_run_no_go_hyperlinks_opt_in(tmp_path: Path, capsys: object, monkeypatch
     rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
     assert rc_run == 10
     captured = capsys.readouterr()
-    assert "\x1b]8;;file://" in captured.err
+    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\Open gate verdict\x1b\]8;;\x1b\\", captured.err)
+    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\Open evidence manifest\x1b\]8;;\x1b\\", captured.err)
+
+
+def test_run_no_go_hyperlinks_absent_when_unset(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    base_sha = _git_rev_parse(repo, "HEAD~1")
+
+    monkeypatch.delenv("BELGI_HYPERLINKS", raising=False)
+    monkeypatch.setattr(belgi_cli, "_stderr_supports_color", lambda: True)
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    assert "\x1b]8;;" not in captured.err
 
 
 def test_run_no_go_plain_output_has_no_color_codes(
@@ -526,6 +548,86 @@ def test_run_no_go_plain_output_has_no_color_codes(
     assert "\x1b[32m" not in captured.err
     assert "\x1b[33m" not in captured.err
     assert "\x1b[35m" not in captured.err
+
+
+def test_run_no_go_open_helpers_include_intent_and_waiver_paths(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-open-helper-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    assert (
+        belgi_main(
+            [
+                "waiver",
+                "new",
+                "--repo",
+                str(repo),
+                "--run-id",
+                run_id,
+                "--gate",
+                "R",
+                "--rule-id",
+                "RULE-001",
+                "--waiver-id",
+                "waiver-001",
+                "--expires-at",
+                "2100-01-01T00:00:00Z",
+            ]
+        )
+        == 0
+    )
+    assert (
+        belgi_main(
+            [
+                "waiver",
+                "apply",
+                "--repo",
+                str(repo),
+                "--run-id",
+                run_id,
+                "--waiver",
+                f".belgi/runs/{run_id}/inputs/waivers/waiver-001.json",
+            ]
+        )
+        == 0
+    )
+    _ = capsys.readouterr()
+
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    waiver_path = repo / ".belgi" / "runs" / run_id / "inputs" / "waivers" / "waiver-001.json"
+    intent_path.write_text(
+        "# bad\n\n```yaml\nintent_id \"missing-colon\"\n```\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    rc = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            head_sha,
+        ]
+    )
+    assert rc == 10
+    captured = capsys.readouterr()
+
+    assert f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md" in captured.err
+    assert f".belgi/runs/{run_id}/inputs/waivers/waiver-001.json" in captured.err
+    assert f'open "{intent_path.resolve()}"' in captured.err
+    assert f'xdg-open "{intent_path.resolve()}"' in captured.err
+    assert f'open "{waiver_path.resolve()}"' in captured.err
+    assert f'xdg-open "{waiver_path.resolve()}"' in captured.err
 
 
 def test_run_revision_binding_is_authoritative_for_base_and_evaluated(

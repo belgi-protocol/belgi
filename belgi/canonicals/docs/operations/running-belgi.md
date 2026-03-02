@@ -571,8 +571,10 @@ Guidelines:
 - Human lines include:
   - grouped summary and primary reason
   - `remediation.next_instruction` text
-  - `gate_verdict_path` and `evidence_manifest_path`
+  - `gate_verdict_path` / `gate_verdict_rel`
+  - `evidence_manifest_path` / `evidence_manifest_rel`
   - copy/paste open commands for macOS, Linux, and Windows
+  - `open_path_*` entries for operator-critical files (for example intent and waiver refs)
 - Optional file hyperlinks are available with `BELGI_HYPERLINKS=1` (off by default).
 - Color output is TTY-only and disabled when `NO_COLOR` (or `BELGI_NO_COLOR`) is set.
 
