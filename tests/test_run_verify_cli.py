@@ -112,6 +112,42 @@ def _unset_upstream_if_present(repo: Path) -> None:
     )
 
 
+def _extract_run_human_block(stderr: str) -> list[str]:
+    lines = stderr.splitlines()
+    start = -1
+    for idx, line in enumerate(lines):
+        if line.startswith("[belgi run] NO-GO:"):
+            start = idx
+            break
+    if start < 0:
+        return []
+    out: list[str] = []
+    for line in lines[start:]:
+        if line and not line.startswith("[belgi run]"):
+            break
+        out.append(line)
+    return out
+
+
+def _open_target_labels(stderr: str) -> list[str]:
+    labels: list[str] = []
+    in_open = False
+    for line in stderr.splitlines():
+        if line == "[belgi run] open:":
+            in_open = True
+            continue
+        if not in_open:
+            continue
+        if line == "":
+            continue
+        if line.startswith("[belgi run] details:"):
+            break
+        m = re.match(r"^\[belgi run\] {3}(?!open_)([^ :][^:]*):", line)
+        if m is not None:
+            labels.append(str(m.group(1)))
+    return labels
+
+
 def _remove_tests_tree_and_commit(repo: Path) -> None:
     _run_git(repo, ["rm", "-r", "--quiet", "--ignore-unmatch", "tests"])
     _run_git(repo, ["commit", "-m", "remove tests tree"])
@@ -310,15 +346,54 @@ def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(
     tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _fresh_repo_clone(tmp_path)
-    _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")
+    run_id = "run-contract-001"
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    intent_path.write_text(
+        (
+            "# IntentSpec\n\n```yaml\n"
+            "intent_id: \"INTENT-001\"\n"
+            "title: \"NO-GO output contract\"\n"
+            "goal: \"Exercise default no-go UX output contract.\"\n"
+            "scope:\n"
+            "  allowed_dirs:\n"
+            "    - \"main/\"\n"
+            "  forbidden_dirs:\n"
+            "    - \"secrets/\"\n"
+            "acceptance:\n"
+            "  success_criteria:\n"
+            "    - \"NO-GO block is compact and deterministic.\"\n"
+            "tier:\n"
+            "  tier_pack_id: \"tier-1\"\n"
+            "doc_impact:\n"
+            "  required_paths: []\n"
+            "  note_on_empty: \"No docs required.\"\n"
+            "```\n"
+        ),
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    _commit_file(repo, "README.md", "forbidden path change\n", "touch forbidden path")
     base_sha = _git_rev_parse(repo, "HEAD~1")
     monkeypatch.setattr(belgi_cli, "_platform_family", lambda: "linux")
 
-    rc_init = belgi_main(["init", "--repo", str(repo)])
-    assert rc_init == 0
-    _ = capsys.readouterr()
-
-    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-1",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+        ]
+    )
     assert rc_run == 10
     captured = capsys.readouterr()
 
@@ -332,19 +407,33 @@ def test_run_no_go_emits_verbatim_remediation_and_evidence_paths(
     remediation = str(verdict_obj.get("remediation", {}).get("next_instruction", ""))
     assert remediation
 
-    assert "summary: verdict=NO-GO tier=tier-0" in captured.err
+    assert "summary: verdict=NO-GO tier=tier-1" in captured.err
+    assert f"run={run_id}" in captured.err
     assert f"key={run_key[:10]}" in captured.err
     assert "attempt=0001" in captured.err
     assert "run_id:" not in captured.err
     assert f"cause: {machine['primary_reason']}" in captured.err
     assert f"next: {remediation}" in captured.err
-    assert f"  verdict: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/GateVerdict.R.json" in captured.err
+    assert "\n\n[belgi run] cause:" in captured.err
+    assert "\n\n[belgi run] evidence:" in captured.err
+    assert "\n\n[belgi run] open:" in captured.err
+    assert "[belgi run]   gate: R" in captured.err
+    assert "[belgi run]   gate_verdicts: Q=present R=present S=missing" in captured.err
+    assert "[belgi run]   verdict: .belgi/runs/run-contract-001/open_verdict.txt" in captured.err
     assert "manifest: missing" in captured.err
-    assert f"  verdict: .belgi/store/runs/{run_key}/{attempt_id}/repo/out/GateVerdict.R.json" in captured.err
+    labels = _open_target_labels(captured.err)
+    assert labels == ["verdict_R", "intent", "waivers"]
+    assert "manifest:" not in labels
     assert "open_linux:" in captured.err
     assert "open_macos:" not in captured.err
     assert "open_windows:" not in captured.err
-    assert f"evidence_manifest_path: {evidence_path.resolve()}" not in captured.err
+    assert f'open_linux: xdg-open "{verdict_path.resolve()}"' in captured.err
+    pointer_path = repo / ".belgi" / "runs" / run_id / "open_verdict.txt"
+    assert f'open_linux: xdg-open "{pointer_path.resolve()}"' not in captured.err
+    assert f'evidence_manifest_path: {evidence_path.resolve()}' not in captured.err
+    block = _extract_run_human_block(captured.err)
+    assert block
+    assert len(block) <= 25
 
 
 def test_run_migrates_legacy_run_key_directory_to_store(tmp_path: Path, capsys: object) -> None:
@@ -513,7 +602,7 @@ def test_run_no_go_hyperlinks_opt_in(tmp_path: Path, capsys: object, monkeypatch
     rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", base_sha])
     assert rc_run == 10
     captured = capsys.readouterr()
-    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\verdict\x1b\]8;;\x1b\\", captured.err)
+    assert re.search(r"\x1b\]8;;file://[^\x1b]+\x1b\\verdict_[QRS]\x1b\]8;;\x1b\\", captured.err)
     assert "\x1b]8;;" in captured.err
 
 
@@ -677,10 +766,15 @@ def test_run_no_go_verbose_includes_store_paths_and_all_open_helpers(
     attempt_id = str(machine["attempt_id"])
     verdict_abs = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "GateVerdict.R.json"
 
+    assert "[belgi run]   gate_verdicts: Q=present R=present S=missing" in captured.err
     assert "details:" in captured.err
     assert f"run_key: {run_key}" in captured.err
     assert f"attempt_id: {attempt_id}" in captured.err
     assert f"verdict_store_path: {verdict_abs.resolve()}" in captured.err
+    verdict_q_abs = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "GateVerdict.Q.json"
+    assert f"verdict_Q_path: {verdict_q_abs.resolve()}" in captured.err
+    assert f"verdict_R_path: {verdict_abs.resolve()}" in captured.err
+    assert "verdict_S_path:" not in captured.err
     assert "open_macos:" in captured.err
     assert "open_linux:" in captured.err
     assert "open_windows:" in captured.err
