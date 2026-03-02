@@ -166,7 +166,7 @@ def _colorize_status_token(token: str, *, enabled: bool) -> str:
 
 
 def _emit_human_status(*, prefix: str, level: str, lines: list[str]) -> None:
-    normalized_lines = [str(line) for line in lines if str(line) != ""]
+    normalized_lines = ["" if line is None else str(line) for line in lines]
     if not normalized_lines:
         normalized_lines = [""]
     status_token = str(level or "INFO").upper()
@@ -177,6 +177,9 @@ def _emit_human_status(*, prefix: str, level: str, lines: list[str]) -> None:
     else:
         print(f"{prefix} {colored_token}", file=sys.stderr)
     for extra in normalized_lines[1:]:
+        if extra == "":
+            print("", file=sys.stderr)
+            continue
         print(f"{prefix} {extra}", file=sys.stderr)
 
 
@@ -1833,6 +1836,30 @@ def _preferred_gate_verdict_order(primary_reason: str | None) -> tuple[str, ...]
     return ("GateVerdict.R.json", "GateVerdict.Q.json", "GateVerdict.S.json")
 
 
+def _gate_letter_from_verdict_name(name: str) -> str | None:
+    m = re.fullmatch(r"GateVerdict\.([QRS])\.json", str(name or ""))
+    if m is None:
+        return None
+    return str(m.group(1))
+
+
+def _gate_letter_from_verdict_path(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    return _gate_letter_from_verdict_name(path.name)
+
+
+def _gate_verdict_paths(chain_out_dir: Path | None) -> dict[str, Path | None]:
+    out: dict[str, Path | None] = {"Q": None, "R": None, "S": None}
+    if chain_out_dir is None:
+        return out
+    for gate in ("Q", "R", "S"):
+        p = chain_out_dir / f"GateVerdict.{gate}.json"
+        if p.exists() and not p.is_symlink() and p.is_file():
+            out[gate] = p
+    return out
+
+
 def _primary_gate_verdict_path(chain_out_dir: Path | None, *, primary_reason: str | None = None) -> Path | None:
     if chain_out_dir is None:
         return None
@@ -2013,6 +2040,7 @@ def _emit_run_failure_links(
     attempt_id: str | None,
     primary_reason: str,
     remediation_next_instruction: str,
+    chain_out_dir: Path | None,
     gate_verdict_path: Path | None,
     evidence_manifest_path: Path | None,
     run_workspace_dir: Path | None,
@@ -2026,11 +2054,27 @@ def _emit_run_failure_links(
         run_tokens.append(f"run={run_ref}")
     run_tokens.append(f"key={_short_run_key(run_key) or 'UNKNOWN'}")
     run_tokens.append(f"attempt={_short_attempt_id(attempt_id) or 'UNKNOWN'}")
+    gate_paths = _gate_verdict_paths(chain_out_dir)
+    primary_gate = _gate_letter_from_verdict_path(gate_verdict_path)
+    if primary_gate is None:
+        primary_gate = _gate_letter_from_verdict_name(_preferred_gate_verdict_order(primary_reason)[0]) or "R"
+    gate_presence = {gate: ("present" if gate_paths[gate] is not None else "missing") for gate in ("Q", "R", "S")}
+    next_instruction = str(remediation_next_instruction or "").strip()
+    if not next_instruction:
+        next_instruction = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
     lines = [
         "summary: " + " ".join(run_tokens),
+        "",
         f"cause: {primary_reason}",
-        f"next: {remediation_next_instruction}",
+        f"next: {next_instruction}",
+        "",
         "evidence:",
+        f"  gate: {primary_gate}",
+        (
+            f"  gate_verdicts: Q={gate_presence['Q']} "
+            f"R={gate_presence['R']} "
+            f"S={gate_presence['S']}"
+        ),
     ]
 
     verdict_ptr, evidence_ptr = _run_workspace_pointer_targets(run_workspace_dir)
@@ -2054,18 +2098,16 @@ def _emit_run_failure_links(
         and not evidence_manifest_path.is_symlink()
     )
     if evidence_present and evidence_manifest_path is not None:
-        if evidence_ptr is not None and not verbose:
-            manifest_rel = _repo_rel_display(repo_root, evidence_ptr.resolve()) or str(evidence_ptr.resolve())
-            lines.append(f"  manifest: {manifest_rel}")
-        else:
-            evidence_rel = _repo_rel_display(repo_root, evidence_manifest_path.resolve()) or str(
-                evidence_manifest_path.resolve()
-            )
-            lines.append(f"  manifest: {evidence_rel}")
+        lines.append("  manifest: present")
         if verbose:
-            lines.append(f"  manifest_store_path: {evidence_manifest_path.resolve()}")
+            lines.append(f"  manifest_path: {evidence_manifest_path.resolve()}")
     else:
         lines.append("  manifest: missing")
+    if verbose:
+        for gate in ("Q", "R", "S"):
+            p = gate_paths[gate]
+            if p is not None:
+                lines.append(f"  verdict_{gate}_path: {p.resolve()}")
 
     intent_target: Path | None = None
     for path in open_paths:
@@ -2073,58 +2115,49 @@ def _emit_run_failure_links(
             intent_target = path
             break
     waiver_target = _best_waiver_open_target(run_workspace_dir=run_workspace_dir, open_paths=open_paths)
-    verdict_target = verdict_ptr if verdict_ptr is not None else gate_verdict_path
+    verdict_display_target = verdict_ptr if (verdict_ptr is not None and not verbose) else gate_verdict_path
 
-    targets: list[tuple[str, Path, bool]] = []
-    if verdict_target is not None:
-        targets.append(("verdict", verdict_target, True))
+    targets: list[tuple[str, Path, Path]] = []
+    if gate_verdict_path is not None and verdict_display_target is not None:
+        targets.append((f"verdict_{primary_gate}", verdict_display_target, gate_verdict_path))
     if intent_target is not None:
-        targets.append(("intent", intent_target, True))
+        targets.append(("intent", intent_target, intent_target))
     if waiver_target is not None:
-        targets.append(("waivers", waiver_target, True))
+        targets.append(("waivers", waiver_target, waiver_target))
     if verbose and evidence_present and evidence_ptr is not None:
-        targets.append(("manifest", evidence_ptr, True))
-    if verbose:
-        existing_paths = {str(p.resolve()) for (_, p, _) in targets}
-        extra_idx = 0
-        for p in open_paths:
-            resolved = p.resolve()
-            if str(resolved) in existing_paths:
-                continue
-            extra_idx += 1
-            existing_paths.add(str(resolved))
-            targets.append((f"extra_{extra_idx:02d}", p, True))
+        targets.append(("manifest", evidence_ptr, evidence_ptr))
 
+    lines.append("")
     lines.append("open:")
     seen_target: set[str] = set()
-    for label, path, include in targets:
-        if not include:
-            continue
-        resolved = path.resolve()
-        key = f"{label}:{resolved}"
+    for label, display_path, open_path in targets:
+        display_resolved = display_path.resolve()
+        open_resolved = open_path.resolve()
+        key = f"{label}:{display_resolved}:{open_resolved}"
         if key in seen_target:
             continue
         seen_target.add(key)
-        rel = _repo_rel_display(repo_root, resolved) or str(resolved)
+        rel = _repo_rel_display(repo_root, display_resolved) or str(display_resolved)
         display_label = label
         if _hyperlinks_enabled():
-            maybe_link = _osc8_link(label=label, path=resolved)
+            maybe_link = _osc8_link(label=label, path=open_resolved)
             if maybe_link is not None:
                 display_label = maybe_link
 
         if show_all_open:
-            mac, linux, windows = _open_command_lines(path=resolved)
+            mac, linux, windows = _open_command_lines(path=open_resolved)
             lines.append(f"  {display_label}: {rel}")
             lines.append(f"    open_macos: {mac}")
             lines.append(f"    open_linux: {linux}")
             lines.append(f"    open_windows: {windows}")
             continue
 
-        platform_name, cmd = _open_command_for_platform(path=resolved, family=family)
+        platform_name, cmd = _open_command_for_platform(path=open_resolved, family=family)
         lines.append(f"  {display_label}: {rel}")
         lines.append(f"    open_{platform_name}: {cmd}")
 
     if verbose:
+        lines.append("")
         lines.append("details:")
         if run_key is not None:
             lines.append(f"  run_key: {run_key}")
@@ -2497,6 +2530,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             attempt_id=attempt_id,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
+            chain_out_dir=chain_out_dir,
             gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             run_workspace_dir=run_workspace_dir,
@@ -2565,6 +2599,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             attempt_id=attempt_id,
             primary_reason=reason,
             remediation_next_instruction=next_instruction,
+            chain_out_dir=chain_out_dir,
             gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             run_workspace_dir=run_workspace_dir,
@@ -2625,6 +2660,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             remediation_next_instruction=(
                 "Do inspect generated artifacts and logs, then fix the internal error before re-run."
             ),
+            chain_out_dir=chain_out_dir,
             gate_verdict_path=_primary_gate_verdict_path(chain_out_dir, primary_reason=reason),
             evidence_manifest_path=_evidence_manifest_path(chain_out_dir),
             run_workspace_dir=run_workspace_dir,
