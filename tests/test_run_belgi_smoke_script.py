@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 
 def _load_module():
@@ -73,6 +73,7 @@ def test_main_sets_attempt_dir_to_store_layout(tmp_path: Path, monkeypatch, caps
     assert out
     payload = json.loads(out[-1])
     assert payload["attempt_dir"] == f".belgi/store/runs/{run_key}/{attempt_id}"
+    assert "\\" not in payload["attempt_dir"]
     assert ".belgi/runs/" not in payload["attempt_dir"]
 
 
@@ -125,3 +126,20 @@ def test_first_line_machine_json_reads_first_line_only() -> None:
     parsed = mod._first_line_machine_json(first_line + "\nnot-json-line\n", label="belgi run")
     assert parsed["run_key"] == "rk"
     assert parsed["attempt_id"] == "a"
+
+
+def test_append_github_output_normalizes_forward_slashes(tmp_path: Path, monkeypatch) -> None:
+    mod = _load_module()
+    out_file = tmp_path / "github_output.txt"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out_file))
+
+    mod._append_github_output(
+        run_key="rk",
+        attempt_id="attempt-0003",
+        attempt_dir=PureWindowsPath(r".belgi\store\runs\rk\attempt-0003"),
+        run_log=PureWindowsPath(r".belgi\run.stdout.log"),
+    )
+
+    output_text = out_file.read_text(encoding="utf-8", errors="strict")
+    assert "attempt_dir=.belgi/store/runs/rk/attempt-0003\n" in output_text
+    assert "run_log=.belgi/run.stdout.log\n" in output_text

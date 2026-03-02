@@ -112,6 +112,10 @@ def _compute_attempt_paths(repo_root: Path, run_key: str, attempt_id: str) -> tu
     return attempt_rel, attempt_abs
 
 
+def _output_path(path: Path) -> str:
+    return path.as_posix()
+
+
 def _append_github_output(*, run_key: str, attempt_id: str, attempt_dir: Path, run_log: Path) -> None:
     out_path = os.environ.get("GITHUB_OUTPUT", "").strip()
     if not out_path:
@@ -119,8 +123,8 @@ def _append_github_output(*, run_key: str, attempt_id: str, attempt_dir: Path, r
     with Path(out_path).open("a", encoding="utf-8", errors="strict") as handle:
         handle.write(f"run_key={run_key}\n")
         handle.write(f"attempt_id={attempt_id}\n")
-        handle.write(f"attempt_dir={attempt_dir}\n")
-        handle.write(f"run_log={run_log}\n")
+        handle.write(f"attempt_dir={_output_path(attempt_dir)}\n")
+        handle.write(f"run_log={_output_path(run_log)}\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -245,8 +249,8 @@ def main(argv: list[str] | None = None) -> int:
                 "tier": ns.tier,
                 "run_key": run_key,
                 "attempt_id": attempt_id,
-                "attempt_dir": str(attempt_dir_rel),
-                "run_log": str(run_log_rel),
+                "attempt_dir": _output_path(attempt_dir_rel),
+                "run_log": _output_path(run_log_rel),
             },
             sort_keys=True,
             separators=(",", ":"),
