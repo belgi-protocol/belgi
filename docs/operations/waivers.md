@@ -56,7 +56,7 @@ The proposer MUST NOT:
 
 ### 3.1 Create request (human)
 - Create a waiver JSON document with required fields:
-  - `schema_version`, `waiver_id`, `gate_id` ("Q" or "R"), `rule_id`, `scope`, `justification`, `approver`, `created_at`, `expires_at`, `audit_trail_ref`, `status`.
+  - `schema_version`, `waiver_id`, `gate_id` ("Q" or "R"), `rule_id`, `scope`, `justification`, `mitigation`, `approver`, `created_at`, `expires_at`, `audit_trail_ref`, `status`.
 - Draft safely first: keep `status: "revoked"` until the waiver is fully authored and reviewed.
 - Activate intentionally: set `status: "active"` only after scope/justification/mitigation/approver placeholders are fully replaced.
 
@@ -124,6 +124,7 @@ Artifacts produced:
 Gate impact:
 - Gate Q (Q6) rejects expired/inactive waivers applied to a run.
 - Gate R will only consider waivers when they are present, active, and consistent with the rule being waived.
+- `belgi verify` replays waiver expiry against `EvidenceManifest.anchored_time_utc` and fails closed when that anchor is missing/invalid.
 
 ## 4) Enforcement points (where LLM actions are blocked)
 
@@ -140,7 +141,13 @@ Gate Q Q6 (`../../gates/GATE_Q.md`) enforces:
 - `expires_at` after `EvidenceManifest.anchored_time_utc`,
 - human-authorship heuristic (approver string must not contain `llm` or `agent`).
 
-### 4.3 Gate R enforcement (post-proposal)
+### 4.3 Verify replay enforcement (post-run)
+`belgi verify` enforces waiver-expiry replay deterministically from stored run artifacts:
+- reads `EvidenceManifest.anchored_time_utc` as the expiry `as_of` anchor,
+- evaluates each applied waiver `expires_at` against that anchor,
+- fails closed with explicit remediation when the anchor is missing/invalid.
+
+### 4.4 Gate R enforcement (post-proposal)
 Gate R uses waiver documents as inputs when referenced by `LockedSpec.waivers_applied[]`.
 
 Specific deterministic waiver usage in v1:
@@ -177,6 +184,7 @@ From R3 and tier defaults:
 | `rule_id` | yes | Exact rule identifier being waived |
 | `scope` | yes | Bounded, specific; does not exceed declared blast radius |
 | `justification` | yes | Category-level; no bypass instructions |
+| `mitigation` | yes | Concrete remediation/sunset plan; no placeholder text |
 | `approver` | yes | Human identity class; not an LLM/agent |
 | `created_at` | yes | RFC3339 date-time |
 | `expires_at` | yes | RFC3339 date-time; not expired for the run |

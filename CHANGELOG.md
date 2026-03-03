@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.2 — 2026-03-03
+
+### Summary
+Patch release hardening waiver safety and deterministic expiry replay.
+
+### Changed
+- `belgi waiver new` now emits fail-closed drafts with `status: "revoked"` until explicitly activated.
+- Gate Q Q6 rejects placeholder/template content in critical waiver fields and requires explicit active status for applied waivers.
+- Waiver expiry is evaluated against `EvidenceManifest.anchored_time_utc`; replay verification uses the same anchor and fails closed when the anchor is missing/invalid.
+
+### Notes
+- Replay determinism: waiver expiry outcomes are anchored to evidence (`anchored_time_utc`), not ambient wall-clock time.
+- No gate ordering changes, no tier expansion, and no new evidence kinds.
+
 ## 1.4.1 — 2026-03-03
 
 ### Summary

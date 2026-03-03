@@ -1991,12 +1991,31 @@ def check_cs_wvr_002(root: Path) -> InvariantResult:
             ["gates/GATE_Q.md#q6--waivers-validity-if-present"],
             "Ensure Gate Q Q6 enforces active status, placeholder rejection, and expires_at after EvidenceManifest.anchored_time_utc.",
         )
-    if "expires_at" not in read_text(ops) or "audit_trail_ref" not in read_text(ops):
+    ops_txt = read_text(ops)
+    if "expires_at" not in ops_txt or "audit_trail_ref" not in ops_txt:
         return InvariantResult(
             "CS-WVR-002",
             "FAIL",
             ["docs/operations/waivers.md#34-apply-to-a-run-lockedspecwaivers_applied"],
             "Ensure waivers.md documents expires_at and audit_trail_ref requirements and application point.",
+        )
+    missing_ops = _missing_needles(
+        ops_txt,
+        [
+            "status: \"revoked\"",
+            "placeholder",
+            "anchored_time_utc",
+            "belgi verify",
+            "fails closed",
+            "mitigation",
+        ],
+    )
+    if missing_ops:
+        return InvariantResult(
+            "CS-WVR-002",
+            "FAIL",
+            ["docs/operations/waivers.md#31-create-request-human", "docs/operations/waivers.md#43-verify-replay-enforcement-post-run"],
+            "Ensure waivers.md documents revoked-by-default draft posture, placeholder rejection, anchored replay via belgi verify, fail-closed behavior, and mitigation field requirements.",
         )
 
     return InvariantResult(
