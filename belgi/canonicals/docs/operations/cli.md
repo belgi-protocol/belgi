@@ -116,8 +116,10 @@ Hyperlinks:
 ## Wheel vs Source Checkout
 
 - Wheel install (`pip install belgi`):
+  - publish boundary SSOT is `{belgi/, chain/, wrapper/, tools/}`
   - use packaged CLI surfaces (`belgi about`, `belgi run`, `belgi verify`, `belgi pack verify --builtin`)
 - Source checkout:
-  - includes repo-local chain modules and stage forwarders (`belgi stage ...`)
+  - includes the same shipped module prefixes plus repo-only operator surfaces (for example `policy/`, `.github/`, `housekeeping/`)
 
-If `belgi stage` reports missing repo-local modules, run from a BELGI source checkout.
+Deterministic boundary checker:
+- `python -m tools.wheel_boundary --wheel <path-to-wheel>`

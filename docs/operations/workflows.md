@@ -10,6 +10,11 @@ Actions workflows.
 - `proof-tier1.yml`
   - opt-in proof workflow for release-grade PR evidence collection.
 
+## Required GitHub Settings
+
+- Protect `main` and `dev` with required status checks before merge.
+- Enable required pull-request reviews and require review from Code Owners.
+
 ## Triggering `proof-tier1.yml`
 
 `proof-tier1.yml` is pull-request driven but job execution is label-gated.

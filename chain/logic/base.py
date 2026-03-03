@@ -93,19 +93,19 @@ def verify_protocol_identity(
     active_pack_id: str,
     active_manifest_sha256: str,
     active_pack_name: str,
-    active_source: str,
     gate_id: str,
 ) -> CheckResult | None:
     """Verify LockedSpec.protocol_pack matches active protocol context.
 
     Returns None if match, CheckResult with FAIL if mismatch or missing.
-    Fail-closed: any mismatch (pack_id, manifest_sha256, pack_name) is a hard failure.
+    Fail-closed: any mismatch in the identity tuple
+    {pack_id, manifest_sha256, pack_name} is a hard failure.
 
-    Note: source is NOT checked for identity. Source can legitimately differ between
-    compilation (e.g. builtin) and verification (e.g. override with same pack_id).
-    If source differs but pack_id and manifest_sha256 match, verification passes.
+    Note: source is NOT checked for identity. Source remains operational context
+    and can legitimately differ between compilation and verification if identity
+    tuple values are equal.
 
-    gate_id must be one of: Q, R, S
+    gate_id is used only for gate/compiler-specific failure category/remediation text.
     """
     # Category and remediation are gate-specific for taxonomy compliance.
     category = f"F{gate_id}-PROTOCOL-IDENTITY-MISMATCH"
@@ -135,9 +135,6 @@ def verify_protocol_identity(
     declared_pack_id = pp.get("pack_id")
     declared_manifest_sha = pp.get("manifest_sha256")
     declared_pack_name = pp.get("pack_name")
-
-    # Source is explicitly NOT checked for identity match (see docstring).
-    # pack_id and manifest_sha256 are the cryptographic binding; source is metadata.
 
     mismatches: list[str] = []
     if declared_pack_id != active_pack_id:

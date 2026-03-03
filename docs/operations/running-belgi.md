@@ -220,7 +220,8 @@ belgi stage s verify --repo . --locked-spec LockedSpec.json --protocol-pack belg
 
 Repo-local boundary:
 - Canonical stage entrypoints remain `python -m chain.*`.
-- `belgi stage` may be unavailable in wheel-only installs where `chain/*` is not present; run from a BELGI source checkout in that case.
+- Publish boundary SSOT (v1.4.x wheel): `{belgi/, chain/, wrapper/, tools/}`.
+- Repo-only operational surfaces outside that boundary (for example `policy/`, `housekeeping/`, `.github/`) are not shipped in wheel artifacts.
 
 ## 1B) When to run what (DEV / PRE-MERGE / RELEASE)
 

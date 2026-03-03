@@ -57,6 +57,38 @@ _C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
     ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
 )
 
+_PROTOCOL_IDENTITY_SOURCE_GUARD_FILES: tuple[str, ...] = (
+    "CANONICALS.md",
+    "gates/GATE_Q.md",
+    "gates/GATE_R.md",
+    "gates/GATE_S.md",
+    "gates/failure-taxonomy.md",
+    "belgi/canonicals/CANONICALS.md",
+    "belgi/_protocol_packs/v1/gates/GATE_Q.md",
+    "belgi/_protocol_packs/v1/gates/GATE_R.md",
+    "belgi/_protocol_packs/v1/gates/GATE_S.md",
+    "belgi/_protocol_packs/v1/gates/failure-taxonomy.md",
+)
+
+_PROTOCOL_IDENTITY_SOURCE_FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "identity tuple includes source",
+        re.compile(r"\bpack_id\s*,\s*manifest_sha256\s*,\s*pack_name\s*,\s*source\b", flags=re.IGNORECASE),
+    ),
+    (
+        "active identity includes source",
+        re.compile(r"active protocol context identity.*\bsource\b", flags=re.IGNORECASE),
+    ),
+    (
+        "source compared for identity",
+        re.compile(r"lockedspec\.protocol_pack\.source.*active\s+`?source`?", flags=re.IGNORECASE),
+    ),
+    (
+        "source mismatch wording",
+        re.compile(r"\bsource mismatch\b", flags=re.IGNORECASE),
+    ),
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Allow running from outside the repo by pinning imports to this repo root.
@@ -2723,12 +2755,14 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "trust-model.md",
         "gates/GATE_Q.md",
         "gates/GATE_R.md",
+        "gates/GATE_S.md",
         "gates/failure-taxonomy.md",
         ".github/scripts/run_belgi_smoke.py",
         ".github/scripts/validate_belgi_ref_pin.py",
         ".github/workflows/belgi-tier1-reusable.yml",
         ".github/workflows/ci.yml",
         ".github/workflows/proof-tier1.yml",
+        ".github/CODEOWNERS",
         "tiers/tier-packs.md",
         "tiers/tier-packs.json",
         "tiers/tier-packs.template.md",
@@ -2786,10 +2820,14 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "tools/render.py",
         "tools/normalize.py",
         "tools/rehash.py",
+        "tools/check_codeowners.py",
         "tools/sweep.py",
+        "tools/wheel_boundary.py",
         # Fixture governance
         "policy/fixtures/public/gate_q/cases.json",
         "policy/fixtures/public/gate_r/cases.json",
+        "policy/fixtures/public/gate_s/cases.json",
+        "policy/fixtures/public/seal/cases.json",
         # R-check wiring governance
         "chain/logic/r_checks/context.py",
         "chain/logic/r_checks/registry.py",
@@ -3156,6 +3194,64 @@ def check_cs_ev_006(root: Path) -> InvariantResult:
         )
     res, _ = _eval_cs_ev_006_expected_hash(root, sha256_file(p), fix_fixtures=False)
     return res
+
+
+def check_cs_protocol_identity_001(root: Path) -> InvariantResult:
+    """CS-PROTOCOL-IDENTITY-001 — Protocol identity language excludes source from identity tuple."""
+
+    missing_files: list[str] = []
+    violations: list[str] = []
+    for rel in sorted(_PROTOCOL_IDENTITY_SOURCE_GUARD_FILES):
+        try:
+            p = _resolve_repo_path(root, rel, must_exist=True, must_be_file=True)
+        except _UserInputError:
+            missing_files.append(rel)
+            continue
+        for line_no, line in enumerate(read_text(p).splitlines(), start=1):
+            for reason, pattern in _PROTOCOL_IDENTITY_SOURCE_FORBIDDEN_PATTERNS:
+                if pattern.search(line):
+                    violations.append(f"{rel}:{line_no} ({reason})")
+                    break
+
+    if missing_files:
+        joined = ", ".join(sorted(missing_files))
+        return InvariantResult(
+            "CS-PROTOCOL-IDENTITY-001",
+            "FAIL",
+            [CONSISTENCY_SPEC_DOC, "CANONICALS.md#protocol-pack-identity"],
+            (
+                "Missing protocol-identity guard file(s): "
+                f"{joined}. Restore/add these files, then rerun sweep."
+            ),
+        )
+
+    if violations:
+        sample = ", ".join(violations[:8])
+        suffix = "" if len(violations) <= 8 else f" (+{len(violations) - 8} more)"
+        return InvariantResult(
+            "CS-PROTOCOL-IDENTITY-001",
+            "FAIL",
+            [
+                f"{CONSISTENCY_SPEC_DOC}#cs-protocol-identity-001--protocol-identity-language-excludes-source-from-identity-tuple",
+                "CANONICALS.md#protocol-pack-identity",
+            ],
+            (
+                "Protocol identity wording must treat source as operational context only. "
+                "Remove source-based identity semantics from: "
+                f"{sample}{suffix}."
+            ),
+            {"violations": violations},
+        )
+
+    return InvariantResult(
+        "CS-PROTOCOL-IDENTITY-001",
+        "PASS",
+        [
+            f"{CONSISTENCY_SPEC_DOC}#cs-protocol-identity-001--protocol-identity-language-excludes-source-from-identity-tuple",
+            "CANONICALS.md#protocol-pack-identity",
+        ],
+        "",
+    )
 
 
 def _iter_fixture_locked_specs(repo_root: Path) -> list[Path]:
@@ -3977,6 +4073,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         # Orchestration invariants
         "CS-BYTE-001": check_cs_byte_001,
         "CS-EV-006": check_cs_ev_006,
+        "CS-PROTOCOL-IDENTITY-001": check_cs_protocol_identity_001,
         "CS-PACK-IDENTITY-001": check_cs_pack_identity_001,
         "CS-SEAL-KEYPAIR-001": check_cs_seal_keypair_001,
         "CS-SWEEP-001": check_cs_sweep_001,

@@ -98,14 +98,17 @@ Canonical definitions:
 - [CANONICALS.md#publication-posture](CANONICALS.md#publication-posture)
 
 Published wheel (`pip install belgi`) includes:
-- `belgi/_protocol_packs/v1/**` (builtin protocol pack mirror + `ProtocolPackManifest.json`)
-- `belgi/templates/**` (publish-safe templates)
-- `belgi` CLI entrypoint (`belgi about`, `belgi init`, `belgi run new`, `belgi manifest add`, `belgi policy stub`, `belgi policy check-overlay`, `belgi pack verify`, `belgi bundle check --demo`)
-
-Repo-local only (not shipped in the wheel by design):
+- module-prefix boundary SSOT: `{belgi/, chain/, wrapper/, tools/}` (plus wheel metadata `*.dist-info/`)
+- `belgi/` (CLI and packaged resources, including builtin protocol pack mirror and templates)
 - `chain/` (reference deterministic gate implementations)
-- `tools/` (developer/operator fixers and sweeps; may mutate tracked artifacts when invoked in fixer mode)
 - `wrapper/` (optional forwarders)
+- `tools/` (operator/developer command surfaces shipped in wheel)
+
+Mechanical enforcement:
+- CI asserts wheel contents fail-closed against boundary SSOT using `python -m tools.wheel_boundary --wheel <path-to-wheel>`.
+
+Repo-only surfaces (outside wheel boundary):
+- `policy/`, `housekeeping/`, `.github/`, `tests/`, `docs/operations/` (authoring sources)
 
 SSOT/mirror rule:
 - Canonical specs live at repo root: `gates/`, `schemas/`, `tiers/`.

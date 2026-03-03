@@ -124,7 +124,7 @@ Unless a gate explicitly declares a deterministic substitution above, tokens are
 - category_id: `FQ-PROTOCOL-IDENTITY-MISMATCH`
 - gate_id: `Q`
 - severity: `blocker`
-- description: LockedSpec.protocol_pack does not match the active protocol pack identity (pack_id, manifest_sha256, pack_name, or source mismatch).
+- description: LockedSpec.protocol_pack does not match the active protocol pack identity tuple (`pack_id`, `manifest_sha256`, `pack_name`).
 - remediation.next_instruction template: `Do ensure the same protocol pack is used for C1 compilation and gate verification then re-run Q.`
 
 ---
@@ -231,7 +231,7 @@ Note (v1 deterministic emission):
 - category_id: `FR-PROTOCOL-IDENTITY-MISMATCH`
 - gate_id: `R`
 - severity: `blocker`
-- description: LockedSpec.protocol_pack does not match the active protocol pack identity (pack_id, manifest_sha256, pack_name, or source mismatch).
+- description: LockedSpec.protocol_pack does not match the active protocol pack identity tuple (`pack_id`, `manifest_sha256`, `pack_name`).
 - remediation.next_instruction template: `Do ensure the same protocol pack is used for C1 compilation and gate verification then re-run R.`
 
 ---
@@ -293,7 +293,7 @@ Seal verification failures are emitted by the Seal verifier tooling (S) and are 
 - category_id: `FS-PROTOCOL-IDENTITY-MISMATCH`
 - gate_id: `S`
 - severity: `blocker`
-- description: LockedSpec.protocol_pack does not match the active protocol pack identity (pack_id, manifest_sha256, pack_name, or source mismatch).
+- description: LockedSpec.protocol_pack does not match the active protocol pack identity tuple (`pack_id`, `manifest_sha256`, `pack_name`).
 - remediation.next_instruction template: `Do ensure the same protocol pack is used for C1 compilation and gate verification then re-run S.`
 
 ---

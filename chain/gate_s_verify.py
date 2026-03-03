@@ -246,7 +246,6 @@ def main(argv: list[str] | None = None) -> int:
             active_pack_id=protocol.pack_id,
             active_manifest_sha256=protocol.manifest_sha256,
             active_pack_name=protocol.pack_name,
-            active_source=protocol.source,
             gate_id="S",
         )
         if proto_check is not None:

@@ -133,17 +133,17 @@ Each check specifies: `check_id`, required inputs, deterministic procedure, tier
   - `LockedSpec.protocol_pack.pack_id` (LockedSpec schema)
   - `LockedSpec.protocol_pack.manifest_sha256` (LockedSpec schema)
   - `LockedSpec.protocol_pack.pack_name` (LockedSpec schema)
-  - `LockedSpec.protocol_pack.source` (LockedSpec schema)
-  - Active protocol context identity (from the executing verifier): `pack_id`, `manifest_sha256`, `pack_name`, `source`
+  - `LockedSpec.protocol_pack.source` (operational context; required by schema but not identity)
+  - Active protocol context identity tuple (from the executing verifier): `pack_id`, `manifest_sha256`, `pack_name`
 - deterministic procedure (v1, deterministic):
   1) FAIL if `LockedSpec` is missing or not an object.
   2) FAIL if `LockedSpec.protocol_pack` is missing or not an object.
-  3) Compare the following fields for exact string equality; record any mismatches:
+  3) Compare the identity tuple fields for exact string equality; record any mismatches:
      - `LockedSpec.protocol_pack.pack_id` vs active `pack_id`
      - `LockedSpec.protocol_pack.manifest_sha256` vs active `manifest_sha256`
      - `LockedSpec.protocol_pack.pack_name` vs active `pack_name`
-     - `LockedSpec.protocol_pack.source` vs active `source`
   4) FAIL if any mismatch exists.
+  5) `source` is operational context and MUST NOT be used as an identity mismatch signal; policy checks may restrict allowed source values.
 - failure category: `FR-PROTOCOL-IDENTITY-MISMATCH`
 - required evidence kinds: `schema_validation`, `policy_report`
 - remediation.next_instruction template: `Do ensure the same protocol pack is used for C1 compilation and gate verification then re-run R.`

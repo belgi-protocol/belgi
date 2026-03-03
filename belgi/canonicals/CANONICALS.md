@@ -214,7 +214,11 @@ This evidence supports deterministic verification inside the declared envelope a
 
 <a id="lockedspec"></a>
 ### LockedSpec (Canonical)
-LockedSpec is the locked, immutable snapshot of the run's controlling inputs (P, selected Tier Pack, Environment Envelope, applicable waivers, and protocol pack identity) used by gates to ensure proposals are judged against a stable contract. The `protocol_pack` binding (pack_id, manifest_sha256, pack_name, source) MUST be required and gates MUST verify it matches the active protocol pack or fail closed.
+LockedSpec is the locked, immutable snapshot of the run's controlling inputs (P, selected Tier Pack, Environment Envelope, applicable waivers, and protocol pack identity) used by gates to ensure proposals are judged against a stable contract. The `protocol_pack` object MUST be required and MUST include:
+- identity tuple: `{pack_id, manifest_sha256, pack_name}`
+- operational context: `source`
+
+Gates and C3 MUST verify only the identity tuple against the active protocol pack and fail closed on mismatch. `source` MUST NOT be used as an identity mismatch signal; any source restrictions are policy checks.
 
 <a id="blast-radius"></a>
 ### Blast Radius (Canonical)
@@ -282,7 +286,14 @@ Replay Integrity means an independent verifier can re-run deterministic verifica
 
 <a id="wheel-vs-repo-local"></a>
 ### Wheel vs Repo-Local (Canonical)
-Wheel-distributed BELGI includes publish-safe protocol assets (builtin protocol pack, schemas, and templates) and publish-safe CLI tooling, but MAY exclude repo-local deterministic gate implementations and internal operator tooling. A verifier MUST fail closed if required repo-local capabilities are absent.
+Wheel-distributed BELGI publish boundary is the module-prefix set `{belgi/, chain/, wrapper/, tools/}` plus wheel metadata (`*.dist-info/`). This boundary is SSOT for v1.4.x and is mechanically enforced.
+
+Wheel content assertions MUST:
+- build the wheel deterministically,
+- enumerate wheel entries in stable sorted order,
+- fail closed if required prefixes are missing, forbidden repo-only prefixes are present, or unexpected module prefixes appear.
+
+Reference checker: `python -m tools.wheel_boundary --wheel <path-to-wheel>`.
 
 <a id="pack-mirror-drift"></a>
 ### Pack Mirror Drift (Canonical)
