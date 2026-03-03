@@ -352,3 +352,57 @@ def test_managed_sweep_surfaces_are_covered_in_repo() -> None:
     canon = set(sweep_mod._canonical_inputs(REPO_ROOT))
     missing = sorted(set(managed) - canon)
     assert missing == []
+
+
+def _write_cs_wvr_003_fixture(
+    root: Path,
+    *,
+    tier0_max: int,
+    tier1_max: int,
+    tier2_max: int,
+) -> None:
+    _init_tracked_temp_repo(
+        root,
+        {
+            "tiers/tier-packs.json": (
+                "{\n"
+                "  \"tiers\": {\n"
+                "    \"tier-0\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 20}},\n"
+                "    \"tier-1\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 10}},\n"
+                "    \"tier-2\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 1}},\n"
+                "    \"tier-3\": {\"waiver_policy\": {\"allowed\": false, \"max_active_waivers\": 0}}\n"
+                "  }\n"
+                "}\n"
+            ),
+            "tiers/tier-packs.md": "waiver_policy\nmax_active_waivers\ntier-3\n",
+            "gates/GATE_Q.md": "Q6\nVerify tier allows waivers\nmax_active_waivers\n",
+            "docs/operations/waivers.md": (
+                "## 5.1 Limits per tier\n"
+                f"- Tier 0: waivers allowed, max {tier0_max} active\n"
+                f"- Tier 1: waivers allowed, max {tier1_max} active, HOTL required (policy-level)\n"
+                f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
+                "- Tier 3: waivers not allowed\n"
+            ),
+        },
+    )
+
+
+def test_cs_wvr_003_passes_when_ops_limits_match_tiers_json(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_cs_wvr_003_fixture(tmp_path, tier0_max=20, tier1_max=10, tier2_max=1)
+
+    res = sweep_mod.check_cs_wvr_003(tmp_path)
+    assert res.invariant_id == "CS-WVR-003"
+    assert res.status == "PASS"
+
+
+def test_cs_wvr_003_fails_when_ops_limits_drift_from_tiers_json(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_cs_wvr_003_fixture(tmp_path, tier0_max=20, tier1_max=2, tier2_max=1)
+
+    res = sweep_mod.check_cs_wvr_003(tmp_path)
+    assert res.invariant_id == "CS-WVR-003"
+    assert res.status == "FAIL"
+    assert "tier-1@" in res.remediation
