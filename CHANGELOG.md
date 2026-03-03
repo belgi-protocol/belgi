@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.1 — 2026-03-03
+
+### Summary
+Bookkeeping patch release aligning public-facing text with already-landed enforcement behavior.
+
+### Changed
+- Protocol pack identity SSOT clarified and enforced as identity tuple only (`pack_id`, `manifest_sha256`, `pack_name`); `source` is operational context and not an identity field.
+- C3 protocol-pack identity enforcement is fail-closed, removing bypass behavior.
+- CODEOWNERS dead-path guard is added and enforced fail-closed.
+- Wheel publish boundary SSOT for v1.4.x is mechanically enforced by CI via the wheel boundary checker.
+
+### Notes
+- No canonical chain/stage ordering changes.
+- Public summary remains adopter-agnostic.
+
 ## 1.4.0 — 2026-03-02
 
 ### Summary
