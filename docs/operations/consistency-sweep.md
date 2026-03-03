@@ -38,12 +38,14 @@ Canonical trigger:
 - trust-model.md
 - gates/GATE_Q.md
 - gates/GATE_R.md
+- gates/GATE_S.md
 - gates/failure-taxonomy.md
 - .github/scripts/run_belgi_smoke.py
 - .github/scripts/validate_belgi_ref_pin.py
 - .github/workflows/belgi-tier1-reusable.yml
 - .github/workflows/ci.yml
 - .github/workflows/proof-tier1.yml
+- .github/CODEOWNERS
 - tiers/tier-packs.json
 - tiers/tier-packs.template.md
 - tiers/tier-packs.md (generated view, MUST match canonical)
@@ -60,9 +62,13 @@ Canonical trigger:
 - tools/normalize.py
 - tools/rehash.py
 - tools/render.py
+- tools/check_codeowners.py
 - tools/sweep.py
+- tools/wheel_boundary.py
 - policy/fixtures/public/gate_q/cases.json
 - policy/fixtures/public/gate_r/cases.json
+- policy/fixtures/public/gate_s/cases.json
+- policy/fixtures/public/seal/cases.json
 - belgi/templates/IntentSpec.core.template.md
 - schemas/IntentSpec.schema.json
 - docs/research/experiment-design.md
@@ -847,6 +853,30 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - Once CS-EV-006 is PASS, `SHA-256 (report)` and `SHA-256 (fixtures should declare)` become equal, and the fixture hash also equals SHA-256(bytes) of `policy/consistency_sweep.json`.
 - Normalization rule (deterministic): when evaluating CS-EV-006, any EvidenceManifest artifact entry with `id == policy.consistency_sweep` is treated as if its `hash` were `000...000` for purposes of computing the expected hash. If the entry is missing, it is treated as present with that zero hash. Verifier mode MUST NOT mutate fixture files.
 
+### CS-PROTOCOL-IDENTITY-001 — Protocol identity language excludes source from identity tuple
+- invariant_id: CS-PROTOCOL-IDENTITY-001
+- statement: Managed protocol identity docs/specs MUST define identity as exactly `{pack_id, manifest_sha256, pack_name}` and MUST NOT use `source` as an identity mismatch signal.
+- source-of-truth (file/section):
+  - `CANONICALS.md#protocol-pack-identity`
+  - `gates/GATE_Q.md` and `gates/GATE_R.md` (`PROTOCOL-IDENTITY-001` sections)
+  - `gates/failure-taxonomy.md` (`F*-PROTOCOL-IDENTITY-MISMATCH` descriptions)
+- check procedure (deterministic):
+  1) Scan managed protocol identity files in stable path order:
+     - `CANONICALS.md`
+     - `gates/GATE_Q.md`, `gates/GATE_R.md`, `gates/GATE_S.md`, `gates/failure-taxonomy.md`
+     - `belgi/canonicals/CANONICALS.md`
+     - `belgi/_protocol_packs/v1/gates/GATE_Q.md`, `belgi/_protocol_packs/v1/gates/GATE_R.md`, `belgi/_protocol_packs/v1/gates/GATE_S.md`, `belgi/_protocol_packs/v1/gates/failure-taxonomy.md`
+  2) For each file, scan lines in ascending line order and FAIL if any line uses source as identity semantics, including:
+     - identity tuple text that includes `source` (`pack_id, manifest_sha256, pack_name, source`)
+     - active protocol identity lines that include `source`
+     - explicit `LockedSpec.protocol_pack.source` vs active source comparisons
+     - “source mismatch” phrasing in protocol identity failure descriptions
+  3) Report deterministic `file:line` violations in ascending order.
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if all managed files keep source out of identity semantics.
+  - FAIL otherwise.
+
 ### CS-PACK-IDENTITY-001 — Fixture protocol pack pins match builtin
 - invariant_id: CS-PACK-IDENTITY-001
 - statement: Every fixture `LockedSpec.json` under `policy/fixtures/**` MUST pin the active builtin protocol pack identity.
@@ -1015,6 +1045,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-EV-004: R-Snapshot immutability + append-only final manifest is consistent.
 - [ ] CS-EV-005: Seal binds core replay set + waivers via ObjectRefs.
 - [ ] CS-EV-006: Tier>=1 PASS manifests index policy.consistency_sweep.
+- [ ] CS-PROTOCOL-IDENTITY-001: identity wording excludes source from the identity tuple.
 - [ ] CS-TIER-001: tier IDs are exactly tier-0..tier-3 everywhere.
 - [ ] CS-TIER-002: tier required_evidence_kinds match across tier-packs/evidence-bundles/running-belgi.
 - [ ] CS-TIER-003: docs_compilation_log allowed but not required by Gate R.

@@ -46,8 +46,8 @@
     "storage_ref": "policy/fixtures/public/gate_s/s_fail_replay_instructions_invalid_json/prompt.json"
   },
   "protocol_pack": {
-    "manifest_sha256": "30539a5c64085b4ae25aee6717d87956e730927647be18a1f780e2765e56e4c6",
-    "pack_id": "12177cb0168c85598fc3aa7c630bc2cb548b63d867d91ad1b7bf7a0ca76f134a",
+    "manifest_sha256": "5bb8899904618ba74168d624990ec3ec53c2556656c082a99b7f5666b7ecdfc2",
+    "pack_id": "4ee2692783937a7e943504d79160553cea162cc8f125dd9eca04a7ac6da127c8",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },

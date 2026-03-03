@@ -154,6 +154,51 @@ def test_cs_term_001_allows_schema_validation_context(tmp_path: Path) -> None:
     assert res.status == "PASS"
 
 
+def test_cs_protocol_identity_001_allows_source_as_operational_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import sweep as sweep_mod
+
+    rel = "gates/GATE_S.md"
+    p = tmp_path / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        "note: LockedSpec.protocol_pack.source is metadata and MUST NOT be used as an identity check.\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    monkeypatch.setattr(sweep_mod, "_PROTOCOL_IDENTITY_SOURCE_GUARD_FILES", (rel,))
+
+    res = sweep_mod.check_cs_protocol_identity_001(tmp_path)
+    assert res.invariant_id == "CS-PROTOCOL-IDENTITY-001"
+    assert res.status == "PASS"
+
+
+def test_cs_protocol_identity_001_fails_when_source_is_in_identity_tuple(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools import sweep as sweep_mod
+
+    rel = "gates/GATE_Q.md"
+    p = tmp_path / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        "Active protocol context identity: pack_id, manifest_sha256, pack_name, source\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    monkeypatch.setattr(sweep_mod, "_PROTOCOL_IDENTITY_SOURCE_GUARD_FILES", (rel,))
+
+    res = sweep_mod.check_cs_protocol_identity_001(tmp_path)
+    assert res.invariant_id == "CS-PROTOCOL-IDENTITY-001"
+    assert res.status == "FAIL"
+    assert "gates/GATE_Q.md:1" in res.remediation
+
+
 def test_cs_can_005_passes_when_package_mirror_matches_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

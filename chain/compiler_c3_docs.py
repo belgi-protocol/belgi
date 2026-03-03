@@ -14,7 +14,7 @@ from typing import Any
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import normalize_repo_rel, resolve_repo_rel_path
 from belgi.core.schema import SchemaError, parse_rfc3339, validate_schema
-from chain.logic.base import load_json
+from chain.logic.base import load_json, verify_protocol_identity
 from belgi.protocol.pack import (
     ProtocolContext,
     get_builtin_protocol_context,
@@ -26,6 +26,8 @@ from belgi.protocol.pack import (
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 COMPILER_ID = "chain/compiler_c3_docs.py"
 COMPILER_VERSION = "1.0"
+C3_PROTOCOL_IDENTITY_FAILURE_ID = "C3-PROTOCOL-IDENTITY-MISMATCH"
+C3_PROTOCOL_IDENTITY_REMEDIATION_POINTER = "CANONICALS.md#protocol-pack-identity"
 
 BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL = "belgi/templates/PromptBundle.blocks.md"
 BUILTIN_DOCS_TEMPLATE_REPO_REL = "belgi/templates/DocsCompiler.template.md"
@@ -313,26 +315,25 @@ def _verify_protocol_identity_or_fail(locked: dict[str, Any], protocol: Protocol
 
     C3 is not a gate and does not emit GateVerdict, so protocol identity mismatch is a hard error.
     """
-    pp = locked.get("protocol_pack")
-    if not isinstance(pp, dict):
-        raise _UserInputError("LockedSpec.protocol_pack is missing or invalid")
-
-    declared_pack_id = pp.get("pack_id")
-    declared_manifest_sha = pp.get("manifest_sha256")
-    declared_pack_name = pp.get("pack_name")
-
-    mismatches: list[str] = []
-    if declared_pack_id != protocol.pack_id:
-        mismatches.append(f"pack_id: declared={declared_pack_id!r} active={protocol.pack_id!r}")
-    if declared_manifest_sha != protocol.manifest_sha256:
-        mismatches.append(f"manifest_sha256: declared={declared_manifest_sha!r} active={protocol.manifest_sha256!r}")
-    if declared_pack_name != protocol.pack_name:
-        mismatches.append(f"pack_name: declared={declared_pack_name!r} active={protocol.pack_name!r}")
-
-    if mismatches:
-        raise _UserInputError(
-            "Protocol identity mismatch between LockedSpec and active protocol pack: " + "; ".join(mismatches)
-        )
+    result = verify_protocol_identity(
+        locked_spec=locked,
+        active_pack_id=protocol.pack_id,
+        active_manifest_sha256=protocol.manifest_sha256,
+        active_pack_name=protocol.pack_name,
+        gate_id="C3",
+    )
+    if result is None:
+        return
+    remediation = (
+        "Do ensure LockedSpec.protocol_pack identity tuple "
+        "{pack_id, manifest_sha256, pack_name} matches the active protocol pack, "
+        "treat source as operational context only, then re-run C1 and C3."
+    )
+    raise _UserInputError(
+        f"{C3_PROTOCOL_IDENTITY_FAILURE_ID}: {result.message} "
+        f"remediation.next_instruction={remediation} "
+        f"remediation.pointer={C3_PROTOCOL_IDENTITY_REMEDIATION_POINTER}"
+    )
 
 
 def _load_schema_from_protocol(protocol: ProtocolContext, schema_relpath: str) -> dict[str, Any]:
@@ -630,8 +631,7 @@ def main() -> int:
         if errs:
             raise _UserInputError("LockedSpec schema validation failed:\n" + _format_schema_errors(errs))
 
-        # Protocol identity verification: fail immediately if LockedSpec.protocol_pack doesn't match active context.
-        #TODO: _verify_protocol_identity_or_fail(locked, protocol)
+        _verify_protocol_identity_or_fail(locked, protocol)
 
         locked_profile: str | None = None
         pub_intent = locked.get("publication_intent")

@@ -39,6 +39,9 @@ jobs:
       - name: Protocol Pack Drift Guard
         run: python -m tools.check_drift
 
+      - name: CODEOWNERS dead-path guard
+        run: python -m tools.check_codeowners --repo . --codeowners .github/CODEOWNERS
+
       - name: Syntax check
         run: python -m compileall -q belgi chain tools wrapper
 
@@ -132,6 +135,11 @@ jobs:
         run: |
           python -m pip install --upgrade build
           python -m build --wheel
+
+      - name: Assert wheel publish boundary
+        run: |
+          WHEEL="$(ls -1 dist/belgi-*.whl | sort | tail -n1)"
+          python -m tools.wheel_boundary --wheel "$WHEEL"
 
       - name: Setup smoke venv (outside repo)
         run: echo "SMOKE_VENV=${RUNNER_TEMP}/belgi-smoke-venv-${{ matrix.python-version }}" >> "$GITHUB_ENV"

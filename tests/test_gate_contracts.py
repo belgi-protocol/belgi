@@ -625,6 +625,34 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
     cp1 = _run_c3("public", **outs1)
     assert cp1.returncode == 0, (cp1.returncode, cp1.stdout, cp1.stderr)
 
+    # C3 protocol identity enforcement: mismatch must fail closed with stable failure id.
+    locked_path = fake_root / Path(*locked_rel.split("/"))
+    locked_original_bytes = locked_path.read_bytes()
+    locked_obj = _read_json(locked_path)
+    protocol_pack_obj = locked_obj.get("protocol_pack")
+    assert isinstance(protocol_pack_obj, dict)
+    protocol_pack_obj["pack_id"] = "0" * 64
+    locked_path.write_text(
+        json.dumps(locked_obj, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+    cp_identity_fail = _run_c3(
+        "public",
+        out_final_rel="out/identity_mismatch/EvidenceManifest.final.json",
+        out_docs_rel="out/identity_mismatch/docs.md",
+        out_bundle_dir_rel="out/identity_mismatch/bundle",
+        out_root_sha_rel="out/identity_mismatch/bundle_root.sha256",
+    )
+    assert cp_identity_fail.returncode == 2, (
+        cp_identity_fail.returncode,
+        cp_identity_fail.stdout,
+        cp_identity_fail.stderr,
+    )
+    assert "C3-PROTOCOL-IDENTITY-MISMATCH" in cp_identity_fail.stderr
+    assert "CANONICALS.md#protocol-pack-identity" in cp_identity_fail.stderr
+    locked_path.write_bytes(locked_original_bytes)
+
     bundle_dir1 = fake_root / Path(*outs1["out_bundle_dir_rel"].split("/"))
     m1 = (bundle_dir1 / "docs_bundle_manifest.json").read_bytes()
     root1 = (fake_root / Path(*outs1["out_root_sha_rel"].split("/"))).read_text(encoding="utf-8", errors="strict")
