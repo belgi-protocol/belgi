@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from datetime import datetime, timezone
 import hashlib
 import importlib
 import json
@@ -1649,7 +1650,7 @@ def cmd_waiver_new(args: argparse.Namespace) -> int:
             "created_at": "1970-01-01T00:00:00Z",
             "expires_at": expires_at,
             "audit_trail_ref": {"id": "audit-001", "storage_ref": "waivers/audit.log"},
-            "status": "active",
+            "status": "revoked",
         }
         _assert_valid_waiver_doc(waiver_obj=waiver_obj, label="waiver")
         _write_json(waiver_path, waiver_obj)
@@ -1662,6 +1663,11 @@ def cmd_waiver_new(args: argparse.Namespace) -> int:
     print(f"[belgi waiver new] open: {waiver_path.resolve()}", file=sys.stderr)
     print(
         f"[belgi waiver new] reminder: strict match rule_id={rule_id} scope=path:<repo-rel-path> expires_at={expires_at}",
+        file=sys.stderr,
+    )
+    print(
+        "[belgi waiver new] reminder: draft defaults to status=revoked; "
+        "set status=active and replace placeholder fields before apply",
         file=sys.stderr,
     )
     return 0
@@ -3072,6 +3078,11 @@ def _resolve_run_workspace_for_attempt(
 
 
 def _verify_next_instruction(*, chain_out_dir: Path | None, primary_reason: str) -> str:
+    if "EvidenceManifest.anchored_time_utc" in primary_reason:
+        return (
+            "Do re-run `belgi run` with BELGI >=1.4.2 so EvidenceManifest.anchored_time_utc is recorded, "
+            "then re-run `belgi verify`."
+        )
     for gate_name in _preferred_gate_verdict_order(primary_reason):
         gate_path = chain_out_dir / gate_name if chain_out_dir is not None else None
         if gate_path is not None:
@@ -3225,6 +3236,72 @@ def _emit_verify_result_block(
     _emit_human_status(prefix="[belgi verify]", level=level, lines=lines)
 
 
+def _parse_rfc3339_dt_utc(raw: str, *, field: str) -> datetime:
+    value = str(raw or "").strip()
+    if _RFC3339_UTC_RE.fullmatch(value) is None:
+        raise ValueError(f"{field} missing/invalid RFC3339 timestamp")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} missing timezone offset")
+    return parsed.astimezone(timezone.utc)
+
+
+def _verify_waiver_expiry_anchor(
+    *,
+    attempt_dir: Path,
+    evidence_obj: dict[str, object],
+) -> None:
+    from belgi.core.jail import resolve_repo_rel_path
+
+    attempt_repo_root = attempt_dir / "repo"
+    attempt_out_dir = attempt_repo_root / "out"
+    locked_spec_path = attempt_out_dir / "LockedSpec.json"
+    if not locked_spec_path.exists() or locked_spec_path.is_symlink() or not locked_spec_path.is_file():
+        raise ValueError("LockedSpec.json missing; cannot validate waiver expiry against anchored_time_utc")
+
+    locked_spec = _load_json_object(locked_spec_path, label="LockedSpec.json")
+    waivers = locked_spec.get("waivers_applied")
+    if not isinstance(waivers, list) or len(waivers) == 0:
+        return
+
+    anchored_time_raw = evidence_obj.get("anchored_time_utc")
+    if not isinstance(anchored_time_raw, str) or not anchored_time_raw.strip():
+        raise ValueError(
+            "waiver expiry validation requires EvidenceManifest.anchored_time_utc; "
+            "re-run with BELGI >=1.4.2 to regenerate evidence, then re-run `belgi verify`"
+        )
+    try:
+        anchored_time = _parse_rfc3339_dt_utc(anchored_time_raw, field="EvidenceManifest.anchored_time_utc")
+    except ValueError:
+        raise ValueError(
+            "waiver expiry validation requires valid EvidenceManifest.anchored_time_utc; "
+            "re-run with BELGI >=1.4.2 to regenerate evidence, then re-run `belgi verify`"
+        ) from None
+
+    for idx, waiver_rel in enumerate(waivers):
+        if not isinstance(waiver_rel, str) or not waiver_rel.strip():
+            raise ValueError(f"LockedSpec.waivers_applied[{idx}] missing/invalid")
+
+        waiver_path = resolve_repo_rel_path(
+            attempt_repo_root,
+            waiver_rel.strip(),
+            must_exist=True,
+            must_be_file=True,
+            allow_backslashes=False,
+            forbid_symlinks=True,
+        )
+        waiver_obj = _load_json_object(waiver_path, label=f"Waiver[{idx}]")
+        expires_at_raw = waiver_obj.get("expires_at")
+        if not isinstance(expires_at_raw, str) or not expires_at_raw.strip():
+            raise ValueError(f"waiver '{waiver_rel.strip()}' expires_at missing/invalid")
+        expires_at = _parse_rfc3339_dt_utc(expires_at_raw, field=f"{waiver_rel.strip()} expires_at")
+        if not (expires_at > anchored_time):
+            raise ValueError(
+                f"waiver '{waiver_rel.strip()}' expires_at is not after EvidenceManifest.anchored_time_utc"
+            )
+
+
 def _verify_attempt_dir(repo_root: Path, attempt_dir: Path) -> tuple[str, str]:
     from belgi.core.hash import sha256_bytes
     from belgi.core.jail import resolve_repo_rel_path
@@ -3335,6 +3412,8 @@ def _verify_attempt_dir(repo_root: Path, attempt_dir: Path) -> tuple[str, str]:
     run_id = evidence_obj.get("run_id")
     if run_id != run_key:
         raise ValueError("EvidenceManifest.run_id does not match run_key")
+
+    _verify_waiver_expiry_anchor(attempt_dir=attempt_dir, evidence_obj=evidence_obj)
 
     return run_key, attempt_id
 

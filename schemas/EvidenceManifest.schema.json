@@ -83,6 +83,12 @@
         { "type": "null" }
       ]
     },
+    "anchored_time_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$",
+      "description": "Optional run-time RFC3339 anchor used as deterministic as-of time for waiver expiry evaluation."
+    },
     "notes": { "type": "string" }
   },
   "$defs": {

@@ -1983,13 +1983,13 @@ def check_cs_wvr_002(root: Path) -> InvariantResult:
         return InvariantResult("CS-WVR-002", "FAIL", ["schemas/Waiver.schema.json"], f"Fix Waiver schema error ({e}).")
 
     q_txt = read_text(q)
-    missing_q = _missing_needles(q_txt, ["Q6", "status == \"active\"", "expires_at", "evaluated_at"])
+    missing_q = _missing_needles(q_txt, ["Q6", "status == \"active\"", "expires_at", "anchored_time_utc", "placeholder"])
     if missing_q:
         return InvariantResult(
             "CS-WVR-002",
             "FAIL",
             ["gates/GATE_Q.md#q6--waivers-validity-if-present"],
-            "Ensure Gate Q Q6 enforces waiver status active and expires_at after evaluated_at.",
+            "Ensure Gate Q Q6 enforces active status, placeholder rejection, and expires_at after EvidenceManifest.anchored_time_utc.",
         )
     if "expires_at" not in read_text(ops) or "audit_trail_ref" not in read_text(ops):
         return InvariantResult(

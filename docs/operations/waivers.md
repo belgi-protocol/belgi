@@ -57,7 +57,8 @@ The proposer MUST NOT:
 ### 3.1 Create request (human)
 - Create a waiver JSON document with required fields:
   - `schema_version`, `waiver_id`, `gate_id` ("Q" or "R"), `rule_id`, `scope`, `justification`, `approver`, `created_at`, `expires_at`, `audit_trail_ref`, `status`.
-- Set `status: "active"` for an active waiver.
+- Draft safely first: keep `status: "revoked"` until the waiver is fully authored and reviewed.
+- Activate intentionally: set `status: "active"` only after scope/justification/mitigation/approver placeholders are fully replaced.
 
 Artifact produced:
 - Waiver document (schema: `Waiver.schema.json`).
@@ -87,6 +88,7 @@ Artifact produced:
 - Operator CLI flow (human-controlled):
   1) Draft a waiver JSON:
      - `belgi waiver new --repo . --run-id <run_id> --gate <Q|R> --rule-id <RULE> --waiver-id <id> --expires-at <RFC3339>`
+     - The generated draft is fail-closed (`status: "revoked"` + placeholder text); applying it unchanged must NO-GO at Gate Q.
   2) Apply waiver to run-local inputs:
      - `belgi waiver apply --repo . --run-id <run_id> --waiver .belgi/runs/<run_id>/inputs/waivers/<id>.json`
 - `belgi waiver apply` records repo-relative refs in:
@@ -107,7 +109,8 @@ Gate checks satisfied:
   - waiver count ≤ `max_active_waivers`,
   - waiver schema-valid,
   - `status == "active"`,
-  - `expires_at` is present, RFC3339-parseable, and compares after Gate Q’s deterministic evaluation baseline (Gate Q does not rely on ambient wall-clock time for determinism),
+  - critical waiver text fields (`scope`, `justification`, `mitigation`, `approver`) reject standalone placeholder/template markers (`TODO`, `TBD`, `REPLACE_ME`, `<...>`),
+  - `expires_at` is present, RFC3339-parseable, and compares after `EvidenceManifest.anchored_time_utc` (the run-time anchor captured in authoritative evidence; no ambient wall-clock fallback),
   - and a v1 human-authorship check (approver must not contain substrings `llm` or `agent`, case-insensitive).
   - For tier-1..3, the approver MUST use `human:<identity>` format.
 
@@ -133,7 +136,8 @@ Gate Q Q6 (`../../gates/GATE_Q.md`) enforces:
 - waiver tier policy (`waiver_policy.allowed`, `max_active_waivers`),
 - schema validity (`Waiver.schema.json`),
 - `status == "active"`,
-- `expires_at` after Gate Q evaluation time,
+- placeholder/template rejection on critical waiver text fields (`scope`, `justification`, `mitigation`, `approver`),
+- `expires_at` after `EvidenceManifest.anchored_time_utc`,
 - human-authorship heuristic (approver string must not contain `llm` or `agent`).
 
 ### 4.3 Gate R enforcement (post-proposal)

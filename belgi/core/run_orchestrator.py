@@ -18,6 +18,7 @@ from belgi.core.command_log import append_command_to_manifest
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
+from belgi.core.time import utc_timestamp_iso_z
 
 
 CHAIN_REPO_DIRNAME = "repo"
@@ -1056,12 +1057,15 @@ def orchestrate_chain_run(
         )
     artifacts.sort(key=lambda a: (a.get("kind", ""), a.get("id", ""), a.get("storage_ref", "")))
 
+    runtime_anchor_utc = utc_timestamp_iso_z(deterministic=False)
+
     evidence_input = {
         "schema_version": "1.0.0",
         "run_id": run_key,
         "artifacts": artifacts,
         "commands_executed": commands_executed,
         "envelope_attestation": envelope_attestation,
+        "anchored_time_utc": runtime_anchor_utc,
     }
     evidence_schema = protocol.read_json("schemas/EvidenceManifest.schema.json")
     if not isinstance(evidence_schema, dict):
