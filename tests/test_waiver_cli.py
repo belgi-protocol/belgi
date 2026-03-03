@@ -80,6 +80,8 @@ def test_waiver_new_default_output_is_schema_valid(tmp_path: Path) -> None:
     schema_obj = get_builtin_protocol_context().read_json("schemas/Waiver.schema.json")
     errors = validate_schema(waiver_obj, schema_obj, root_schema=schema_obj, path="waiver")
     assert errors == []
+    assert waiver_obj["status"] == "revoked"
+    assert waiver_obj["scope"] == "path:TODO"
 
 
 def test_waiver_apply_writes_deterministic_run_refs_and_is_consumed_by_run(tmp_path: Path, capsys: object) -> None:
@@ -148,6 +150,9 @@ def test_waiver_apply_writes_deterministic_run_refs_and_is_consumed_by_run(tmp_p
     captured = capsys.readouterr()
     machine = json.loads(captured.out.splitlines()[0])
     assert machine["verdict"] == "NO-GO"
+    reason = str(machine.get("primary_reason") or "")
+    assert "chain.gate_q_verify NO-GO" in reason
+    assert "status must be 'active'" in reason
     run_key = str(machine["run_key"])
     attempt_id = str(machine["attempt_id"])
     locked_spec_path = repo / ".belgi" / "store" / "runs" / run_key / attempt_id / "repo" / "out" / "LockedSpec.json"

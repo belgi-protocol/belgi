@@ -56,8 +56,9 @@ The proposer MUST NOT:
 
 ### 3.1 Create request (human)
 - Create a waiver JSON document with required fields:
-  - `schema_version`, `waiver_id`, `gate_id` ("Q" or "R"), `rule_id`, `scope`, `justification`, `approver`, `created_at`, `expires_at`, `audit_trail_ref`, `status`.
-- Set `status: "active"` for an active waiver.
+  - `schema_version`, `waiver_id`, `gate_id` ("Q" or "R"), `rule_id`, `scope`, `justification`, `mitigation`, `approver`, `created_at`, `expires_at`, `audit_trail_ref`, `status`.
+- Draft safely first: keep `status: "revoked"` until the waiver is fully authored and reviewed.
+- Activate intentionally: set `status: "active"` only after scope/justification/mitigation/approver placeholders are fully replaced.
 
 Artifact produced:
 - Waiver document (schema: `Waiver.schema.json`).
@@ -87,6 +88,7 @@ Artifact produced:
 - Operator CLI flow (human-controlled):
   1) Draft a waiver JSON:
      - `belgi waiver new --repo . --run-id <run_id> --gate <Q|R> --rule-id <RULE> --waiver-id <id> --expires-at <RFC3339>`
+     - The generated draft is fail-closed (`status: "revoked"` + placeholder text); applying it unchanged must NO-GO at Gate Q.
   2) Apply waiver to run-local inputs:
      - `belgi waiver apply --repo . --run-id <run_id> --waiver .belgi/runs/<run_id>/inputs/waivers/<id>.json`
 - `belgi waiver apply` records repo-relative refs in:
@@ -107,7 +109,8 @@ Gate checks satisfied:
   - waiver count ≤ `max_active_waivers`,
   - waiver schema-valid,
   - `status == "active"`,
-  - `expires_at` is present, RFC3339-parseable, and compares after Gate Q’s deterministic evaluation baseline (Gate Q does not rely on ambient wall-clock time for determinism),
+  - critical waiver text fields (`scope`, `justification`, `mitigation`, `approver`) reject standalone placeholder/template markers (`TODO`, `TBD`, `REPLACE_ME`, `<...>`),
+  - `expires_at` is present, RFC3339-parseable, and compares after `EvidenceManifest.anchored_time_utc` (the run-time anchor captured in authoritative evidence; no ambient wall-clock fallback),
   - and a v1 human-authorship check (approver must not contain substrings `llm` or `agent`, case-insensitive).
   - For tier-1..3, the approver MUST use `human:<identity>` format.
 
@@ -121,6 +124,7 @@ Artifacts produced:
 Gate impact:
 - Gate Q (Q6) rejects expired/inactive waivers applied to a run.
 - Gate R will only consider waivers when they are present, active, and consistent with the rule being waived.
+- `belgi verify` replays waiver expiry against `EvidenceManifest.anchored_time_utc` and fails closed when that anchor is missing/invalid.
 
 ## 4) Enforcement points (where LLM actions are blocked)
 
@@ -133,10 +137,17 @@ Gate Q Q6 (`../../gates/GATE_Q.md`) enforces:
 - waiver tier policy (`waiver_policy.allowed`, `max_active_waivers`),
 - schema validity (`Waiver.schema.json`),
 - `status == "active"`,
-- `expires_at` after Gate Q evaluation time,
+- placeholder/template rejection on critical waiver text fields (`scope`, `justification`, `mitigation`, `approver`),
+- `expires_at` after `EvidenceManifest.anchored_time_utc`,
 - human-authorship heuristic (approver string must not contain `llm` or `agent`).
 
-### 4.3 Gate R enforcement (post-proposal)
+### 4.3 Verify replay enforcement (post-run)
+`belgi verify` enforces waiver-expiry replay deterministically from stored run artifacts:
+- reads `EvidenceManifest.anchored_time_utc` as the expiry `as_of` anchor,
+- evaluates each applied waiver `expires_at` against that anchor,
+- fails closed with explicit remediation when the anchor is missing/invalid.
+
+### 4.4 Gate R enforcement (post-proposal)
 Gate R uses waiver documents as inputs when referenced by `LockedSpec.waivers_applied[]`.
 
 Specific deterministic waiver usage in v1:
@@ -153,8 +164,8 @@ Note: Gate R does not consume SealManifest (Seal occurs after R). Seal inclusion
 
 ### 5.1 Limits per tier
 From `../../tiers/tier-packs.json` (canonical SSOT; see `../../tiers/tier-packs.md` for the generated view):
-- Tier 0: waivers allowed, max 3 active
-- Tier 1: waivers allowed, max 2 active, HOTL required (policy-level)
+- Tier 0: waivers allowed, max 20 active
+- Tier 1: waivers allowed, max 10 active, HOTL required (policy-level)
 - Tier 2: waivers allowed, max 1 active, HOTL required (policy-level)
 - Tier 3: waivers not allowed
 
@@ -173,6 +184,7 @@ From R3 and tier defaults:
 | `rule_id` | yes | Exact rule identifier being waived |
 | `scope` | yes | Bounded, specific; does not exceed declared blast radius |
 | `justification` | yes | Category-level; no bypass instructions |
+| `mitigation` | yes | Concrete remediation/sunset plan; no placeholder text |
 | `approver` | yes | Human identity class; not an LLM/agent |
 | `created_at` | yes | RFC3339 date-time |
 | `expires_at` | yes | RFC3339 date-time; not expired for the run |

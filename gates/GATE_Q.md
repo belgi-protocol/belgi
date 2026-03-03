@@ -357,6 +357,7 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
 - check_id: `Q6`
 - required inputs:
   - `LockedSpec.waivers_applied[]` (LockedSpec schema, optional)
+  - `EvidenceManifest.anchored_time_utc` (authoritative run-time anchor for deterministic waiver expiry evaluation)
   - Waiver documents for each waiver_id: [../schemas/Waiver.schema.json](../schemas/Waiver.schema.json)
   - Tier policy reference (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
 - deterministic procedure (v1, deterministic):
@@ -364,17 +365,19 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
   2) If present:
     - Verify tier allows waivers (per [../tiers/tier-packs.json](../tiers/tier-packs.json)). If not allowed: fail.
      - Verify the count of active waivers does not exceed `max_active_waivers`.
+     - Verify `EvidenceManifest.anchored_time_utc` is present and RFC3339-valid; this is the waiver expiry `as_of` anchor. If missing/invalid: fail closed.
      - For each waiver document:
        - Validate it against Waiver schema.
        - Verify `status == "active"`.
+       - Reject placeholder/template content in critical fields (`scope`, `justification`, `mitigation`, `approver`). Standalone markers such as `TODO`, `TBD`, `REPLACE_ME`, or `<...>` template tokens are invalid.
        - Verify `gate_id` is either `"Q"` or `"R"` (schema-enforced) and is consistent with the referenced waived rule’s gate.
-       - Verify `expires_at` is after Gate Q `evaluated_at`.
+       - Verify `expires_at` is after `EvidenceManifest.anchored_time_utc` (not ambient wall-clock time).
        - Enforce v1 human-authorship heuristic:
          - `approver` MUST NOT contain the substrings `llm` or `agent` (case-insensitive).
          - `audit_trail_ref.id` and `audit_trail_ref.storage_ref` MUST be non-empty (schema-required; Gate Q MUST treat any schema failure as NO-GO).
 - failure category: `FQ-WAIVER-INVALID`
 - required evidence kinds: `schema_validation`, `policy_report`
-- remediation.next_instruction template: `Do fix or remove waiver waiver_id then re-run Q.`
+- remediation.next_instruction template: `Do edit waiver waiver_id to be eligible (set status="active", replace placeholder fields, and ensure expires_at is after EvidenceManifest.anchored_time_utc), or remove it, then re-run Q.`
 
 ### Q7 — Tier ID supported
 - check_id: `Q7`

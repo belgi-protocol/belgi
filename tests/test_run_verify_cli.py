@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -220,6 +221,32 @@ def _write_applied_waiver(
         errors="strict",
     )
     return waiver_path
+
+
+def _refresh_summary_artifact_hashes(repo: Path, attempt_dir: Path, artifact_paths: list[Path]) -> None:
+    summary_path = attempt_dir / "run.summary.json"
+    summary_obj = json.loads(summary_path.read_text(encoding="utf-8", errors="strict"))
+    artifacts = summary_obj.get("artifacts")
+    assert isinstance(artifacts, list)
+    by_path: dict[str, dict[str, object]] = {}
+    for entry in artifacts:
+        if isinstance(entry, dict):
+            rel = entry.get("path")
+            if isinstance(rel, str):
+                by_path[rel] = entry
+
+    repo_root = repo.resolve()
+    for artifact_path in artifact_paths:
+        rel = artifact_path.resolve().relative_to(repo_root).as_posix()
+        entry = by_path.get(rel)
+        assert isinstance(entry, dict), f"missing artifact entry for {rel}"
+        entry["sha256"] = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+
+    summary_path.write_text(
+        json.dumps(summary_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
 
 
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
@@ -1566,10 +1593,113 @@ def test_tier1_passes_with_valid_applied_waiver(tmp_path: Path, capsys: object) 
     assert gate_r.get("verdict") == "GO"
 
 
+def test_verify_uses_anchored_time_for_waiver_expiry_replay(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    _write_applied_waiver(
+        repo,
+        file_name="r8_anchor_replay.json",
+        rule_id="ADV-EXEC-001",
+        scope_path="src/risky_exec.py",
+        expires_at="2100-01-01T00:00:00Z",
+    )
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--base-revision", head_sha])
+    assert rc_run == 0
+    machine_run = json.loads(capsys.readouterr().out.splitlines()[0])
+    run_key = str(machine_run["run_key"])
+    attempt_id = str(machine_run["attempt_id"])
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
+
+    evidence_path = attempt_dir / "repo" / "out" / "EvidenceManifest.json"
+    evidence_obj = json.loads(evidence_path.read_text(encoding="utf-8", errors="strict"))
+    evidence_obj["anchored_time_utc"] = "2000-01-01T00:00:00Z"
+    evidence_path.write_text(
+        json.dumps(evidence_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+
+    waiver_path = attempt_dir / "repo" / "out" / "inputs" / "waivers_applied" / "r8_anchor_replay.json"
+    waiver_obj = json.loads(waiver_path.read_text(encoding="utf-8", errors="strict"))
+    waiver_obj["expires_at"] = "2000-01-02T00:00:00Z"
+    waiver_path.write_text(
+        json.dumps(waiver_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+
+    _refresh_summary_artifact_hashes(repo, attempt_dir, [evidence_path, waiver_path])
+
+    rc_verify_1 = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify_1 == 0
+    machine_verify_1 = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine_verify_1["verdict"] == "GO"
+
+    rc_verify_2 = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify_2 == 0
+    machine_verify_2 = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine_verify_2["verdict"] == "GO"
+
+
+def test_verify_fails_closed_when_anchor_missing_for_applied_waiver(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    _commit_file(repo, "src/risky_exec.py", "exec('1')\n", "add risky primitive")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    _write_applied_waiver(
+        repo,
+        file_name="r8_missing_anchor.json",
+        rule_id="ADV-EXEC-001",
+        scope_path="src/risky_exec.py",
+        expires_at="2100-01-01T00:00:00Z",
+    )
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-1", "--base-revision", head_sha])
+    assert rc_run == 0
+    machine_run = json.loads(capsys.readouterr().out.splitlines()[0])
+    run_key = str(machine_run["run_key"])
+    attempt_id = str(machine_run["attempt_id"])
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
+
+    evidence_path = attempt_dir / "repo" / "out" / "EvidenceManifest.json"
+    evidence_obj = json.loads(evidence_path.read_text(encoding="utf-8", errors="strict"))
+    evidence_obj.pop("anchored_time_utc", None)
+    evidence_path.write_text(
+        json.dumps(evidence_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+    _refresh_summary_artifact_hashes(repo, attempt_dir, [evidence_path])
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 10
+    captured_verify = capsys.readouterr()
+    machine_verify = json.loads(captured_verify.out.splitlines()[0])
+    reason = str(machine_verify.get("primary_reason") or "")
+    assert "anchored_time_utc" in reason
+    assert "BELGI >=1.4.2" in reason
+    assert "re-run `belgi run` with BELGI >=1.4.2" in captured_verify.err
+
+
 @pytest.mark.parametrize(
     ("scope_path", "expires_at", "expected_reason"),
     [
-        ("src/risky_exec.py", "1960-01-01T00:00:00Z", "expires_at is not after evaluated_at"),
+        ("src/risky_exec.py", "1960-01-01T00:00:00Z", "expires_at is not after EvidenceManifest.anchored_time_utc"),
         ("src/mismatch.py", "2100-01-01T00:00:00Z", "does not match any finding by rule_id+path"),
     ],
 )

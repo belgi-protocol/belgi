@@ -1983,20 +1983,39 @@ def check_cs_wvr_002(root: Path) -> InvariantResult:
         return InvariantResult("CS-WVR-002", "FAIL", ["schemas/Waiver.schema.json"], f"Fix Waiver schema error ({e}).")
 
     q_txt = read_text(q)
-    missing_q = _missing_needles(q_txt, ["Q6", "status == \"active\"", "expires_at", "evaluated_at"])
+    missing_q = _missing_needles(q_txt, ["Q6", "status == \"active\"", "expires_at", "anchored_time_utc", "placeholder"])
     if missing_q:
         return InvariantResult(
             "CS-WVR-002",
             "FAIL",
             ["gates/GATE_Q.md#q6--waivers-validity-if-present"],
-            "Ensure Gate Q Q6 enforces waiver status active and expires_at after evaluated_at.",
+            "Ensure Gate Q Q6 enforces active status, placeholder rejection, and expires_at after EvidenceManifest.anchored_time_utc.",
         )
-    if "expires_at" not in read_text(ops) or "audit_trail_ref" not in read_text(ops):
+    ops_txt = read_text(ops)
+    if "expires_at" not in ops_txt or "audit_trail_ref" not in ops_txt:
         return InvariantResult(
             "CS-WVR-002",
             "FAIL",
             ["docs/operations/waivers.md#34-apply-to-a-run-lockedspecwaivers_applied"],
             "Ensure waivers.md documents expires_at and audit_trail_ref requirements and application point.",
+        )
+    missing_ops = _missing_needles(
+        ops_txt,
+        [
+            "status: \"revoked\"",
+            "placeholder",
+            "anchored_time_utc",
+            "belgi verify",
+            "fails closed",
+            "mitigation",
+        ],
+    )
+    if missing_ops:
+        return InvariantResult(
+            "CS-WVR-002",
+            "FAIL",
+            ["docs/operations/waivers.md#31-create-request-human", "docs/operations/waivers.md#43-verify-replay-enforcement-post-run"],
+            "Ensure waivers.md documents revoked-by-default draft posture, placeholder rejection, anchored replay via belgi verify, fail-closed behavior, and mitigation field requirements.",
         )
 
     return InvariantResult(
@@ -2010,10 +2029,16 @@ def check_cs_wvr_002(root: Path) -> InvariantResult:
 def check_cs_wvr_003(root: Path) -> InvariantResult:
     """CS-WVR-003 — Tier waiver policy is consistent and enforced."""
 
+    tiers_json = repo_path(root, "tiers/tier-packs.json")
     tiers = repo_path(root, "tiers/tier-packs.md")
     q = repo_path(root, "gates/GATE_Q.md")
     ops = repo_path(root, "docs/operations/waivers.md")
-    for rel, p in [("tiers/tier-packs.md", tiers), ("gates/GATE_Q.md", q), ("docs/operations/waivers.md", ops)]:
+    for rel, p in [
+        ("tiers/tier-packs.json", tiers_json),
+        ("tiers/tier-packs.md", tiers),
+        ("gates/GATE_Q.md", q),
+        ("docs/operations/waivers.md", ops),
+    ]:
         if not p.exists():
             return InvariantResult("CS-WVR-003", "FAIL", [], f"Missing {rel}.")
 
@@ -2044,10 +2069,110 @@ def check_cs_wvr_003(root: Path) -> InvariantResult:
             "Ensure waivers.md repeats the tier waiver limits and disallows waivers for tier-3.",
         )
 
+    try:
+        tiers_obj = load_json(tiers_json)
+    except Exception as e:
+        return InvariantResult(
+            "CS-WVR-003",
+            "FAIL",
+            ["tiers/tier-packs.json"],
+            f"Fix tier-packs.json parse error ({e}).",
+        )
+
+    tier_map = tiers_obj.get("tiers")
+    if not isinstance(tier_map, dict):
+        return InvariantResult(
+            "CS-WVR-003",
+            "FAIL",
+            ["tiers/tier-packs.json#/tiers"],
+            "tiers/tier-packs.json must define an object at /tiers.",
+        )
+
+    expected_limits: dict[str, tuple[bool, int]] = {}
+    for tid in ("tier-0", "tier-1", "tier-2", "tier-3"):
+        tier_entry = tier_map.get(tid)
+        if not isinstance(tier_entry, dict):
+            return InvariantResult(
+                "CS-WVR-003",
+                "FAIL",
+                [f"tiers/tier-packs.json#/tiers/{tid}"],
+                f"tiers/tier-packs.json missing {tid} tier entry.",
+            )
+        waiver_policy = tier_entry.get("waiver_policy")
+        if not isinstance(waiver_policy, dict):
+            return InvariantResult(
+                "CS-WVR-003",
+                "FAIL",
+                [f"tiers/tier-packs.json#/tiers/{tid}/waiver_policy"],
+                f"tiers/tier-packs.json missing waiver_policy for {tid}.",
+            )
+        allowed = waiver_policy.get("allowed")
+        max_active = waiver_policy.get("max_active_waivers")
+        if not isinstance(allowed, bool):
+            return InvariantResult(
+                "CS-WVR-003",
+                "FAIL",
+                [f"tiers/tier-packs.json#/tiers/{tid}/waiver_policy/allowed"],
+                f"tiers/tier-packs.json waiver_policy.allowed must be boolean for {tid}.",
+            )
+        if not (isinstance(max_active, int) and not isinstance(max_active, bool) and max_active >= 0):
+            return InvariantResult(
+                "CS-WVR-003",
+                "FAIL",
+                [f"tiers/tier-packs.json#/tiers/{tid}/waiver_policy/max_active_waivers"],
+                f"tiers/tier-packs.json waiver_policy.max_active_waivers must be a non-negative integer for {tid}.",
+            )
+        expected_limits[tid] = (allowed, max_active)
+
+    observed_limits: dict[str, tuple[bool, int, int]] = {}
+    tier_line_re = re.compile(
+        r"^\s*-\s*Tier\s+([0-3])\s*:\s*waivers\s+(allowed|not allowed)"
+        r"(?:,\s*max\s+([0-9]+)\s+active)?(?:,\s*.*)?\s*$",
+        flags=re.IGNORECASE,
+    )
+    for line_no, line in enumerate(read_text(ops).splitlines(), start=1):
+        m = tier_line_re.match(line)
+        if m is None:
+            continue
+        tid = f"tier-{m.group(1)}"
+        allowed_token = m.group(2).lower()
+        allowed = allowed_token == "allowed"
+        max_active_raw = m.group(3)
+        max_active = int(max_active_raw) if max_active_raw is not None else 0
+        observed_limits[tid] = (allowed, max_active, line_no)
+
+    drift: list[str] = []
+    for tid in ("tier-0", "tier-1", "tier-2", "tier-3"):
+        if tid not in observed_limits:
+            drift.append(f"{tid}:missing in docs/operations/waivers.md#5.1")
+            continue
+        expected_allowed, expected_max = expected_limits[tid]
+        observed_allowed, observed_max, observed_line = observed_limits[tid]
+        if (expected_allowed, expected_max) != (observed_allowed, observed_max):
+            drift.append(
+                f"{tid}@docs/operations/waivers.md:{observed_line}:"
+                f"expected allowed={expected_allowed},max_active_waivers={expected_max};"
+                f"found allowed={observed_allowed},max_active_waivers={observed_max}"
+            )
+    if drift:
+        return InvariantResult(
+            "CS-WVR-003",
+            "FAIL",
+            ["tiers/tier-packs.json#/tiers", "docs/operations/waivers.md#51-limits-per-tier"],
+            "Ensure docs/operations/waivers.md §5.1 limits exactly match tiers/tier-packs.json waiver_policy. "
+            + "; ".join(drift),
+            {"drift": drift},
+        )
+
     return InvariantResult(
         "CS-WVR-003",
         "PASS",
-        ["tiers/tier-packs.md#24-waiver_policy", "gates/GATE_Q.md#q6--waivers-validity-if-present", "docs/operations/waivers.md#51-limits-per-tier"],
+        [
+            "tiers/tier-packs.json#/tiers",
+            "tiers/tier-packs.md#24-waiver_policy",
+            "gates/GATE_Q.md#q6--waivers-validity-if-present",
+            "docs/operations/waivers.md#51-limits-per-tier",
+        ],
         "",
     )
 

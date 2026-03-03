@@ -612,7 +612,7 @@ Canonical trigger:
   - docs/operations/waivers.md#34-apply-to-a-run-lockedspecwaivers_applied
 - check procedure (deterministic):
   1) Confirm Waiver schema requires `expires_at` and `audit_trail_ref`.
-  2) Confirm Gate Q Q6 requires `status == "active"` and `expires_at` after Q evaluated_at.
+  2) Confirm Gate Q Q6 requires `status == "active"`, rejects placeholder/template waiver text, and enforces `expires_at` after `EvidenceManifest.anchored_time_utc`.
   3) Confirm waivers.md lists the same required fields and enforcement point.
 - required evidence/artifacts (schema kinds): Waiver.json; GateVerdict.json (Q); EvidenceManifest.json (schema_validation)
 - pass/fail criteria:
