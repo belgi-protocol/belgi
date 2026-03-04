@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.6 — 2026-03-04
+
+### Summary
+Patch release removing a non-operative tier policy surface from declared contracts.
+
+### Changed
+- Removed non-operative tier parameter `test_policy.flaky_handling` from tier pack definitions, rendered tier pack docs, and tier→gate parameter map declarations.
+- Relaxed TierPacks schema requirement so `test_policy.flaky_handling` is no longer required.
+- Added regression guards to prevent reintroduction of `test_policy.flaky_handling` in tier packs and gate parameter map declarations.
+
+### Notes
+- No change to gate outcomes except removing an unenforced declared parameter.
+- Compatibility posture remains non-tightening: schema was relaxed, not tightened.
+
 ## 1.4.5 — 2026-03-04
 
 ### Summary

@@ -32,7 +32,6 @@ Allowed values are exactly the enum in [../schemas/EvidenceManifest.schema.json]
 Category-level rules (no bypass-friendly details):
 - `required`: whether Gate R requires test evidence.
 - `allowed_skips`: whether skips may be present without NO-GO.
-- `flaky_handling`: category-level rule for unstable evidence.
 
 ### 2.3 scope_budgets
 Conservative defaults used by Gate R (R2) when `LockedSpec.constraints.max_*` are absent.

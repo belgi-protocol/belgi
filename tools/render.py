@@ -223,7 +223,6 @@ def _compute_tier_params(data: Dict[str, Any], tier_id: str) -> str:
         lines.append(f"  - allowed_skips: `{skips_base}` ({tp['allowed_skips_note']})")
     else:
         lines.append(f"  - allowed_skips: `{skips_base}`")
-    lines.append(f"  - flaky_handling: `{tp.get('flaky_handling', '')}`")
     
     sb = t.get("scope_budgets", {})
     lines.append("- scope_budgets:")
