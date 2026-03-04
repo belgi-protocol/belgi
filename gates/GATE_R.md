@@ -289,7 +289,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
        - `gate_id == "R"`
        - `rule_id == "R3.forbidden_paths"`
        - `status == "active"`
-      - `scope` contains the offending `<path>` as a literal substring (v1 deterministic scope match)
+       - `scope` is a normalized repo-relative prefix
+       - offending path match uses canonical prefix semantics (`is_under_prefix`); literal substring matches do not apply
 - tier params used: `scope_budgets.forbidden_paths_enforcement`, `waiver_policy.allowed`
 - failure category: `FR-POLICY-FORBIDDEN-PATH`
 - required evidence kinds: `diff`, `policy_report`, `command_log`
