@@ -1742,6 +1742,16 @@ def _remove_locked_spec_protocol_pack(locked_path: Path) -> None:
     )
 
 
+def _report_results(report_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    results = report_obj.get("results")
+    assert isinstance(results, list)
+    out: list[dict[str, Any]] = []
+    for row in results:
+        assert isinstance(row, dict)
+        out.append(row)
+    return out
+
+
 def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     """Gate Q MUST emit FQ-PROTOCOL-IDENTITY-MISMATCH on pack_id mismatch."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
@@ -1776,7 +1786,7 @@ def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
 
 
 def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
-    """Gate R MUST emit FR-PROTOCOL-IDENTITY-MISMATCH on pack_id mismatch."""
+    """Gate R protocol mismatch must be first in ordered results and primary cause."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
@@ -1815,8 +1825,10 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
         newline="\n",
     )
 
-    out_rel = "out/GateVerdict.json"
-    out_path = tmp_path / "out" / "GateVerdict.json"
+    verify_report_rel = "out/verify_report.json"
+    verify_report_path = tmp_path / verify_report_rel
+    gate_verdict_rel = "out/GateVerdict.json"
+    gate_verdict_path = tmp_path / gate_verdict_rel
 
     cp = _run_module(
         "chain.gate_r_verify",
@@ -1827,14 +1839,232 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
             "--gate-q-verdict", gate_q_rel,
             "--evidence-manifest", paths["evidence"],
             "--evaluated-revision", commit_sha,
-            "--out", out_rel,
+            "--out", verify_report_rel,
+            "--gate-verdict-out", gate_verdict_rel,
         ],
         cwd=REPO_ROOT,
     )
 
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
-    gv = _read_json(out_path)
+    verify_report = _read_json(verify_report_path)
+    results = _report_results(verify_report)
+    assert str(results[0].get("check_id")) == "PROTOCOL-IDENTITY-001"
+    assert str(results[0].get("status")) == "FAIL"
+
+    gv = _read_json(gate_verdict_path)
     assert gv.get("failure_category") == "FR-PROTOCOL-IDENTITY-MISMATCH", gv
+    failures = gv.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "PROTOCOL-IDENTITY-001"
+
+
+def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path) -> None:
+    """Snapshot preflight failure must stay in fixed position and drive primary cause."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
+    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+
+    evidence_path = tmp_path / paths["evidence"]
+    evidence = _read_json(evidence_path)
+    evidence["artifacts"] = "not-a-list"
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+
+    verify_report_rel = "out/verify_report.snapshot_fail.json"
+    gate_verdict_rel = "out/GateVerdict.snapshot_fail.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_report_rel,
+            "--gate-verdict-out",
+            gate_verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verify_report = _read_json(tmp_path / verify_report_rel)
+    results = _report_results(verify_report)
+    assert str(results[0].get("check_id")) == "PROTOCOL-IDENTITY-001"
+    assert str(results[0].get("status")) == "PASS"
+    assert str(results[1].get("check_id")) == "R-SNAPSHOT-INDEX-001"
+    assert str(results[1].get("status")) == "FAIL"
+
+    gate_verdict = _read_json(tmp_path / gate_verdict_rel)
+    assert gate_verdict.get("failure_category") == "FR-INVARIANT-FAILED"
+    failures = gate_verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R-SNAPSHOT-INDEX-001"
+
+
+def test_gate_r_overlay_preflight_ordering_and_optional_presence(tmp_path: Path) -> None:
+    """Overlay preflight must be deterministic when enabled and absent otherwise."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    fixture_dir = Path("policy/fixtures/public/gate_r/r_pass_tier1")
+    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
+
+    paths = {
+        "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
+        "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
+    }
+    evidence_path = tmp_path / paths["evidence"]
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+
+    overlay_payload = {
+        "schema_version": "1.0.0",
+        "run_id": "r-pass-tier1",
+        "generated_at": "1970-01-01T00:00:00Z",
+        "summary": {"total_checks": 1, "passed": 1, "failed": 0},
+        "checks": [{"check_id": "ADOPTER-POLICY-001", "passed": True}],
+    }
+    overlay_rel = "policy/fixtures/public/gate_r/r_pass_tier1/policy.overlay_requirements.json"
+    overlay_path = tmp_path / Path(*overlay_rel.split("/"))
+    overlay_bytes = (json.dumps(overlay_payload, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_bytes(overlay_bytes)
+    artifacts.append(
+        {
+            "kind": "policy_report",
+            "id": "policy.overlay_requirements",
+            "hash": _sha256_hex(overlay_bytes),
+            "media_type": "application/json",
+            "storage_ref": overlay_rel,
+            "produced_by": "R",
+        }
+    )
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    protocol_manifest_path = tmp_path / "protocol_pack" / MANIFEST_FILENAME
+    protocol_manifest = _read_json(protocol_manifest_path)
+    (tmp_path / "belgi_pack").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "belgi_pack" / "DomainPackManifest.json").write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "pack_name": "overlay-test",
+                "pack_semver": "0.1.0",
+                "belgi_protocol_pack_pin": {
+                    "pack_name": protocol_manifest["pack_name"],
+                    "pack_id": "f" * 64,
+                    "manifest_sha256": _sha256_hex(protocol_manifest_path.read_bytes()),
+                },
+                "required_policy_check_ids": ["ADOPTER-POLICY-001"],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+
+    verify_report_overlay_rel = "out/verify_report.overlay_fail.json"
+    gate_verdict_overlay_rel = "out/GateVerdict.overlay_fail.json"
+    cp_overlay = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_report_overlay_rel,
+            "--gate-verdict-out",
+            gate_verdict_overlay_rel,
+            "--overlay",
+            "belgi_pack",
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp_overlay.returncode == 2, (cp_overlay.returncode, cp_overlay.stdout, cp_overlay.stderr)
+    overlay_report = _read_json(tmp_path / verify_report_overlay_rel)
+    overlay_results = _report_results(overlay_report)
+    assert [str(overlay_results[idx].get("check_id")) for idx in (0, 1, 2)] == [
+        "PROTOCOL-IDENTITY-001",
+        "R-SNAPSHOT-INDEX-001",
+        "R-OVERLAY-001",
+    ]
+    assert [str(overlay_results[idx].get("status")) for idx in (0, 1, 2)] == ["PASS", "PASS", "FAIL"]
+
+    overlay_verdict = _read_json(tmp_path / gate_verdict_overlay_rel)
+    failures = overlay_verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R-OVERLAY-001"
+
+    verify_report_no_overlay_rel = "out/verify_report.no_overlay.json"
+    gate_verdict_no_overlay_rel = "out/GateVerdict.no_overlay.json"
+    cp_no_overlay = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_report_no_overlay_rel,
+            "--gate-verdict-out",
+            gate_verdict_no_overlay_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp_no_overlay.returncode == 0, (cp_no_overlay.returncode, cp_no_overlay.stdout, cp_no_overlay.stderr)
+    no_overlay_report = _read_json(tmp_path / verify_report_no_overlay_rel)
+    no_overlay_results = _report_results(no_overlay_report)
+    assert all(str(result.get("check_id")) != "R-OVERLAY-001" for result in no_overlay_results)
 
 
 def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path) -> None:
