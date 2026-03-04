@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import importlib
+import shutil
 import sys
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +16,16 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.core.hash import sha256_bytes
+import chain.compiler_c3_docs as c3_docs
 from chain.compiler_c3_docs import _compute_bundle_root_sha256, _compute_bundle_sha256
+
+
+def _get_builtin_protocol_context_dynamic() -> object:
+    # Full-suite runs may temporarily clear `belgi` from sys.modules in other tests.
+    # Re-import from module path each call to keep resource lookup stable.
+    importlib.import_module("belgi")
+    pack_mod = importlib.import_module("belgi.protocol.pack")
+    return getattr(pack_mod, "get_builtin_protocol_context")()
 
 
 def _fixture_bundled_files(*, manifest_entry_sha: str) -> list[dict[str, object]]:
@@ -103,3 +116,44 @@ def test_docs_compiler_template_hash_contract_guard() -> None:
     ]
     for claim in stale_claims:
         assert claim.lower() not in template_lc
+
+
+def test_c3_source_resolution_materializes_protocol_bound_canonicals_without_staged_dir(tmp_path: Path) -> None:
+    protocol = _get_builtin_protocol_context_dynamic()
+    source_root, source_tmp = c3_docs._resolve_c3_source_root(
+        repo_root=tmp_path,
+        protocol=protocol,
+        out_bundle_dir_path=tmp_path / "out" / "bundle",
+    )
+    try:
+        assert source_tmp is not None
+        assert source_root == source_tmp
+        assert not (tmp_path / ".belgi" / "engine" / "c3_canonicals").exists()
+        assert (source_root / "CANONICALS.md").is_file()
+        assert (source_root / "gates" / "GATE_R.md").is_file()
+        assert (source_root / "tiers" / "tier-packs.json").is_file()
+        assert (source_root / "schemas" / "LockedSpec.schema.json").is_file()
+        assert (source_root / "docs" / "operations" / "running-belgi.md").is_file()
+    finally:
+        if source_tmp is not None and source_tmp.exists():
+            shutil.rmtree(source_tmp)
+
+
+def test_c3_source_resolution_fail_closed_has_remediation_when_materialization_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    protocol = _get_builtin_protocol_context_dynamic()
+
+    def _boom(*, protocol: object, target_root: Path) -> None:
+        raise c3_docs._UserInputError("simulated missing canonical sources")
+
+    monkeypatch.setattr(c3_docs, "_materialize_protocol_bound_c3_source_root", _boom)
+    with pytest.raises(c3_docs._UserInputError) as exc:
+        c3_docs._resolve_c3_source_root(
+            repo_root=tmp_path,
+            protocol=protocol,
+            out_bundle_dir_path=tmp_path / "out" / "bundle",
+        )
+    msg = str(exc.value)
+    assert ".belgi/engine/c3_canonicals" in msg
+    assert "remediation.next_instruction=" in msg

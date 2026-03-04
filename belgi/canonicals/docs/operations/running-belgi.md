@@ -176,6 +176,14 @@ python -m chain.compiler_c3_docs \
 `--out-log` MUST be exactly `docs/docs_compilation_log.json`.
 This fixed path is required for deterministic discovery and evidence indexability.
 
+C3 canonical source resolution is single-contract and does not require `.belgi/engine/c3_canonicals`:
+- If `.belgi/engine/c3_canonicals` exists, C3 MAY use it as a cache/staging optimization.
+- Otherwise, C3 materializes canonicals deterministically from BELGI bundled canonicals + the active protocol pack (`gates/`, `tiers/`, `schemas/`).
+
+`--prompt-block-hashes` contract (selected-only):
+- MUST include valid SHA-256 hashes for all selected blocks of the run’s `tier_id`.
+- Extra keys for non-selected blocks are allowed and ignored.
+
 ### Stage S (producer) — Create SealManifest
 
 ```bash

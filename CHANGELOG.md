@@ -2,6 +2,24 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.9 — 2026-03-04
+
+### Summary
+Patch release removing hidden C3 pipeline prerequisites and aligning prompt-hash validation to the selected-block contract.
+
+### Changed
+- C3 canonical source resolution no longer requires pre-staged `.belgi/engine/c3_canonicals`; when staged canonicals are absent, C3 deterministically materializes canonicals from BELGI bundled canonicals plus the active protocol pack content.
+- `belgi run` no longer auto-stages C3 canonicals as a correctness requirement; manual stage execution and orchestrated execution now use the same C3 acceptance contract.
+- C3 prompt hash validation now requires hashes for selected prompt blocks only (by `LockedSpec.tier.tier_id`) and rejects missing/mismatched selected hashes deterministically.
+- Added regression coverage for:
+  - C3 execution without staged canonicals
+  - selected-only prompt hash completeness and mismatch fail-closed behavior
+  - manual C1→C3 handoff parity with orchestrated run semantics
+
+### Notes
+- Extra prompt hash keys for non-selected blocks are allowed and ignored by contract.
+- This release may tighten failure behavior for users who previously depended on implicit staging or hash-map auto-completion.
+
 ## 1.4.8 — 2026-03-04
 
 ### Summary

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from importlib.resources import files as resource_files
@@ -99,10 +100,80 @@ def test_tier0_run_uses_engine_canonicals_when_repo_has_collision(
 
     staged_term = attempt_repo / ".belgi" / "engine" / "c3_canonicals" / "terminology.md"
     bundled_term = attempt_repo / "out" / "bundle" / "terminology.md"
-    assert staged_term.is_file()
+    assert not staged_term.exists()
     assert bundled_term.is_file()
 
     engine_bytes = _builtin_canonical_bytes("terminology.md")
-    assert staged_term.read_bytes() == engine_bytes
     assert bundled_term.read_bytes() == engine_bytes
     assert bundled_term.read_bytes() != b"ADOPTER COLLISION\n"
+
+
+def test_manual_c3_run_succeeds_without_staged_canonicals_after_belgi_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _init_min_git_repo(tmp_path)
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-0", "--base-revision", _head_sha(repo)])
+    captured = capsys.readouterr()
+    assert rc_run == 0, captured.err
+    machine = json.loads(captured.out.splitlines()[0])
+    run_key = machine["run_key"]
+
+    attempt_repo = repo / ".belgi" / "store" / "runs" / run_key / "attempt-0001" / "repo"
+    staged_root = attempt_repo / ".belgi" / "engine" / "c3_canonicals"
+    if staged_root.exists():
+        shutil.rmtree(staged_root)
+    assert not staged_root.exists()
+
+    cp_manual = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "chain.compiler_c3_docs",
+            "--repo",
+            str(attempt_repo),
+            "--locked-spec",
+            "out/LockedSpec.json",
+            "--gate-q-verdict",
+            "out/GateVerdict.Q.json",
+            "--gate-r-verdict",
+            "out/GateVerdict.R.json",
+            "--r-snapshot-manifest",
+            "out/EvidenceManifest.r_snapshot.json",
+            "--out-final-manifest",
+            "out/manual/EvidenceManifest.final.json",
+            "--out-log",
+            "docs/docs_compilation_log.json",
+            "--out-docs",
+            "out/manual/docs.md",
+            "--out-bundle-dir",
+            "out/manual/bundle",
+            "--out-bundle-root-sha",
+            "out/manual/bundle_root.sha256",
+            "--profile",
+            "public",
+            "--prompt-block-hashes",
+            "out/prompt_block_hashes.json",
+            "--generated-at",
+            "1970-01-01T00:00:00Z",
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert cp_manual.returncode == 0, (cp_manual.returncode, cp_manual.stdout, cp_manual.stderr)
+
+    baseline_manifest = json.loads(
+        (attempt_repo / "out" / "bundle" / "docs_bundle_manifest.json").read_text(encoding="utf-8", errors="strict")
+    )
+    manual_manifest = json.loads(
+        (attempt_repo / "out" / "manual" / "bundle" / "docs_bundle_manifest.json").read_text(
+            encoding="utf-8", errors="strict"
+        )
+    )
+    assert manual_manifest["bundle_sha256"] == baseline_manifest["bundle_sha256"]

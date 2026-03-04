@@ -52,6 +52,16 @@ Only these file types are eligible for inclusion:
 
 Any other file types are ignored by default.
 
+### B2.4 Canonical source resolution (single-path contract)
+C3 canonical source discovery MUST NOT depend on orchestrator-only preparation.
+
+Deterministic resolution order:
+1) If `.belgi/engine/c3_canonicals` exists, C3 MAY use it as a cache/staging optimization.
+2) Otherwise, C3 MUST materialize source canonicals from BELGI bundled canonicals plus active protocol pack content (`gates/`, `tiers/`, `schemas/`).
+
+Fail-closed requirement:
+- If C3 cannot resolve canonicals by the contract above, it MUST fail with deterministic remediation.
+
 ---
 
 ## B3) Deterministic compilation rules
@@ -166,6 +176,11 @@ Required fields in the **log artifact payload** (recommended JSON):
   - optional path/hash pointers for key bundle outputs
 
 Per-file normalized output hashes are published via `bundle/docs_bundle_manifest.json` (`files[]` path+sha256); they are not required as direct fields in the `docs_compilation_log` payload.
+
+`prompt_block_hashes` contract for C3 input validation:
+- selected-block cardinality only (based on run `tier_id`),
+- all selected blocks MUST have valid sha256 entries,
+- extra non-selected keys are allowed and ignored.
 
 EvidenceManifest indexing requirements (schema-defined fields only):
 - `kind`: `"docs_compilation_log"`
