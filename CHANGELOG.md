@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.7 — 2026-03-04
+
+### Summary
+Patch release aligning the DocsCompiler bundle-hash template contract with the implemented C3 algorithm.
+
+### Changed
+- Updated `belgi/templates/DocsCompiler.template.md` B3.5 to match the engine’s non-circular bundle hash semantics:
+  - `bundle_sha256` excludes `docs_bundle_manifest.json`,
+  - hash payload format is `<path>\\n<sha256>\\n` in sorted path order,
+  - `bundle_root_sha256` is explicitly derived from `docs_bundle_manifest_sha256` and `bundle_sha256`.
+- Added deterministic regression shields for C3 hash semantics and template drift.
+
+### Notes
+- This is SSOT alignment only; compiler behavior is unchanged.
+
 ## 1.4.6 — 2026-03-04
 
 ### Summary
