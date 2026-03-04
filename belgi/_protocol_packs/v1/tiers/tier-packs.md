@@ -35,7 +35,6 @@ Allowed values are exactly the enum in [../schemas/EvidenceManifest.schema.json]
 Category-level rules (no bypass-friendly details):
 - `required`: whether Gate R requires test evidence.
 - `allowed_skips`: whether skips may be present without NO-GO.
-- `flaky_handling`: category-level rule for unstable evidence.
 
 ### 2.3 scope_budgets
 Conservative defaults used by Gate R (R2) when `LockedSpec.constraints.max_*` are absent.
@@ -105,7 +104,6 @@ Notes:
 - test_policy:
   - required: `no`
   - allowed_skips: `yes`
-  - flaky_handling: `treat as insufficient evidence only if it changes outcomes across reruns within envelope`
 - scope_budgets:
   - max_touched_files: `50`
   - max_loc_delta: `5000`
@@ -129,7 +127,6 @@ Notes:
 - test_policy:
   - required: `yes`
   - allowed_skips: `yes` (skips permitted only when they do not hide failing coverage; category-level)
-  - flaky_handling: `unstable tests are insufficient evidence unless HOTL explicitly approves proceeding`
 - scope_budgets:
   - max_touched_files: `25`
   - max_loc_delta: `2500`
@@ -153,7 +150,6 @@ Notes:
 - test_policy:
   - required: `yes`
   - allowed_skips: `no` (skips are forbidden (not waivable in v1))
-  - flaky_handling: `flaky/unstable evidence is NO-GO (not waivable in v1)`
 - scope_budgets:
   - max_touched_files: `15`
   - max_loc_delta: `1500`
@@ -177,7 +173,6 @@ Notes:
 - test_policy:
   - required: `yes`
   - allowed_skips: `no`
-  - flaky_handling: `any unstable evidence is NO-GO`
 - scope_budgets:
   - max_touched_files: `10`
   - max_loc_delta: `800`
@@ -214,7 +209,7 @@ This table lists which tier parameters each check reads.
 | R2 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |
 | R3 | scope_budgets.forbidden_paths_enforcement |
 | R4 | command_log_mode |
-| R5 | test_policy.required, test_policy.allowed_skips, test_policy.flaky_handling, command_log_mode |
+| R5 | test_policy.required, test_policy.allowed_skips, command_log_mode |
 | R6 | envelope_policy.requires_attestation, envelope_policy.attestation_signature_required, command_log_mode |
 | R7 | envelope_policy.pinned_toolchain_refs_required, command_log_mode |
 | R8 | waiver_policy.allowed, adversarial_policy.findings_mode, command_log_mode |

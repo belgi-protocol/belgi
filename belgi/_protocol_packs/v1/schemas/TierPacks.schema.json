@@ -209,7 +209,7 @@
         "test_policy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["required", "allowed_skips", "flaky_handling"],
+          "required": ["required", "allowed_skips"],
           "properties": {
             "required": { "type": "boolean" },
             "allowed_skips": { "type": "boolean" },

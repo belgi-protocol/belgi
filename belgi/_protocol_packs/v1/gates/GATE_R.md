@@ -377,7 +377,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
     - If `test_summary` is present, require `failed == 0`.
     - If `allowed_skips == no` and `test_summary` is present, require `skipped == 0`.
     - Require required command `belgi run-tests` is present and successful (per command matching rule).
-- tier params used: `test_policy.required`, `test_policy.allowed_skips`, `test_policy.flaky_handling`, `command_log_mode`
+- tier params used: `test_policy.required`, `test_policy.allowed_skips`, `command_log_mode`
 - failure category:
   - `FR-COMMAND-FAILED` if `belgi run-tests` is missing/failed
   - `FR-TESTS-POLICY-FAILED` otherwise
