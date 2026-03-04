@@ -101,7 +101,7 @@ This template defines a minimal deterministic TOC:
 - Create `bundle/TOC.md` listing all included files as links in the same order as the file ordering (B3.2).
 - Do not infer document structure beyond the file list.
 
-### B3.5 Deterministic bundle manifest
+### B3.5 Deterministic bundle manifest + hash chain
 C3 MUST write a machine-readable manifest file:
 
 - Output path: `bundle/docs_bundle_manifest.json`
@@ -109,18 +109,27 @@ C3 MUST write a machine-readable manifest file:
   - `schema_version`: string (implementation-defined; not governed by `schemas/*.schema.json`)
   - `profile`: `"public"|"internal"`
   - `inputs`: ordered list of normalized source file paths
-  - `files`: ordered list of objects `{ "path": <normalized>, "sha256": <hex> }`
-  - `bundle_sha256`: overall bundle hash (see below)
+  - `files`: ordered list of objects `{ "path": <normalized>, "sha256": <hex>, "size_bytes": <int>, "media_type": <string> }`
+    - includes normalized bundled outputs (including `TOC.md`)
+    - excludes `docs_bundle_manifest.json`
+  - `bundle_sha256`: overall non-circular bundle hash (defined below)
 
 Per-file hash:
 - `sha256` is computed over the normalized output bytes of each file.
 
-Overall bundle hash:
-- Compute `bundle_sha256` as SHA-256 over the UTF-8 bytes of the exact concatenation:
-  - for each file in order: `<sha256>  <path>\n`
-  - followed by `"MANIFEST\n" + sha256(manifest_bytes) + "\n"`
+`bundle_sha256` algorithm (engine SSOT, non-circular):
+1) Start from `files[]`.
+2) Exclude any entry with `path == "docs_bundle_manifest.json"` from `bundle_sha256` computation.
+3) Sort remaining entries by `path` (lexicographic codepoint order).
+4) Build UTF-8 payload as exact concatenation of `<path>\n<sha256>\n` for each sorted entry.
+5) `bundle_sha256 = sha256(payload)`.
 
-The manifest file itself is part of the bundle and must be included in the file list and hash computation.
+`docs_bundle_manifest_sha256`:
+- hash of the exact manifest bytes written by C3 (`docs_bundle_manifest.json`).
+
+`bundle_root_sha256` linkage:
+- `bundle_root_sha256 = sha256("manifest\n" + docs_bundle_manifest_sha256 + "\nbundle\n" + bundle_sha256 + "\n")`.
+- This root hash explicitly binds manifest bytes and bundle hash while keeping `bundle_sha256` non-circular.
 
 ---
 
