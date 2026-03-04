@@ -159,4 +159,5 @@ def run_adversarial_scan(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(canonical_json_bytes(payload))
 
-    return 0 if passed else 2
+    # Findings are policy data; command success reflects execution success.
+    return 0

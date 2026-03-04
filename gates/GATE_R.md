@@ -161,6 +161,7 @@ When a check requires a command, Gate R evaluates it deterministically against `
 - In `strings` mode, a required command `belgi <subcommand>` is satisfied iff there exists a string entry exactly equal to `"belgi <subcommand>"`.
 
 If a required command is missing or has `exit_code != 0`, Gate R fails with `FR-COMMAND-FAILED`.
+- For `belgi adversarial-scan`, findings are policy report data (`policy.adversarial_scan.summary.failed`), not a command exit-code signal.
 
 ### 5.2 Policy report naming convention (used by R1/R7/R8)
 Where a check requires a policy report, Gate R requires an EvidenceManifest artifact with:

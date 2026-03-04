@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.5 — 2026-03-04
+
+### Summary
+Patch release aligning adversarial scan command-success semantics with Gate R command enforcement.
+
+### Changed
+- `belgi adversarial-scan` now returns exit code `0` on successful execution even when findings exist; findings remain encoded only in `policy.adversarial_scan` payload (`summary.failed`, `findings`).
+- Gate R R8 command validation now treats only `exit_code == 0` as command success in structured command logs (no alternate success code).
+- Added regression coverage for:
+  - non-zero adversarial command record => `FR-COMMAND-FAILED`
+  - `exit_code == 0` + valid report with `summary.failed != 0` => `FR-ADVERSARIAL-DIFF-SUSPECT`
+
+### Notes
+- Any downstream usage that interpreted non-zero adversarial scan exit codes as a findings signal was never part of the stable contract; findings are policy-report data.
+- No tier enablement or schema changes.
+
 ## 1.4.4 — 2026-03-04
 
 ### Summary
