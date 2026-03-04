@@ -158,12 +158,14 @@ Required fields in the **log artifact payload** (recommended JSON):
 - `profile` ("public"|"internal")
 - `compiler_id`, `compiler_version`
 - `inputs`:
-  - normalized list of included source file paths
-  - for each file: source hash (SHA-256 of *source bytes*)
-  - for each file: normalized output hash (SHA-256 of normalized bytes)
+  - optional list of included source file paths + source hashes (`path`, `source_sha256`)
 - `outputs`:
   - `bundle_sha256`
   - `docs_bundle_manifest_sha256`
+  - `bundle_root_sha256`
+  - optional path/hash pointers for key bundle outputs
+
+Per-file normalized output hashes are published via `bundle/docs_bundle_manifest.json` (`files[]` path+sha256); they are not required as direct fields in the `docs_compilation_log` payload.
 
 EvidenceManifest indexing requirements (schema-defined fields only):
 - `kind`: `"docs_compilation_log"`

@@ -173,6 +173,9 @@ python -m chain.compiler_c3_docs \
   --prompt-block-hashes prompt_block_hashes.json
 ```
 
+`--out-log` MUST be exactly `docs/docs_compilation_log.json`.
+This fixed path is required for deterministic discovery and evidence indexability.
+
 ### Stage S (producer) — Create SealManifest
 
 ```bash

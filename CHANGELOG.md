@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.8 — 2026-03-04
+
+### Summary
+Patch release aligning template/doc claims with enforced behavior for C1/C3 evidence contracts.
+
+### Changed
+- Updated `belgi/templates/PromptBundle.blocks.md` to remove the incorrect claim that C1 determinism depends on exact `tiers/tier-packs.json` bytes; C1 contract now states semantic tier-value resolution by `tier_id`.
+- Updated `belgi/templates/DocsCompiler.template.md` to state that per-file normalized output hashes are surfaced via `bundle/docs_bundle_manifest.json` (`files[]`), not as required direct fields in `docs_compilation_log` payload.
+- Updated `docs/operations/running-belgi.md` to document the strict C3 out-log contract: `--out-log` MUST be `docs/docs_compilation_log.json` for deterministic discovery/indexability.
+- Added deterministic template/doc drift guards for the three claim classes above.
+
+### Notes
+- Runtime behavior is unchanged; this release is contract truthfulness hardening.
+
 ## 1.4.7 — 2026-03-04
 
 ### Summary
