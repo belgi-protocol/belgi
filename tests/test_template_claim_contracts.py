@@ -11,9 +11,23 @@ def _read_text(relpath: str) -> str:
 
 
 def test_promptbundle_template_removes_tier_pack_exact_bytes_claim() -> None:
-    text_lc = _read_text("belgi/templates/PromptBundle.blocks.md").lower()
+    text = _read_text("belgi/templates/PromptBundle.blocks.md")
+    text_lc = text.lower()
     assert "`../../tiers/tier-packs.json` as exact bytes at the evaluated repo revision." not in text_lc
-    assert "c1 determinism must not depend on raw `tiers/tier-packs.json` byte identity." in text_lc
+    assert "resolved from `../../tiers/tier-packs.json`" not in text_lc
+
+    a31_start = text_lc.index("### a3.1")
+    a32_start = text_lc.index("### a3.2")
+    a31 = text_lc[a31_start:a32_start]
+    assert "tier policy values are selected by `lockedspec.tier.tier_id`" in a31
+    assert (
+        "c1 determinism must not depend on reading `tiers/tier-packs.json` from the evaluated repo revision."
+        in a31
+    )
+    tier_lines = [ln.strip() for ln in a31.splitlines() if "tiers/tier-packs.json" in ln]
+    assert tier_lines == [
+        "- c1 determinism must not depend on reading `tiers/tier-packs.json` from the evaluated repo revision."
+    ]
 
 
 def test_docscompiler_template_routes_per_file_hashes_to_manifest() -> None:

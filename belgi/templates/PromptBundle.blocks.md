@@ -56,9 +56,9 @@ The C1 Prompt Compiler’s PromptBundle output is deterministic **iff** it is a 
 1) LockedSpec bytes (schema-valid JSON)
 - `LockedSpec.json` as exact bytes referenced by the run (see `../../schemas/LockedSpec.schema.json`).
 
-2) Tier policy values for selected tier
-- Tier defaults resolved from `../../tiers/tier-packs.json` using `LockedSpec.tier.tier_id` at the evaluated repo revision.
-- Resolution is semantic (selected field values); C1 determinism MUST NOT depend on raw `tiers/tier-packs.json` byte identity.
+2) Tier policy values (protocol-pack bound)
+- Tier policy values are selected by `LockedSpec.tier.tier_id` and are defined by the protocol pack's tier registry (bound by protocol-pack identity).
+- C1 determinism MUST NOT depend on reading `tiers/tier-packs.json` from the evaluated repo revision.
 
 3) Block registry metadata (this file)
 - `../templates/PromptBundle.blocks.md` as exact bytes.
