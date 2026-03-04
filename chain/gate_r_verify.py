@@ -228,21 +228,19 @@ def _normalize_required_ids(s: str) -> list[str]:
     return [p for p in parts if p]
 
 
-def _flatten(results: list[list[CheckResult]]) -> list[dict[str, Any]]:
-    flat: list[dict[str, Any]] = []
-    for group in results:
-        for r in group:
-            flat.append(
-                {
-                    "check_id": r.check_id,
-                    "status": r.status,
-                    "category": r.category,
-                    "message": r.message,
-                    "pointers": r.pointers,
-                    "remediation_next_instruction": r.remediation_next_instruction,
-                }
-            )
-    return flat
+def _check_to_dict(result: CheckResult) -> dict[str, Any]:
+    return {
+        "check_id": result.check_id,
+        "status": result.status,
+        "category": result.category,
+        "message": result.message,
+        "pointers": result.pointers,
+        "remediation_next_instruction": result.remediation_next_instruction,
+    }
+
+
+def _serialize_results(results: list[CheckResult]) -> list[dict[str, Any]]:
+    return [_check_to_dict(r) for r in results]
 
 
 def _make_report(*, run_id: str, repo_revision: str, results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -290,13 +288,24 @@ def _artifact_by_storage_ref(artifacts: list[object], storage_ref: str) -> list[
     return matches
 
 
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
 def _inject_or_verify_snapshot_indexes(
     *,
     repo_root: Path,
     manifest: dict[str, Any],
     locked_spec_path: Path,
     gate_q_verdict_path: Path,
-) -> tuple[dict[str, Any], list[CheckResult]]:
+) -> tuple[dict[str, Any], CheckResult]:
     """Ensure required R-snapshot indexing entries exist and match bytes.
 
     Missing entries are injected. Hash mismatches / duplicates are FAIL (fail-closed).
@@ -308,16 +317,14 @@ def _inject_or_verify_snapshot_indexes(
     if not isinstance(artifacts, list):
         return (
             manifest,
-            [
-                CheckResult(
-                    check_id="R-SNAPSHOT-INDEX-001",
-                    status="FAIL",
-                    category="FR-INVARIANT-FAILED",
-                    message="EvidenceManifest.artifacts missing/invalid; cannot enforce R-snapshot indexing invariant.",
-                    pointers=["#/artifacts"],
-                    remediation_next_instruction="Do fix the EvidenceManifest structure then re-run R.",
-                )
-            ],
+            CheckResult(
+                check_id="R-SNAPSHOT-INDEX-001",
+                status="FAIL",
+                category="FR-INVARIANT-FAILED",
+                message="EvidenceManifest.artifacts missing/invalid; cannot enforce R-snapshot indexing invariant.",
+                pointers=["#/artifacts"],
+                remediation_next_instruction="Do fix the EvidenceManifest structure then re-run R.",
+            ),
         )
 
     try:
@@ -328,16 +335,14 @@ def _inject_or_verify_snapshot_indexes(
     except Exception as e:
         return (
             manifest,
-            [
-                CheckResult(
-                    check_id="R-SNAPSHOT-INDEX-001",
-                    status="FAIL",
-                    category="FR-INVARIANT-FAILED",
-                    message=f"Failed to compute snapshot indexing hashes/paths: {e}",
-                    pointers=[],
-                    remediation_next_instruction="Do fix the input paths/files so they can be read and normalized, then re-run R.",
-                )
-            ],
+            CheckResult(
+                check_id="R-SNAPSHOT-INDEX-001",
+                status="FAIL",
+                category="FR-INVARIANT-FAILED",
+                message=f"Failed to compute snapshot indexing hashes/paths: {e}",
+                pointers=[],
+                remediation_next_instruction="Do fix the input paths/files so they can be read and normalized, then re-run R.",
+            ),
         )
 
     required = [
@@ -415,7 +420,118 @@ def _inject_or_verify_snapshot_indexes(
         else ("", "")
     )
     manifest["artifacts"] = artifacts
-    return manifest, failures
+    if failures:
+        messages = [str(f.message).strip() for f in failures if isinstance(f.message, str) and str(f.message).strip()]
+        pointers = _dedupe_preserve_order(
+            [p for f in failures for p in (f.pointers if isinstance(f.pointers, list) else []) if isinstance(p, str) and p]
+        )
+        remediation = next(
+            (
+                str(f.remediation_next_instruction).strip()
+                for f in failures
+                if isinstance(f.remediation_next_instruction, str) and str(f.remediation_next_instruction).strip()
+            ),
+            "Do fix the R-snapshot indexing invariant violations then re-run R.",
+        )
+        return (
+            manifest,
+            CheckResult(
+                check_id="R-SNAPSHOT-INDEX-001",
+                status="FAIL",
+                category="FR-INVARIANT-FAILED",
+                message=" | ".join(messages) if messages else "R-snapshot indexing invariant failed.",
+                pointers=pointers,
+                remediation_next_instruction=remediation,
+            ),
+        )
+    return (
+        manifest,
+        CheckResult(
+            check_id="R-SNAPSHOT-INDEX-001",
+            status="PASS",
+            category=None,
+            message="R-snapshot indexing invariant satisfied for LockedSpec and GateVerdict(Q).",
+            pointers=[locked_sr, q_sr],
+            remediation_next_instruction=None,
+        ),
+    )
+
+
+def _protocol_identity_check_result(
+    *,
+    locked_spec: dict[str, Any],
+    protocol: ProtocolContext,
+) -> CheckResult:
+    result = verify_protocol_identity(
+        locked_spec=locked_spec,
+        active_pack_id=protocol.pack_id,
+        active_manifest_sha256=protocol.manifest_sha256,
+        active_pack_name=protocol.pack_name,
+        gate_id="R",
+    )
+    if result is not None:
+        return result
+    return CheckResult(
+        check_id="PROTOCOL-IDENTITY-001",
+        status="PASS",
+        category=None,
+        message="Protocol identity matches LockedSpec.protocol_pack.",
+        pointers=["LockedSpec.protocol_pack"],
+        remediation_next_instruction=None,
+    )
+
+
+def _overlay_preflight_result(
+    *,
+    overlay_manifest_path: Path,
+    repo_root: Path,
+    protocol: ProtocolContext,
+    evidence_manifest: dict[str, Any],
+    policy_payload_schema: dict[str, Any],
+    evidence_manifest_path: Path,
+) -> CheckResult:
+    overlay_failure = evaluate_overlay_requirements(
+        overlay_manifest_path=overlay_manifest_path,
+        repo_root=repo_root,
+        active_pack_name=protocol.pack_name,
+        active_pack_id=protocol.pack_id,
+        active_manifest_sha256=protocol.manifest_sha256,
+        evidence_manifest=evidence_manifest,
+        policy_payload_schema=policy_payload_schema,
+    )
+    if overlay_failure is None:
+        return CheckResult(
+            check_id="R-OVERLAY-001",
+            status="PASS",
+            category=None,
+            message="Overlay preflight requirements satisfied.",
+            pointers=[
+                safe_relpath(repo_root, overlay_manifest_path),
+                safe_relpath(repo_root, evidence_manifest_path),
+            ],
+            remediation_next_instruction=None,
+        )
+
+    category = "FR-SCHEMA-ARTIFACT-INVALID"
+    remediation = "Do fix overlay manifest/policy report schema violations then re-run R."
+    if overlay_failure.reason == "pin_mismatch":
+        category = "FR-PROTOCOL-IDENTITY-MISMATCH"
+        remediation = "Do ensure overlay belgi_protocol_pack_pin matches the active protocol pack identity then re-run R."
+    elif overlay_failure.reason == "missing_required_check":
+        category = "FR-INVARIANT-FAILED"
+        remediation = "Do produce schema-valid policy_report evidence where required overlay checks pass then re-run R."
+
+    return CheckResult(
+        check_id="R-OVERLAY-001",
+        status="FAIL",
+        category=category,
+        message=overlay_failure.message,
+        pointers=[
+            safe_relpath(repo_root, overlay_manifest_path),
+            safe_relpath(repo_root, evidence_manifest_path),
+        ],
+        remediation_next_instruction=remediation,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -485,9 +601,10 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(evidence, dict):
             raise ValueError("EvidenceManifest must be a JSON object")
 
+        protocol_identity_result = _protocol_identity_check_result(locked_spec=locked, protocol=protocol)
+
         # Enforce/inject required snapshot indexing before running checks.
-        preflight_fails: list[CheckResult] = []
-        evidence, preflight_fails = _inject_or_verify_snapshot_indexes(
+        evidence, snapshot_preflight_result = _inject_or_verify_snapshot_indexes(
             repo_root=repo_root,
             manifest=evidence,
             locked_spec_path=locked_spec_path,
@@ -498,18 +615,29 @@ def main(argv: list[str] | None = None) -> int:
             _write_json_deterministic(r_snapshot_manifest_path, evidence)
             snapshot_written_ok = True
         except Exception as e:
-            preflight_fails.append(
-                CheckResult(
+            write_fail = CheckResult(
+                check_id="R-SNAPSHOT-INDEX-001",
+                status="FAIL",
+                category="FR-INVARIANT-FAILED",
+                message=f"Failed to write R-snapshot EvidenceManifest: {e}",
+                pointers=[],
+                remediation_next_instruction=(
+                    "Do fix filesystem permissions/paths so Gate R can write the R-snapshot manifest, then re-run R."
+                ),
+            )
+            if snapshot_preflight_result.status == "FAIL":
+                snapshot_preflight_result = CheckResult(
                     check_id="R-SNAPSHOT-INDEX-001",
                     status="FAIL",
                     category="FR-INVARIANT-FAILED",
-                    message=f"Failed to write R-snapshot EvidenceManifest: {e}",
-                    pointers=[],
+                    message=f"{snapshot_preflight_result.message} | {write_fail.message}",
+                    pointers=_dedupe_preserve_order(snapshot_preflight_result.pointers + write_fail.pointers),
                     remediation_next_instruction=(
-                        "Do fix filesystem permissions/paths so Gate R can write the R-snapshot manifest, then re-run R."
+                        write_fail.remediation_next_instruction or snapshot_preflight_result.remediation_next_instruction
                     ),
                 )
-            )
+            else:
+                snapshot_preflight_result = write_fail
 
         # Bind GateVerdict(R).evidence_manifest_ref to the snapshot manifest only if write succeeded.
         if snapshot_written_ok:
@@ -552,42 +680,16 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(test_payload_schema, dict):
             raise ValueError("TestReportPayload schema must be a JSON object")
 
+        overlay_preflight_result: CheckResult | None = None
         if overlay_manifest_path is not None:
-            overlay_failure = evaluate_overlay_requirements(
+            overlay_preflight_result = _overlay_preflight_result(
                 overlay_manifest_path=overlay_manifest_path,
                 repo_root=repo_root,
-                active_pack_name=protocol.pack_name,
-                active_pack_id=protocol.pack_id,
-                active_manifest_sha256=protocol.manifest_sha256,
+                protocol=protocol,
                 evidence_manifest=evidence,
                 policy_payload_schema=policy_payload_schema,
+                evidence_manifest_path=evidence_manifest_path,
             )
-            if overlay_failure is not None:
-                category = "FR-SCHEMA-ARTIFACT-INVALID"
-                remediation = "Do fix overlay manifest/policy report schema violations then re-run R."
-                if overlay_failure.reason == "pin_mismatch":
-                    category = "FR-PROTOCOL-IDENTITY-MISMATCH"
-                    remediation = (
-                        "Do ensure overlay belgi_protocol_pack_pin matches the active protocol pack identity then re-run R."
-                    )
-                elif overlay_failure.reason == "missing_required_check":
-                    category = "FR-INVARIANT-FAILED"
-                    remediation = (
-                        "Do produce schema-valid policy_report evidence where required overlay checks pass then re-run R."
-                    )
-                preflight_fails.append(
-                    CheckResult(
-                        check_id="R-OVERLAY-001",
-                        status="FAIL",
-                        category=category,
-                        message=overlay_failure.message,
-                        pointers=[
-                            safe_relpath(repo_root, overlay_manifest_path),
-                            safe_relpath(repo_root, evidence_manifest_path),
-                        ],
-                        remediation_next_instruction=remediation,
-                    )
-                )
 
         gate_verdict_obj = load_json(gate_verdict_path) if gate_verdict_path else None
         if gate_verdict_obj is not None and not isinstance(gate_verdict_obj, dict):
@@ -640,29 +742,17 @@ def main(argv: list[str] | None = None) -> int:
             required_test_report_id=str(args.required_test_report_id),
         )
 
-        grouped: list[list[CheckResult]] = []
-        linear: list[CheckResult] = []
-
-        if preflight_fails:
-            grouped.append(list(preflight_fails))
-            linear.extend(preflight_fails)
+        ordered_results: list[CheckResult] = [
+            protocol_identity_result,
+            snapshot_preflight_result,
+        ]
+        if overlay_preflight_result is not None:
+            ordered_results.append(overlay_preflight_result)
         for run_check in get_checks():
             batch = run_check(ctx)
-            grouped.append(batch)
-            linear.extend(batch)
+            ordered_results.extend(batch)
 
-        # Verify protocol identity (fail-closed on mismatch)
-        proto_check = verify_protocol_identity(
-            locked_spec=locked,
-            active_pack_id=protocol.pack_id,
-            active_manifest_sha256=protocol.manifest_sha256,
-            active_pack_name=protocol.pack_name,
-            gate_id="R",
-        )
-        if proto_check is not None:
-            linear.insert(0, proto_check)
-
-        results = _flatten(grouped)
+        results = _serialize_results(ordered_results)
 
         report = _make_report(run_id=run_id, repo_revision=evaluated_commit_sha, results=results)
         _write_json_deterministic(out_path, report)
@@ -674,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(gate_schema, dict):
             raise ValueError("GateVerdict schema must be a JSON object")
 
-        first = _first_fail(linear)
+        first = _first_fail(ordered_results)
         if first is None:
             verdict_obj: dict[str, Any] = {
                 "schema_version": "1.0.0",

@@ -74,11 +74,13 @@ Exit codes (deterministic):
 
 Deterministic selection rule for `GateVerdict.failure_category`:
 - Set it to the category of the **first failing check** in the ordered check list:
-  - PROTOCOL-IDENTITY-001 → R0.tier_parse → R0.evidence_sufficiency → R0.command_log_mode → R0.attestation_presence →
+  - PROTOCOL-IDENTITY-001 → R-SNAPSHOT-INDEX-001 → R-OVERLAY-001 (only when `--overlay` is supplied) →
+    R0.tier_parse → R0.evidence_sufficiency → R0.command_log_mode → R0.attestation_presence →
     R1 → R2 → R3 → R-DOC-001 → R4 → R5 → R6 → R7 → R8.
 
 **Primary-cause contract (hardening note):**
 - The **ordered check list** is the verifier execution order, serialized as an ordered array in the canonical verifier report: `verify_report.json.results[]`.
+- The report serialization MUST include each executed preflight exactly once in that same order (`PROTOCOL-IDENTITY-001`, `R-SNAPSHOT-INDEX-001`, and conditional `R-OVERLAY-001`).
 - Canonical source of truth for that order is `chain/logic/r_checks/registry.py` (the verifier MUST emit results in that order).
 - Consumers MUST treat the **first FAIL** entry in `results[]` as the primary cause and MUST NOT re-sort failures.
 - If a verifier output does not include an ordered `results[]` list, any tool enforcing primary-cause selection MUST **FAIL closed** (no guessing from unordered sets).

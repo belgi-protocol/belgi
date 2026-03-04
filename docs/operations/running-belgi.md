@@ -434,7 +434,11 @@ Deterministic verifier (MUST-level enforcement):
 
 Verifier ordered-results contract (hardening note):
 - `chain/gate_r_verify.py` MUST emit an ordered `results[]` list in its report.
-- “Ordered” means: the array order is the execution order from `chain/logic/r_checks/registry.py` and is the canonical source of truth for primary-cause selection.
+- “Ordered” means:
+  - `PROTOCOL-IDENTITY-001` first
+  - `R-SNAPSHOT-INDEX-001` second
+  - `R-OVERLAY-001` third only when `--overlay` is supplied
+  - then the Gate R check registry order (`R0.*`, `R1`, `R2`, `R3`, `R-DOC-001`, `R4`, `R5`, `R6`, `R7`, `R8`)
 - Primary cause is defined as the **first FAIL** entry in that ordered `results[]` list.
 - Any tooling that enforces primary-cause selection across fixtures (e.g., `tools/sweep.py fixtures-qr`) MUST **FAIL closed** if the verifier output lacks an ordered `results[]` list.
 

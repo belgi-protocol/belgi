@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.3 — 2026-03-04
+
+### Summary
+Patch release hardening Gate R ordered-results serialization so report ordering and primary-cause selection cannot diverge.
+
+### Changed
+- Gate R now serializes `PROTOCOL-IDENTITY-001` into `verify_report.results[]` on every run (PASS/FAIL), with fixed first position.
+- Gate R now serializes `R-SNAPSHOT-INDEX-001` on every run and keeps it in fixed second position.
+- Gate R now serializes `R-OVERLAY-001` in fixed third position when `--overlay` is supplied, and omits it when overlay is not supplied.
+- Gate R verdict primary-cause selection now uses the same ordered result sequence that is serialized into `verify_report.results[]`.
+- Gate R documentation now states the ordered-results contract including preflight conditionality.
+
+### Notes
+- This tightens consumer-visible `results[]` ordering semantics for Gate R; downstream tooling must treat `results[]` as the canonical primary-cause source.
+- No tier enablement changes, no new evidence kinds, and no producer exit-code behavior changes.
+
 ## 1.4.2 — 2026-03-03
 
 ### Summary
