@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.4 — 2026-03-04
+
+### Summary
+Patch release repairing Gate R category ownership boundaries and waiver-scope wording alignment.
+
+### Changed
+- R4 no longer pre-validates `policy.supplychain` and `policy.adversarial_scan`, so required report ownership for missing/duplicate/invalid cases is now deterministically handled by R7/R8.
+- Gate R and waiver operations docs now state R3 waiver scope matching as normalized repo-relative prefix semantics, not substring semantics.
+- Added regression locks for R7/R8 ownership and for substring-vs-prefix waiver scope behavior.
+- Added a minimal wording guard test to prevent reintroduction of substring semantics in normative matching text.
+
+### Notes
+- This is a contract-repair patch that may change primary-cause category observed by consumers previously relying on R4 preemption.
+- No tier enablement changes, no schema changes, and no producer exit-code behavior changes.
+
 ## 1.4.3 — 2026-03-04
 
 ### Summary

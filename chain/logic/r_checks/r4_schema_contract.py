@@ -12,6 +12,11 @@ from chain.logic.base import CheckResult, find_artifacts_by_kind_id
 
 from .context import RCheckContext
 
+_DEDICATED_POLICY_REPORT_OWNERS: set[str] = {
+    "policy.supplychain",        # R7 owns deterministic missing/invalid categorization
+    "policy.adversarial_scan",   # R8 owns deterministic missing/invalid categorization
+}
+
 
 def _load_schema(ctx: RCheckContext, rel: str) -> dict[str, Any]:
     obj = ctx.protocol.read_json(rel)
@@ -369,6 +374,8 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
     # Semantic pass/fail is enforced by dedicated checks (R1/R7/R8/R5) to preserve
     # deterministic failure categorization.
     for report_id in ctx.required_policy_report_ids:
+        if report_id in _DEDICATED_POLICY_REPORT_OWNERS:
+            continue
 
         art, err = _require_exactly_one(ctx, "policy_report", report_id)  # uniqueness enforcement
         if art is None:

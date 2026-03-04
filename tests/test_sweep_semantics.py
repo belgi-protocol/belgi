@@ -199,6 +199,16 @@ def test_cs_protocol_identity_001_fails_when_source_is_in_identity_tuple(
     assert "gates/GATE_Q.md:1" in res.remediation
 
 
+def test_waiver_scope_semantics_docs_guard_prefix_not_substring() -> None:
+    gate_r_text = (REPO_ROOT / "gates" / "GATE_R.md").read_text(encoding="utf-8", errors="strict")
+    waivers_text = (REPO_ROOT / "docs" / "operations" / "waivers.md").read_text(encoding="utf-8", errors="strict")
+
+    assert "literal substring (v1 deterministic scope match)" not in gate_r_text
+    assert "`scope` contains the offending path as a literal substring." not in waivers_text
+    assert "`scope` is a normalized repo-relative prefix" in gate_r_text
+    assert "`scope` is a normalized repo-relative prefix." in waivers_text
+
+
 def test_cs_can_005_passes_when_package_mirror_matches_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

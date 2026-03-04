@@ -461,6 +461,75 @@ class TestR3WaiverPathJail:
         assert exc.value.idx == 0
         assert exc.value.storage_ref == "waivers\\waiver-001.json"
 
+    def test_r3_relaxed_mode_does_not_accept_substring_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Relaxed mode must require normalized prefix match; literal substring is not enough."""
+        from types import SimpleNamespace
+        from belgi.core.hash import sha256_bytes
+        from chain.logic.r_checks import r3_policy_invariants as r3
+
+        (tmp_path / "waivers").mkdir()
+        waiver_ref = "waivers/waiver-substring.json"
+        waiver_doc = {
+            "schema_version": "1.0.0",
+            "waiver_id": "waiver-substring",
+            "gate_id": "R",
+            "rule_id": "R3.forbidden_paths",
+            "scope": "private",
+            "justification": "Controlled test waiver.",
+            "mitigation": "Tighten scope.",
+            "approver": "human:test@example.com",
+            "created_at": "2024-01-01T00:00:00Z",
+            "expires_at": "2099-01-01T00:00:00Z",
+            "audit_trail_ref": {"id": "audit-001", "storage_ref": "audit/log.json"},
+            "status": "active",
+        }
+        (tmp_path / waiver_ref).write_text(json.dumps(waiver_doc), encoding="utf-8", errors="strict", newline="\n")
+
+        diff_path = tmp_path / "repo.diff.patch"
+        diff_bytes = b"diff --git a/src/private/file.txt b/src/private/file.txt\n"
+        diff_path.write_bytes(diff_bytes)
+
+        class _StubProtocol:
+            def __init__(self, root: Path) -> None:
+                self._root = root
+
+            def read_json(self, rel: str) -> dict:
+                return load_json(self._root / rel)
+
+        ctx = SimpleNamespace(
+            repo_root=tmp_path,
+            protocol=_StubProtocol(REPO_ROOT),
+            locked_spec_path=tmp_path / "LockedSpec.json",
+            evidence_manifest_path=tmp_path / "EvidenceManifest.json",
+            gate_verdict_path=None,
+            locked_spec={
+                "constraints": {"allowed_paths": ["src"], "forbidden_paths": ["src/private"]},
+                "waivers_applied": [waiver_ref],
+            },
+            evidence_manifest={
+                "artifacts": [{"kind": "diff", "storage_ref": "repo.diff.patch", "hash": sha256_bytes(diff_bytes)}]
+            },
+            gate_verdict=None,
+            tier_params={
+                "scope_budgets.forbidden_paths_enforcement": "relaxed",
+                "waiver_policy.allowed": True,
+            },
+            evaluated_revision="HEAD",
+            upstream_commit_sha="HEAD~1",
+            policy_payload_schema={},
+            test_payload_schema={},
+            required_policy_report_ids=[],
+            required_test_report_id="",
+        )
+
+        monkeypatch.setattr(r3, "git_changed_paths", lambda *_args, **_kwargs: ["src/private/file.txt"])
+
+        assert r3._waiver_allows_path(ctx, "src/private/file.txt") is False
+        results = r3.run(ctx)
+        assert len(results) == 1
+        assert results[0].status == "FAIL"
+        assert "no active waiver matches scope" in results[0].message
+
     def test_r3_waiver_invalid_json_fails_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Invalid waiver JSON must be a deterministic FAIL with index pointer."""
         from types import SimpleNamespace

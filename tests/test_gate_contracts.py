@@ -1752,6 +1752,25 @@ def _report_results(report_obj: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _first_fail_result(results: list[dict[str, Any]]) -> dict[str, Any]:
+    for row in results:
+        if str(row.get("status")) == "FAIL":
+            return row
+    raise AssertionError("expected at least one FAIL result")
+
+
+def _prepare_r_pass_tier1_fixture_repo(tmp_path: Path) -> dict[str, str]:
+    fixture_dir = Path("policy/fixtures/public/gate_r/r_pass_tier1")
+    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
+    return {
+        "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
+        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
+        "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
+    }
+
+
 def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     """Gate Q MUST emit FQ-PROTOCOL-IDENTITY-MISMATCH on pack_id mismatch."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
@@ -1917,6 +1936,206 @@ def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path)
     failures = gate_verdict.get("failures")
     assert isinstance(failures, list) and failures
     assert failures[0].get("rule_id") == "R-SNAPSHOT-INDEX-001"
+
+
+def test_gate_r_missing_policy_supplychain_is_owned_by_r7(tmp_path: Path) -> None:
+    """Missing policy.supplychain must fail under R7 ownership, not R4 preemption."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+
+    evidence_path = tmp_path / paths["evidence"]
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    evidence["artifacts"] = [
+        row
+        for row in artifacts
+        if not (isinstance(row, dict) and row.get("kind") == "policy_report" and row.get("id") == "policy.supplychain")
+    ]
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = "out/verify_report.r7_missing.json"
+    verdict_rel = "out/GateVerdict.r7_missing.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    report = _read_json(tmp_path / verify_rel)
+    first_fail = _first_fail_result(_report_results(report))
+    assert first_fail.get("check_id") == "R7"
+
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("failure_category") == "FR-SUPPLYCHAIN-SCAN-MISSING"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R7"
+
+
+def test_gate_r_missing_policy_adversarial_scan_is_owned_by_r8(tmp_path: Path) -> None:
+    """Missing policy.adversarial_scan must fail under R8 ownership, not R4 preemption."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+
+    evidence_path = tmp_path / paths["evidence"]
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    evidence["artifacts"] = [
+        row
+        for row in artifacts
+        if not (isinstance(row, dict) and row.get("kind") == "policy_report" and row.get("id") == "policy.adversarial_scan")
+    ]
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = "out/verify_report.r8_missing.json"
+    verdict_rel = "out/GateVerdict.r8_missing.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    report = _read_json(tmp_path / verify_rel)
+    first_fail = _first_fail_result(_report_results(report))
+    assert first_fail.get("check_id") == "R8"
+
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("failure_category") == "FR-ADVERSARIAL-SCAN-MISSING"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R8"
+
+
+@pytest.mark.parametrize(
+    ("report_id", "expected_rule_id"),
+    [
+        ("policy.supplychain", "R7"),
+        ("policy.adversarial_scan", "R8"),
+    ],
+)
+def test_gate_r_duplicate_required_policy_report_is_owned_by_dedicated_check(
+    tmp_path: Path,
+    report_id: str,
+    expected_rule_id: str,
+) -> None:
+    """Duplicate required policy report must fail under R7/R8 with schema-invalid category."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+
+    evidence_path = tmp_path / paths["evidence"]
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    target = next(
+        (
+            row
+            for row in artifacts
+            if isinstance(row, dict) and row.get("kind") == "policy_report" and row.get("id") == report_id
+        ),
+        None,
+    )
+    assert isinstance(target, dict)
+    artifacts.append(dict(target))
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = f"out/verify_report.dup.{expected_rule_id}.json"
+    verdict_rel = f"out/GateVerdict.dup.{expected_rule_id}.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    report = _read_json(tmp_path / verify_rel)
+    first_fail = _first_fail_result(_report_results(report))
+    assert first_fail.get("check_id") == expected_rule_id
+    assert first_fail.get("category") == "FR-SCHEMA-ARTIFACT-INVALID"
+
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("failure_category") == "FR-SCHEMA-ARTIFACT-INVALID"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == expected_rule_id
 
 
 def test_gate_r_overlay_preflight_ordering_and_optional_presence(tmp_path: Path) -> None:

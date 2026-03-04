@@ -156,7 +156,8 @@ Specific deterministic waiver usage in v1:
   - If `forbidden_paths_enforcement == "relaxed"`, a forbidden-path violation is only allowed if there exists an active waiver where:
     - `gate_id == "R"`
     - `rule_id == "R3.forbidden_paths"`
-    - `scope` contains the offending path as a literal substring.
+    - `scope` is a normalized repo-relative prefix.
+    - the offending path matches by canonical prefix semantics (`is_under_prefix`), not by literal substring.
 
 Note: Gate R does not consume SealManifest (Seal occurs after R). Seal inclusion is enforced at sealing/replay time.
 
