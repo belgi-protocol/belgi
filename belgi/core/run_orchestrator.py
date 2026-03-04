@@ -828,7 +828,7 @@ def orchestrate_chain_run(
         deterministic=True,
         run_id=run_key,
     )
-    if rc_adv not in (0, 2):
+    if rc_adv != 0:
         raise ValueError(f"adversarial scan failed (rc={rc_adv})")
     adv_policy_obj = _load_json_object(chain_repo_dir / rel_policy_adv, label="policy.adversarial_scan.json")
     findings_count_raw = adv_policy_obj.get("finding_count")

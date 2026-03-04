@@ -292,7 +292,7 @@ class TestR8AdversarialScanIntegration:
             deterministic=True,
             run_id="run-test-001",
         )
-        assert rc == 2
+        assert rc == 0
 
         _assert_policy_report_schema_valid(repo_root=tmp_repo, report_path=out_path)
 
@@ -306,7 +306,7 @@ class TestR8AdversarialScanIntegration:
             tier_id="tier-1",
             command_log_mode="structured",
             findings_mode="fail",
-            command_exit_code=2,
+            command_exit_code=0,
         )
 
         results = r8.run(ctx)
@@ -315,6 +315,45 @@ class TestR8AdversarialScanIntegration:
         assert results[0].category == "FR-ADVERSARIAL-DIFF-SUSPECT"
         assert "ADV-EXEC-001" in results[0].message
         assert "ADV-PICKLE-002" in results[0].message
+
+    def test_r8_fails_when_command_exit_code_is_nonzero(self, tmp_path: Path) -> None:
+        tmp_repo = tmp_path / "repo"
+        tmp_repo.mkdir()
+        _init_git_repo(tmp_repo)
+
+        _commit_file(
+            tmp_repo,
+            "src/bad.py",
+            "exec('1')\n",
+            "init",
+        )
+
+        from belgi.commands.adversarial_scan import run_adversarial_scan
+        from chain.logic.r_checks import r8_adversarial_scan as r8
+
+        out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
+        rc = run_adversarial_scan(
+            repo=tmp_repo,
+            out_path=out_path,
+            deterministic=True,
+            run_id="run-test-001",
+        )
+        assert rc == 0
+
+        ctx = _build_ctx_for_policy_report(
+            tmp_repo=tmp_repo,
+            report_storage_ref="out/policy-adversarial-scan.json",
+            report_id="policy.adversarial_scan",
+            required_subcommand="adversarial-scan",
+            tier_id="tier-1",
+            command_log_mode="structured",
+            findings_mode="fail",
+            command_exit_code=1,
+        )
+        results = r8.run(ctx)
+        assert len(results) == 1
+        assert results[0].status == "FAIL"
+        assert results[0].category == "FR-COMMAND-FAILED"
 
     def test_tier0_passes_with_findings_and_structured_signal(self, tmp_path: Path) -> None:
         tmp_repo = tmp_path / "repo"
@@ -327,7 +366,7 @@ class TestR8AdversarialScanIntegration:
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
         rc = run_adversarial_scan(repo=tmp_repo, out_path=out_path, deterministic=True, run_id="run-test-001")
-        assert rc == 2
+        assert rc == 0
 
         payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
         assert payload["findings_present"] is True
@@ -358,7 +397,7 @@ class TestR8AdversarialScanIntegration:
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
         rc = run_adversarial_scan(repo=tmp_repo, out_path=out_path, deterministic=True, run_id="run-test-001")
-        assert rc == 2
+        assert rc == 0
 
         waiver_ref = _write_waiver(
             tmp_repo=tmp_repo,
@@ -376,7 +415,7 @@ class TestR8AdversarialScanIntegration:
             tier_id="tier-1",
             command_log_mode="structured",
             findings_mode="fail",
-            command_exit_code=2,
+            command_exit_code=0,
             waivers_applied=[waiver_ref],
         )
         results = r8.run(ctx)
@@ -395,7 +434,7 @@ class TestR8AdversarialScanIntegration:
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
         rc = run_adversarial_scan(repo=tmp_repo, out_path=out_path, deterministic=True, run_id="run-test-001")
-        assert rc == 2
+        assert rc == 0
 
         waiver_ref = _write_waiver(
             tmp_repo=tmp_repo,
@@ -413,7 +452,7 @@ class TestR8AdversarialScanIntegration:
             tier_id="tier-1",
             command_log_mode="structured",
             findings_mode="fail",
-            command_exit_code=2,
+            command_exit_code=0,
             waivers_applied=[waiver_ref],
         )
         results = r8.run(ctx)

@@ -46,8 +46,7 @@ def _command_ok(ctx: RCheckContext, subcommand: str) -> bool:
             if argv[0] != "belgi" or argv[1] != subcommand:
                 continue
             exit_code = entry.get("exit_code")
-            if isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code in (0, 2):
-                # rc=2 is deterministic "findings present" for adversarial-scan, not command execution failure.
+            if isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code == 0:
                 return True
         return False
 
