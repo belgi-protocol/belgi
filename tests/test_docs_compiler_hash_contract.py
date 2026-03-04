@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib
+import json
 import shutil
 import sys
+from importlib.resources import files as resource_files
 from pathlib import Path
 
 import pytest
@@ -55,6 +57,16 @@ def _fixture_bundled_files(*, manifest_entry_sha: str) -> list[dict[str, object]
             "media_type": "text/markdown; charset=utf-8",
         },
     ]
+
+
+def _locked_protocol_identity(protocol: object) -> dict[str, object]:
+    return {
+        "protocol_pack": {
+            "pack_id": str(getattr(protocol, "pack_id")),
+            "manifest_sha256": str(getattr(protocol, "manifest_sha256")),
+            "pack_name": str(getattr(protocol, "pack_name")),
+        }
+    }
 
 
 def test_c3_bundle_sha256_fixture_contract_is_sorted_and_non_circular() -> None:
@@ -120,9 +132,11 @@ def test_docs_compiler_template_hash_contract_guard() -> None:
 
 def test_c3_source_resolution_materializes_protocol_bound_canonicals_without_staged_dir(tmp_path: Path) -> None:
     protocol = _get_builtin_protocol_context_dynamic()
+    locked = _locked_protocol_identity(protocol)
     source_root, source_tmp = c3_docs._resolve_c3_source_root(
         repo_root=tmp_path,
         protocol=protocol,
+        locked_spec=locked,
         out_bundle_dir_path=tmp_path / "out" / "bundle",
     )
     try:
@@ -143,6 +157,7 @@ def test_c3_source_resolution_fail_closed_has_remediation_when_materialization_u
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     protocol = _get_builtin_protocol_context_dynamic()
+    locked = _locked_protocol_identity(protocol)
 
     def _boom(*, protocol: object, target_root: Path) -> None:
         raise c3_docs._UserInputError("simulated missing canonical sources")
@@ -152,8 +167,47 @@ def test_c3_source_resolution_fail_closed_has_remediation_when_materialization_u
         c3_docs._resolve_c3_source_root(
             repo_root=tmp_path,
             protocol=protocol,
+            locked_spec=locked,
             out_bundle_dir_path=tmp_path / "out" / "bundle",
         )
     msg = str(exc.value)
     assert ".belgi/engine/c3_canonicals" in msg
     assert "remediation.next_instruction=" in msg
+
+
+def test_c3_source_resolution_rebuilds_staged_cache_on_identity_mismatch(tmp_path: Path) -> None:
+    protocol = _get_builtin_protocol_context_dynamic()
+    locked = _locked_protocol_identity(protocol)
+    staged_root = tmp_path / ".belgi" / "engine" / "c3_canonicals"
+    staged_root.mkdir(parents=True, exist_ok=True)
+    (staged_root / "terminology.md").write_text("STALE CACHE\n", encoding="utf-8", errors="strict")
+    stale_meta = {
+        "protocol_pack_id": "0" * 64,
+        "protocol_pack_manifest_sha256": "1" * 64,
+        "protocol_pack_name": "stale-pack",
+    }
+    (staged_root / ".cache_meta.json").write_text(
+        json.dumps(stale_meta, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+
+    source_root, source_tmp = c3_docs._resolve_c3_source_root(
+        repo_root=tmp_path,
+        protocol=protocol,
+        locked_spec=locked,
+        out_bundle_dir_path=tmp_path / "out" / "bundle",
+    )
+    assert source_tmp is None
+    assert source_root == staged_root
+
+    expected_meta = {
+        "protocol_pack_id": str(getattr(protocol, "pack_id")),
+        "protocol_pack_manifest_sha256": str(getattr(protocol, "manifest_sha256")),
+        "protocol_pack_name": str(getattr(protocol, "pack_name")),
+    }
+    rebuilt_meta = json.loads((staged_root / ".cache_meta.json").read_text(encoding="utf-8", errors="strict"))
+    assert rebuilt_meta == expected_meta
+
+    builtin_term = resource_files("belgi").joinpath("canonicals", "terminology.md").read_bytes()
+    assert (staged_root / "terminology.md").read_bytes() == builtin_term

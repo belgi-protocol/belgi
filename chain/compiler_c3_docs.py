@@ -34,6 +34,7 @@ C3_PROTOCOL_IDENTITY_REMEDIATION_POINTER = "CANONICALS.md#protocol-pack-identity
 BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL = "belgi/templates/PromptBundle.blocks.md"
 BUILTIN_DOCS_TEMPLATE_REPO_REL = "belgi/templates/DocsCompiler.template.md"
 ENGINE_CANONICALS_REPO_REL = ".belgi/engine/c3_canonicals"
+C3_CANONICAL_CACHE_META_FILENAME = ".cache_meta.json"
 
 class _UserInputError(RuntimeError):
     pass
@@ -88,19 +89,101 @@ def _materialize_protocol_bound_c3_source_root(*, protocol: ProtocolContext, tar
         raise _UserInputError(f"unable to materialize protocol-bound C3 canonical source: {e}") from e
 
 
+def _expected_c3_cache_meta_from_locked(*, locked_spec: dict[str, Any]) -> dict[str, str]:
+    protocol_pack = locked_spec.get("protocol_pack")
+    if not isinstance(protocol_pack, dict):
+        raise _UserInputError("LockedSpec.protocol_pack missing/invalid for C3 canonical cache identity")
+    pack_id = protocol_pack.get("pack_id")
+    manifest_sha256 = protocol_pack.get("manifest_sha256")
+    pack_name = protocol_pack.get("pack_name")
+    if not isinstance(pack_id, str) or not pack_id.strip():
+        raise _UserInputError("LockedSpec.protocol_pack.pack_id missing/invalid for C3 canonical cache identity")
+    if not isinstance(manifest_sha256, str) or not manifest_sha256.strip():
+        raise _UserInputError("LockedSpec.protocol_pack.manifest_sha256 missing/invalid for C3 canonical cache identity")
+    if not isinstance(pack_name, str) or not pack_name.strip():
+        raise _UserInputError("LockedSpec.protocol_pack.pack_name missing/invalid for C3 canonical cache identity")
+    return {
+        "protocol_pack_id": pack_id.strip(),
+        "protocol_pack_manifest_sha256": manifest_sha256.strip(),
+        "protocol_pack_name": pack_name.strip(),
+    }
+
+
+def _load_c3_cache_meta(*, staged_root: Path) -> dict[str, str] | None:
+    meta_path = staged_root / C3_CANONICAL_CACHE_META_FILENAME
+    if not meta_path.exists():
+        return None
+    if meta_path.is_symlink() or not meta_path.is_file():
+        return None
+    try:
+        obj = load_json(meta_path)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    out: dict[str, str] = {}
+    for k in ("protocol_pack_id", "protocol_pack_manifest_sha256", "protocol_pack_name"):
+        v = obj.get(k)
+        if not isinstance(v, str) or not v.strip():
+            return None
+        out[k] = v.strip()
+    return out
+
+
+def _cache_meta_matches(*, cached: dict[str, str] | None, expected: dict[str, str]) -> bool:
+    if cached is None:
+        return False
+    for k, v in expected.items():
+        if cached.get(k) != v:
+            return False
+    return True
+
+
+def _rebuild_staged_c3_cache(
+    *,
+    staged_root: Path,
+    protocol: ProtocolContext,
+    expected_meta: dict[str, str],
+) -> None:
+    if staged_root.exists():
+        if staged_root.is_symlink() or not staged_root.is_dir():
+            raise _UserInputError(f"expected directory but found file: {ENGINE_CANONICALS_REPO_REL}")
+        _rmtree_retry(staged_root)
+    _materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=staged_root)
+    _atomic_write_json(staged_root / C3_CANONICAL_CACHE_META_FILENAME, expected_meta)
+
+
 def _resolve_c3_source_root(
     *,
     repo_root: Path,
     protocol: ProtocolContext,
+    locked_spec: dict[str, Any],
     out_bundle_dir_path: Path,
 ) -> tuple[Path, Path | None]:
-    try:
-        staged = _resolve_repo_path(repo_root, ENGINE_CANONICALS_REPO_REL, must_exist=True, must_be_file=False)
-        if not staged.is_dir():
+    staged = _resolve_repo_path(repo_root, ENGINE_CANONICALS_REPO_REL, must_exist=False, must_be_file=None)
+    expected_cache_meta = _expected_c3_cache_meta_from_locked(locked_spec=locked_spec)
+
+    if staged.exists():
+        if staged.is_symlink() or not staged.is_dir():
             raise _UserInputError(f"expected directory but found file: {ENGINE_CANONICALS_REPO_REL}")
+        cached_meta = _load_c3_cache_meta(staged_root=staged)
+        if _cache_meta_matches(cached=cached_meta, expected=expected_cache_meta):
+            return staged, None
+        try:
+            _rebuild_staged_c3_cache(
+                staged_root=staged,
+                protocol=protocol,
+                expected_meta=expected_cache_meta,
+            )
+        except _UserInputError as e:
+            raise _UserInputError(
+                "C3 canonical cache rebuild failed after protocol-pack identity mismatch under "
+                f"{ENGINE_CANONICALS_REPO_REL}: {e}. "
+                "remediation.next_instruction=Do ensure BELGI builtin canonicals and active protocol pack content are "
+                "available, then re-run C3."
+            ) from e
         return staged, None
-    except _UserInputError:
-        pass
 
     materialized = out_bundle_dir_path.with_name(out_bundle_dir_path.name + ".tmp.c3canon")
     if materialized.exists():
@@ -736,11 +819,6 @@ def main() -> int:
 
         # Load protocol context (pack-truth for schemas)
         protocol = _load_protocol_context(repo_root=repo_root, args=args)
-        source_root, source_tmp_root = _resolve_c3_source_root(
-            repo_root=repo_root,
-            protocol=protocol,
-            out_bundle_dir_path=out_bundle_dir_path,
-        )
         locked_schema = _load_schema_from_protocol(protocol, "schemas/LockedSpec.schema.json")
         gate_schema = _load_schema_from_protocol(protocol, "schemas/GateVerdict.schema.json")
         em_schema = _load_schema_from_protocol(protocol, "schemas/EvidenceManifest.schema.json")
@@ -754,6 +832,12 @@ def main() -> int:
             raise _UserInputError("LockedSpec schema validation failed:\n" + _format_schema_errors(errs))
 
         _verify_protocol_identity_or_fail(locked, protocol)
+        source_root, source_tmp_root = _resolve_c3_source_root(
+            repo_root=repo_root,
+            protocol=protocol,
+            locked_spec=locked,
+            out_bundle_dir_path=out_bundle_dir_path,
+        )
 
         locked_profile: str | None = None
         pub_intent = locked.get("publication_intent")

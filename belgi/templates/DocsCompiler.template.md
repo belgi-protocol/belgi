@@ -56,7 +56,8 @@ Any other file types are ignored by default.
 C3 canonical source discovery MUST NOT depend on orchestrator-only preparation.
 
 Deterministic resolution order:
-1) If `.belgi/engine/c3_canonicals` exists, C3 MAY use it as a cache/staging optimization.
+1) If `.belgi/engine/c3_canonicals` exists with matching protocol-pack identity metadata (`pack_id`, `manifest_sha256`, `pack_name`), C3 MAY use it as an optional cache/staging optimization.
+1a) If staged metadata is missing or mismatched, C3 MUST ignore the staged cache, rebuild canonicals deterministically from active sources, and refresh cache metadata.
 2) Otherwise, C3 MUST materialize source canonicals from BELGI bundled canonicals plus active protocol pack content (`gates/`, `tiers/`, `schemas/`).
 
 Fail-closed requirement:
@@ -180,6 +181,8 @@ Per-file normalized output hashes are published via `bundle/docs_bundle_manifest
 `prompt_block_hashes` contract for C3 input validation:
 - selected-block cardinality only (based on run `tier_id`),
 - all selected blocks MUST have valid sha256 entries,
+- Each hash MUST equal `sha256(C1_rendered_block_bytes)` for the selected prompt blocks.
+- C3 recomputes expected hashes by rendering the selected prompt blocks and rejects mismatches.
 - extra non-selected keys are allowed and ignored.
 
 EvidenceManifest indexing requirements (schema-defined fields only):
