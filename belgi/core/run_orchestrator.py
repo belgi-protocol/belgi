@@ -716,7 +716,6 @@ def orchestrate_chain_run(
     )
 
     ensure_chain_templates(chain_repo_root=chain_repo_dir)
-    ensure_chain_c3_canonicals(chain_repo_root=chain_repo_dir)
 
     chain_out_dir.mkdir(parents=True, exist_ok=True)
     chain_artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -803,12 +802,6 @@ def orchestrate_chain_run(
             "LockedSpec.upstream_state.commit_sha mismatch after C1 compilation "
             f"(expected {base_revision}, got {locked_base_revision or '<missing>'})"
         )
-
-    _ensure_complete_prompt_block_hashes(
-        chain_repo_root=chain_repo_dir,
-        prompt_hashes_path=chain_repo_dir / rel_prompt_hashes,
-        locked_spec=locked_spec,
-    )
 
     rc_inv = _run_tools_belgi(
         chain_repo_dir,

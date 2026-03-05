@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import re
 import shutil
@@ -285,6 +286,17 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     assert prompt_hashes
     assert all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{64}", v) for v in prompt_hashes.values())
     assert all(v != "0" * 64 for v in prompt_hashes.values())
+    locked_first = json.loads(
+        (first_attempt / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict")
+    )
+    tier_obj = locked_first.get("tier")
+    assert isinstance(tier_obj, dict)
+    tier_id = tier_obj.get("tier_id")
+    assert isinstance(tier_id, str) and tier_id
+    c1 = importlib.import_module("chain.compiler_c1_intent")
+    selector = getattr(c1, "_prompt_block_ids_for_tier")
+    expected_selected = set(selector(tier_id))
+    assert set(prompt_hashes.keys()) == expected_selected
 
     rc_verify_1 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_1 == 0

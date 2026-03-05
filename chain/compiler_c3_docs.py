@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import os
 import stat
 import shutil
 import sys
 import time
+from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +34,211 @@ C3_PROTOCOL_IDENTITY_REMEDIATION_POINTER = "CANONICALS.md#protocol-pack-identity
 BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL = "belgi/templates/PromptBundle.blocks.md"
 BUILTIN_DOCS_TEMPLATE_REPO_REL = "belgi/templates/DocsCompiler.template.md"
 ENGINE_CANONICALS_REPO_REL = ".belgi/engine/c3_canonicals"
+C3_CANONICAL_CACHE_META_FILENAME = ".cache_meta.json"
 
 class _UserInputError(RuntimeError):
     pass
+
+
+def _copy_traversable_tree_bytes(*, src_root: Any, dst_root: Path) -> None:
+    def _walk(node: Any, rel_parts: list[str]) -> None:
+        children = sorted(list(node.iterdir()), key=lambda c: c.name)
+        for child in children:
+            child_rel_parts = [*rel_parts, child.name]
+            if child.is_dir():
+                _walk(child, child_rel_parts)
+                continue
+            rel = "/".join(child_rel_parts)
+            target = dst_root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(child.read_bytes())
+
+    _walk(src_root, [])
+
+
+def _protocol_c3_relpaths(protocol: ProtocolContext) -> list[str]:
+    manifest_files = protocol.manifest.get("files")
+    if not isinstance(manifest_files, list):
+        raise _UserInputError("protocol manifest files list missing/invalid")
+    out: list[str] = []
+    for entry in manifest_files:
+        if not isinstance(entry, dict):
+            continue
+        rel = entry.get("relpath")
+        if not isinstance(rel, str):
+            continue
+        rel_norm = rel.replace("\\", "/")
+        if rel_norm.startswith(("gates/", "tiers/", "schemas/")):
+            out.append(rel_norm)
+    out = sorted(set(out))
+    if not out:
+        raise _UserInputError("protocol manifest has no gates/tiers/schemas content for C3 canonical source")
+    return out
+
+
+def _materialize_protocol_bound_c3_source_root(*, protocol: ProtocolContext, target_root: Path) -> None:
+    target_root.mkdir(parents=True, exist_ok=False)
+    try:
+        canonicals_root = resource_files("belgi").joinpath("canonicals")
+        _copy_traversable_tree_bytes(src_root=canonicals_root, dst_root=target_root)
+        for rel in _protocol_c3_relpaths(protocol):
+            target = target_root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(protocol.read_bytes(rel))
+    except Exception as e:
+        raise _UserInputError(f"unable to materialize protocol-bound C3 canonical source: {e}") from e
+
+
+def _expected_c3_cache_meta_from_locked(*, locked_spec: dict[str, Any]) -> dict[str, str]:
+    protocol_pack = locked_spec.get("protocol_pack")
+    if not isinstance(protocol_pack, dict):
+        raise _UserInputError("LockedSpec.protocol_pack missing/invalid for C3 canonical cache identity")
+    pack_id = protocol_pack.get("pack_id")
+    manifest_sha256 = protocol_pack.get("manifest_sha256")
+    pack_name = protocol_pack.get("pack_name")
+    if not isinstance(pack_id, str) or not pack_id.strip():
+        raise _UserInputError("LockedSpec.protocol_pack.pack_id missing/invalid for C3 canonical cache identity")
+    if not isinstance(manifest_sha256, str) or not manifest_sha256.strip():
+        raise _UserInputError("LockedSpec.protocol_pack.manifest_sha256 missing/invalid for C3 canonical cache identity")
+    if not isinstance(pack_name, str) or not pack_name.strip():
+        raise _UserInputError("LockedSpec.protocol_pack.pack_name missing/invalid for C3 canonical cache identity")
+    return {
+        "protocol_pack_id": pack_id.strip(),
+        "protocol_pack_manifest_sha256": manifest_sha256.strip(),
+        "protocol_pack_name": pack_name.strip(),
+    }
+
+
+def _load_c3_cache_meta(*, staged_root: Path) -> dict[str, str] | None:
+    meta_path = staged_root / C3_CANONICAL_CACHE_META_FILENAME
+    if not meta_path.exists():
+        return None
+    if meta_path.is_symlink() or not meta_path.is_file():
+        return None
+    try:
+        obj = load_json(meta_path)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    out: dict[str, str] = {}
+    for k in ("protocol_pack_id", "protocol_pack_manifest_sha256", "protocol_pack_name"):
+        v = obj.get(k)
+        if not isinstance(v, str) or not v.strip():
+            return None
+        out[k] = v.strip()
+    return out
+
+
+def _cache_meta_matches(*, cached: dict[str, str] | None, expected: dict[str, str]) -> bool:
+    if cached is None:
+        return False
+    for k, v in expected.items():
+        if cached.get(k) != v:
+            return False
+    return True
+
+
+def _rebuild_staged_c3_cache(
+    *,
+    staged_root: Path,
+    protocol: ProtocolContext,
+    expected_meta: dict[str, str],
+) -> None:
+    if staged_root.exists():
+        if staged_root.is_symlink() or not staged_root.is_dir():
+            raise _UserInputError(f"expected directory but found file: {ENGINE_CANONICALS_REPO_REL}")
+        _rmtree_retry(staged_root)
+    _materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=staged_root)
+    _atomic_write_json(staged_root / C3_CANONICAL_CACHE_META_FILENAME, expected_meta)
+
+
+def _resolve_c3_source_root(
+    *,
+    repo_root: Path,
+    protocol: ProtocolContext,
+    locked_spec: dict[str, Any],
+    out_bundle_dir_path: Path,
+) -> tuple[Path, Path | None]:
+    staged = _resolve_repo_path(repo_root, ENGINE_CANONICALS_REPO_REL, must_exist=False, must_be_file=None)
+    expected_cache_meta = _expected_c3_cache_meta_from_locked(locked_spec=locked_spec)
+
+    if staged.exists():
+        if staged.is_symlink() or not staged.is_dir():
+            raise _UserInputError(f"expected directory but found file: {ENGINE_CANONICALS_REPO_REL}")
+        cached_meta = _load_c3_cache_meta(staged_root=staged)
+        if _cache_meta_matches(cached=cached_meta, expected=expected_cache_meta):
+            return staged, None
+        try:
+            _rebuild_staged_c3_cache(
+                staged_root=staged,
+                protocol=protocol,
+                expected_meta=expected_cache_meta,
+            )
+        except _UserInputError as e:
+            raise _UserInputError(
+                "C3 canonical cache rebuild failed after protocol-pack identity mismatch under "
+                f"{ENGINE_CANONICALS_REPO_REL}: {e}. "
+                "remediation.next_instruction=Do ensure BELGI builtin canonicals and active protocol pack content are "
+                "available, then re-run C3."
+            ) from e
+        return staged, None
+
+    materialized = out_bundle_dir_path.with_name(out_bundle_dir_path.name + ".tmp.c3canon")
+    if materialized.exists():
+        _rmtree_retry(materialized)
+
+    try:
+        _materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=materialized)
+    except _UserInputError as e:
+        raise _UserInputError(
+            "C3 canonical source resolution failed without staged "
+            f"{ENGINE_CANONICALS_REPO_REL}: {e}. "
+            "remediation.next_instruction=Do ensure BELGI builtin canonicals and active protocol pack content are "
+            "available (or run belgi run to hydrate inputs), then re-run C3."
+        ) from e
+    return materialized, materialized
+
+
+def _select_prompt_block_ids_for_locked(*, locked_spec: dict[str, Any]) -> list[str]:
+    tier_obj = locked_spec.get("tier")
+    if not isinstance(tier_obj, dict):
+        raise _UserInputError("LockedSpec.tier missing/invalid for selected prompt block resolution")
+    tier_id = tier_obj.get("tier_id")
+    if not isinstance(tier_id, str) or not tier_id.strip():
+        raise _UserInputError("LockedSpec.tier.tier_id missing/invalid for selected prompt block resolution")
+
+    c1_module = importlib.import_module("chain.compiler_c1_intent")
+    selector = getattr(c1_module, "_prompt_block_ids_for_tier", None)
+    if not callable(selector):
+        raise _UserInputError("C1 prompt block selector unavailable")
+
+    ids = selector(tier_id)
+    if not isinstance(ids, list) or not ids or any(not isinstance(x, str) or not x.strip() for x in ids):
+        raise _UserInputError("selected prompt block ids missing/invalid")
+    return [str(x) for x in ids]
+
+
+def _expected_selected_prompt_hashes(*, locked_spec: dict[str, Any], selected_ids: list[str]) -> dict[str, str]:
+    c1_module = importlib.import_module("chain.compiler_c1_intent")
+    render_fn = getattr(c1_module, "_render_prompt_block", None)
+    if not callable(render_fn):
+        raise _UserInputError("C1 prompt block renderer unavailable")
+
+    locked_preimage = dict(locked_spec)
+    locked_preimage.pop("prompt_bundle_ref", None)
+
+    expected: dict[str, str] = {}
+    for block_id in selected_ids:
+        try:
+            rendered = render_fn(block_id=block_id, locked_spec_preimage=locked_preimage)
+        except Exception as e:
+            raise _UserInputError(f"cannot deterministically render selected prompt block {block_id}: {e}") from e
+        if not isinstance(rendered, (bytes, bytearray)):
+            raise _UserInputError(f"prompt block renderer returned non-bytes for selected block {block_id}")
+        expected[block_id] = sha256_bytes(bytes(rendered))
+    return expected
 
 def _rmtree_retry(path: Path, *, attempts: int = 12, base_delay_s: float = 0.03) -> None:
     def _onerror(func, p, exc_info):
@@ -547,6 +751,7 @@ def main() -> int:
     args = ap.parse_args()
 
     stage_dir: Path | None = None
+    source_tmp_root: Path | None = None
     tmp_paths: list[Path] = []
 
     def _cleanup_outputs_best_effort() -> None:
@@ -560,6 +765,12 @@ def main() -> int:
             try:
                 if stage_dir.exists():
                     _rmtree_retry(stage_dir)
+            except Exception:
+                pass
+        if source_tmp_root is not None:
+            try:
+                if source_tmp_root.exists():
+                    _rmtree_retry(source_tmp_root)
             except Exception:
                 pass
 
@@ -605,17 +816,6 @@ def main() -> int:
             template_path = _resolve_repo_path(repo_root, template_rel, must_exist=True, must_be_file=True)
         except _UserInputError:
             raise _UserInputError(f"Template missing: {template_rel}")
-        try:
-            source_root = _resolve_repo_path(
-                repo_root,
-                ENGINE_CANONICALS_REPO_REL,
-                must_exist=True,
-                must_be_file=False,
-            )
-        except _UserInputError as e:
-            raise _UserInputError(
-                f"engine canonical resources missing in run workspace: {ENGINE_CANONICALS_REPO_REL}"
-            ) from e
 
         # Load protocol context (pack-truth for schemas)
         protocol = _load_protocol_context(repo_root=repo_root, args=args)
@@ -632,6 +832,12 @@ def main() -> int:
             raise _UserInputError("LockedSpec schema validation failed:\n" + _format_schema_errors(errs))
 
         _verify_protocol_identity_or_fail(locked, protocol)
+        source_root, source_tmp_root = _resolve_c3_source_root(
+            repo_root=repo_root,
+            protocol=protocol,
+            locked_spec=locked,
+            out_bundle_dir_path=out_bundle_dir_path,
+        )
 
         locked_profile: str | None = None
         pub_intent = locked.get("publication_intent")
@@ -758,22 +964,53 @@ def main() -> int:
         if not isinstance(block_hashes_obj, dict):
             raise _UserInputError("prompt-block-hashes must be a JSON object mapping block_id -> sha256")
 
+        selected_block_ids = _select_prompt_block_ids_for_locked(locked_spec=locked)
+        selected_expected_hashes = _expected_selected_prompt_hashes(
+            locked_spec=locked,
+            selected_ids=selected_block_ids,
+        )
+
+        selected_hashes: dict[str, str] = {}
+        missing_or_invalid: list[str] = []
+        for block_id in selected_block_ids:
+            raw = block_hashes_obj.get(block_id)
+            if not isinstance(raw, str) or not (len(raw) == 64 and all(c in "0123456789abcdefABCDEF" for c in raw)):
+                missing_or_invalid.append(block_id)
+                continue
+            selected_hashes[block_id] = raw.lower()
+        if missing_or_invalid:
+            missing_joined = ", ".join(missing_or_invalid)
+            raise _UserInputError(
+                f"prompt-block-hashes missing/invalid selected block hashes: {missing_joined}. "
+                "remediation.next_instruction=Do provide sha256 hashes for all selected prompt blocks from C1 output, "
+                "then re-run C3."
+            )
+
+        for block_id in selected_block_ids:
+            provided = selected_hashes[block_id]
+            expected = selected_expected_hashes[block_id]
+            if provided != expected:
+                raise _UserInputError(
+                    f"prompt-block-hashes mismatch for selected block {block_id}: "
+                    f"provided={provided} expected={expected}. "
+                    "remediation.next_instruction=Do regenerate prompt_block_hashes.json from C1 selected blocks, "
+                    "then re-run C3."
+                )
+
+        # Extra keys are accepted and ignored by contract; selected-block coverage is the only completeness requirement.
         registry_rows, registry_source_sha256 = _parse_prompt_block_registry(repo_root)
+        sensitivity_by_id = {row["block_id"]: row["sensitivity"] for row in registry_rows}
 
         prompt_blocks: list[dict[str, str]] = []
-        for row in registry_rows:
-            block_id = row["block_id"]
-            sensitivity = row["sensitivity"]
-
-            h = block_hashes_obj.get(block_id)
-            if not isinstance(h, str) or not (len(h) == 64 and all(c in "0123456789abcdefABCDEF" for c in h)):
-                raise _UserInputError(f"Missing/invalid sha256 for block_id {block_id} in prompt-block-hashes")
-
+        for block_id in selected_block_ids:
+            sensitivity = sensitivity_by_id.get(block_id)
+            if not isinstance(sensitivity, str) or not sensitivity:
+                raise _UserInputError(f"prompt block registry missing selected block metadata: {block_id}")
+            h = selected_hashes[block_id]
             if profile == "public" and sensitivity in ("internal", "secret"):
                 published_form = "hash_only"
             else:
                 published_form = "bytes"
-
             prompt_blocks.append(
                 {
                     "block_id": block_id,
@@ -928,6 +1165,9 @@ def main() -> int:
         _commit_tmp(out_bundle_root_sha_tmp, out_bundle_root_sha_path)
         _commit_bundle_stage(stage_dir, out_bundle_dir_path)
         _commit_tmp(out_final_tmp, out_final_path)
+        if source_tmp_root is not None and source_tmp_root.exists():
+            _rmtree_retry(source_tmp_root)
+            source_tmp_root = None
         return 0
 
     except _UserInputError as e:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import shutil
@@ -25,7 +26,6 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes
-from belgi.core.run_orchestrator import ensure_chain_c3_canonicals
 from chain.logic.s_checks.context import SCheckContext
 from chain.logic.s_checks import s2_objectref_binding
 
@@ -174,33 +174,28 @@ def _compute_bundle_root_sha256(*, docs_bundle_manifest_sha256: str, bundle_sha2
     return _sha256_hex(payload)
 
 
-def _prompt_block_ids(repo_root: Path) -> list[str]:
-    text = (repo_root / "belgi" / "templates" / "PromptBundle.blocks.md").read_text(encoding="utf-8", errors="strict")
-    lines = text.splitlines()
-    header_idx = None
-    for i, line in enumerate(lines):
-        if line.strip().startswith("| block_id | block_name |"):
-            header_idx = i
-            break
-    assert header_idx is not None
-    i = header_idx + 1
-    while i < len(lines) and "|---" not in lines[i]:
-        i += 1
-    i += 1
-    ids: list[str] = []
-    while i < len(lines):
-        line = lines[i].strip()
-        if not line.startswith("|"):
-            break
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) >= 3:
-            block_id = parts[1]
-            if block_id:
-                ids.append(block_id)
-        i += 1
-    ids = sorted(set(ids))
-    assert ids
-    return ids
+def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dict[str, str]:
+    c1 = importlib.import_module("chain.compiler_c1_intent")
+    selector = getattr(c1, "_prompt_block_ids_for_tier")
+    render = getattr(c1, "_render_prompt_block")
+
+    tier_obj = locked_spec.get("tier")
+    assert isinstance(tier_obj, dict)
+    tier_id = tier_obj.get("tier_id")
+    assert isinstance(tier_id, str) and tier_id
+
+    selected_ids = selector(tier_id)
+    assert isinstance(selected_ids, list) and selected_ids
+
+    locked_preimage = dict(locked_spec)
+    locked_preimage.pop("prompt_bundle_ref", None)
+
+    out: dict[str, str] = {}
+    for block_id in selected_ids:
+        rendered = render(block_id=block_id, locked_spec_preimage=locked_preimage)
+        assert isinstance(rendered, (bytes, bytearray))
+        out[str(block_id)] = _sha256_hex(bytes(rendered))
+    return out
 
 
 def test_gate_q_evidence_002_remediation_substitutes_missing_kind() -> None:
@@ -440,7 +435,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
         "docs/research",
     ]:
         _copy_rel(rel)
-    ensure_chain_c3_canonicals(chain_repo_root=fake_root)
+    assert not (fake_root / ".belgi" / "engine" / "c3_canonicals").exists()
 
     # Inputs (in fake repo): LockedSpec, GateVerdicts, and snapshot EvidenceManifests.
     locked_rel = "inputs/LockedSpec.json"
@@ -456,9 +451,9 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
     run_id = _read_json(fake_root / Path(*locked_rel.split("/"))).get("run_id")
     assert isinstance(run_id, str) and run_id
 
-    # Prompt block hashes mapping must cover all registry block_ids.
-    pb_ids = _prompt_block_ids(REPO_ROOT)
-    pb_hashes = {bid: _sha256_hex(bid.encode("utf-8", errors="strict")) for bid in pb_ids}
+    # Prompt block hashes mapping follows selected-only contract for the locked tier.
+    locked_obj = _read_json(fake_root / Path(*locked_rel.split("/")))
+    pb_hashes = _selected_prompt_block_hashes_for_locked(locked_obj)
     pb_rel = "inputs/prompt_block_hashes.json"
     (fake_root / Path(*pb_rel.split("/"))).write_text(
         json.dumps(pb_hashes, indent=2, sort_keys=True) + "\n",
@@ -625,6 +620,69 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
     cp1 = _run_c3("public", **outs1)
     assert cp1.returncode == 0, (cp1.returncode, cp1.stdout, cp1.stderr)
 
+    pb_path = fake_root / Path(*pb_rel.split("/"))
+    selected_ids = list(pb_hashes.keys())
+    assert selected_ids
+    selected_first = selected_ids[0]
+
+    # Selected-only contract: missing selected hash must fail closed.
+    pb_missing = dict(pb_hashes)
+    pb_missing.pop(selected_first)
+    pb_path.write_text(json.dumps(pb_missing, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+    cp_missing_selected = _run_c3(
+        "public",
+        out_final_rel="out/missing_selected/EvidenceManifest.final.json",
+        out_docs_rel="out/missing_selected/docs.md",
+        out_bundle_dir_rel="out/missing_selected/bundle",
+        out_root_sha_rel="out/missing_selected/bundle_root.sha256",
+    )
+    assert cp_missing_selected.returncode == 2, (
+        cp_missing_selected.returncode,
+        cp_missing_selected.stdout,
+        cp_missing_selected.stderr,
+    )
+    assert "missing/invalid selected block hashes" in cp_missing_selected.stderr
+    assert selected_first in cp_missing_selected.stderr
+
+    # Selected-only contract: mismatched selected hash must fail closed.
+    pb_mismatch = dict(pb_hashes)
+    pb_mismatch[selected_first] = "f" * 64
+    pb_path.write_text(json.dumps(pb_mismatch, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+    cp_mismatch_selected = _run_c3(
+        "public",
+        out_final_rel="out/mismatch_selected/EvidenceManifest.final.json",
+        out_docs_rel="out/mismatch_selected/docs.md",
+        out_bundle_dir_rel="out/mismatch_selected/bundle",
+        out_root_sha_rel="out/mismatch_selected/bundle_root.sha256",
+    )
+    assert cp_mismatch_selected.returncode == 2, (
+        cp_mismatch_selected.returncode,
+        cp_mismatch_selected.stdout,
+        cp_mismatch_selected.stderr,
+    )
+    assert "mismatch for selected block" in cp_mismatch_selected.stderr
+    assert selected_first in cp_mismatch_selected.stderr
+
+    # Extra non-selected keys are allowed and ignored.
+    pb_with_extra = dict(pb_hashes)
+    pb_with_extra["PB-999"] = "0" * 64
+    pb_path.write_text(json.dumps(pb_with_extra, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+    cp_extra_selected = _run_c3(
+        "public",
+        out_final_rel="out/extra_selected/EvidenceManifest.final.json",
+        out_docs_rel="out/extra_selected/docs.md",
+        out_bundle_dir_rel="out/extra_selected/bundle",
+        out_root_sha_rel="out/extra_selected/bundle_root.sha256",
+    )
+    assert cp_extra_selected.returncode == 0, (
+        cp_extra_selected.returncode,
+        cp_extra_selected.stdout,
+        cp_extra_selected.stderr,
+    )
+
+    # Restore baseline selected-only hashes.
+    pb_path.write_text(json.dumps(pb_hashes, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
     # C3 protocol identity enforcement: mismatch must fail closed with stable failure id.
     locked_path = fake_root / Path(*locked_rel.split("/"))
     locked_original_bytes = locked_path.read_bytes()
@@ -652,6 +710,15 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
     assert "C3-PROTOCOL-IDENTITY-MISMATCH" in cp_identity_fail.stderr
     assert "CANONICALS.md#protocol-pack-identity" in cp_identity_fail.stderr
     locked_path.write_bytes(locked_original_bytes)
+
+    # Re-run baseline outputs so docs_compilation_log reflects outs1 paths after
+    # selected-hash negative cases.
+    cp1_rebaseline = _run_c3("public", **outs1)
+    assert cp1_rebaseline.returncode == 0, (
+        cp1_rebaseline.returncode,
+        cp1_rebaseline.stdout,
+        cp1_rebaseline.stderr,
+    )
 
     bundle_dir1 = fake_root / Path(*outs1["out_bundle_dir_rel"].split("/"))
     m1 = (bundle_dir1 / "docs_bundle_manifest.json").read_bytes()
