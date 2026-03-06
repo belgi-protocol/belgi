@@ -81,3 +81,24 @@ def test_gate_parameter_map_does_not_list_test_policy_flaky_handling() -> None:
             assert params == ["test_policy.required", "test_policy.allowed_skips", "command_log_mode"]
 
     assert r5_seen, "gate_parameter_map must include R5"
+
+
+def test_gate_parameter_map_keeps_pinned_toolchain_refs_owned_by_q5() -> None:
+    obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
+    gate_map = obj.get("gate_parameter_map", [])
+    assert isinstance(gate_map, list)
+
+    q5_params = None
+    r7_params = None
+    for idx, entry in enumerate(gate_map):
+        assert isinstance(entry, dict), f"gate_parameter_map[{idx}] must be an object"
+        gate_check_id = entry.get("gate_check_id")
+        params = entry.get("tier_params_read", [])
+        assert isinstance(params, list), f"gate_parameter_map[{idx}].tier_params_read must be a list"
+        if gate_check_id == "Q5":
+            q5_params = params
+        if gate_check_id == "R7":
+            r7_params = params
+
+    assert q5_params == ["envelope_policy.pinned_toolchain_refs_required"]
+    assert r7_params == ["command_log_mode"]

@@ -103,7 +103,7 @@ Gate R MUST implement the following responsibility categories at a policy/interf
 - R4 Schema / contract: verify outputs conform to declared schemas/contracts and interface requirements.
 - R5 Tests: verify required test evidence exists and meets Tier Pack requirements.
 - R6 Envelope attestation: verify evidence is produced within the declared Environment Envelope.
-- R7 Supply chain changes: detect and account for dependency/toolchain changes that affect evidence validity.
+- R7 Supply chain changes: repo-state / change-surface signal for dependency/toolchain changes that affect evidence validity. This does not claim SBOM generation/verification, provenance attestation, dependency vulnerability scanning, or a full dependency/toolchain inventory beyond declared evidence.
 - R8 Adversarial diff scan category: scan diffs for adversarial or policy-violating patterns at a category level.
 
 <a id="c3-docs-compiler"></a>

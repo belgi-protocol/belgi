@@ -245,6 +245,7 @@ This mapping is derived from gate specs:
   - R5 uses `test_report`, `command_log`
   - R6 uses `env_attestation`, `command_log`
   - R7 uses `policy_report`, `command_log`
+    - Bounded meaning: repo-state / change-surface signal only; not an SBOM, provenance-attestation, or dependency-vulnerability-scanner contract
   - R8 uses `policy_report`, `command_log`
 
 ## 3) Replay procedure (third party)
