@@ -25,7 +25,7 @@ Within the declared Environment Envelope and locked inputs, BELGI aims to defend
 - Hallucination/drift by requiring deterministic gates (Q, R) and explicit evidence sufficiency.
 - Prompt injection influence by locking the run contract in LockedSpec before proposing.
 - Backdoor diffs by constraining blast radius and verifying with category-level policy checks (R2/R3) and an adversarial diff scan category (R8).
-- Supply chain drift by requiring pinned toolchain refs in the envelope and supply-chain evidence obligations (R7).
+- Supply chain drift by requiring pinned toolchain refs in the envelope (Q5) and supply-chain evidence obligations via the R7 repo-state / change-surface signal.
 
 ### 2.2 Does not defend against
 BELGI does NOT claim:
@@ -69,6 +69,7 @@ If Gate R flags concerns (category-level):
   - Stop progression to sealing/publishing.
   - Escalate to a human security/ops owner.
   - Reconstruct the envelope and verify pinned toolchain refs; investigate dependency changes.
+  - Treat R7 as a repo-state / change-surface signal, not as standalone SBOM/provenance/vulnerability-scan proof.
 
 - Adversarial concerns (R8-related):
   - Treat as potentially hostile change.

@@ -211,6 +211,6 @@ This table lists which tier parameters each check reads.
 | R4 | command_log_mode |
 | R5 | test_policy.required, test_policy.allowed_skips, command_log_mode |
 | R6 | envelope_policy.requires_attestation, envelope_policy.attestation_signature_required, command_log_mode |
-| R7 | envelope_policy.pinned_toolchain_refs_required, command_log_mode |
+| R7 | command_log_mode |
 | R8 | waiver_policy.allowed, adversarial_policy.findings_mode, command_log_mode |
 | R-DOC-001 | doc_impact_required |

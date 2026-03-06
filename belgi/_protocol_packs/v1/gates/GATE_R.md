@@ -425,6 +425,9 @@ Optional binding check (when GateVerdict is provided to the verifier):
 
 ### R7 — Supply chain changes detected and accounted for
 - check_id: `R7`
+- bounded meaning (v1):
+  - repo-state / change-surface signal grounded in workspace/revision state and declared evidence
+  - does not claim SBOM generation/verification, provenance or SLSA-style builder attestation, dependency vulnerability scanning, or a full dependency/toolchain inventory beyond declared evidence surfaces
 - required inputs:
   - Repo diff base: `LockedSpec.upstream_state.commit_sha`
   - `LockedSpec.environment_envelope.pinned_toolchain_refs` (LockedSpec schema)
@@ -435,7 +438,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
      - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
      - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED`.
   4) Gate R does not publish path classification lists or signatures; it treats the scan command + policy report as the authoritative, deterministic evidence obligation.
-- tier params used: `envelope_policy.pinned_toolchain_refs_required`, `command_log_mode`
+  5) Tier ownership note: Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes declared `LockedSpec.environment_envelope.pinned_toolchain_refs` as evidence context but does not read that tier parameter.
+- tier params used: `command_log_mode`
 - failure category:
   - `FR-COMMAND-FAILED` if `belgi supplychain-scan` is missing/failed
   - `FR-SUPPLYCHAIN-SCAN-MISSING` if the `policy.supplychain` policy report artifact is missing

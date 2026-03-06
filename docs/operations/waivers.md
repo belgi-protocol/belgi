@@ -29,6 +29,10 @@ This document is grounded in:
 5) Waivers must be visible in sealing
 - SealManifest includes `waivers[]` as ObjectRef references (see `SealManifest.schema.json`).
 
+6) Boundary clarity
+- Repo-mechanical enforcement in v1 proves schema validity, active status, placeholder rejection, the human-authorship heuristic, anchored expiry replay, and tier limits.
+- BELGI does not mechanically prove branch protection, restricted storage, actor/source provenance, or approval workflow provenance from in-repo artifacts alone; those remain operational controls.
+
 ## 2) Roles
 
 ### 2.1 Requester (human)
@@ -128,11 +132,23 @@ Gate impact:
 
 ## 4) Enforcement points (where LLM actions are blocked)
 
-### 4.1 Process enforcement (must be implemented by operators/CI)
-- Waiver documents are only accepted from human-controlled sources (e.g., protected branches / restricted storage).
+### 4.1 Repo-mechanical enforcement
+Repo-mechanical enforcement in v1 covers:
+- schema validity (`Waiver.schema.json`),
+- `status == "active"` when applied,
+- placeholder/template rejection on critical waiver fields,
+- human-authorship heuristic on `approver`,
+- anchored expiry replay from stored evidence,
+- tier waiver limits and allow/deny posture.
+
+### 4.2 Operational controls outside repo-mechanical proof
+These controls remain outside repo-mechanical proof and must be enforced by operators/CI:
+- branch protection and restricted storage for waiver sources,
+- actor/source provenance for who authored or moved a waiver artifact,
+- approval workflow provenance showing how human review/approval happened.
 - Proposer outputs must be treated as untrusted; any waiver-related changes proposed by C2 are rejected out-of-band.
 
-### 4.2 Gate Q enforcement (pre-LLM)
+### 4.3 Gate Q enforcement (pre-LLM)
 Gate Q Q6 (`../../gates/GATE_Q.md`) enforces:
 - waiver tier policy (`waiver_policy.allowed`, `max_active_waivers`),
 - schema validity (`Waiver.schema.json`),
@@ -141,13 +157,13 @@ Gate Q Q6 (`../../gates/GATE_Q.md`) enforces:
 - `expires_at` after `EvidenceManifest.anchored_time_utc`,
 - human-authorship heuristic (approver string must not contain `llm` or `agent`).
 
-### 4.3 Verify replay enforcement (post-run)
+### 4.4 Verify replay enforcement (post-run)
 `belgi verify` enforces waiver-expiry replay deterministically from stored run artifacts:
 - reads `EvidenceManifest.anchored_time_utc` as the expiry `as_of` anchor,
 - evaluates each applied waiver `expires_at` against that anchor,
 - fails closed with explicit remediation when the anchor is missing/invalid.
 
-### 4.4 Gate R enforcement (post-proposal)
+### 4.5 Gate R enforcement (post-proposal)
 Gate R uses waiver documents as inputs when referenced by `LockedSpec.waivers_applied[]`.
 
 Specific deterministic waiver usage in v1:

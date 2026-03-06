@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.10 — 2026-03-06
+
+### Summary
+Patch release tightening R7 claim boundaries and clarifying waiver control boundaries without changing runtime behavior.
+
+### Changed
+- Bounded R7 public meaning to a repo-state / change-surface signal based on workspace/revision state and declared evidence.
+- Added explicit R7 non-claims: no SBOM generation/verification, provenance attestation, dependency vulnerability scanning, or full dependency/toolchain inventory claim in v1.
+- Corrected tier-parameter ownership so `envelope_policy.pinned_toolchain_refs_required` remains documented under Q5 and is no longer attributed to R7.
+- Clarified waiver boundary language to distinguish repo-mechanical enforcement from operational controls outside in-repo proof.
+- Added deterministic doc/contract guards for R7 non-claims, Q5/R7 tier-param ownership, and waiver mechanical-vs-operational wording.
+
+### Notes
+- Runtime behavior is unchanged; this release is contract truthfulness hardening.
+
 ## 1.4.9 — 2026-03-04
 
 ### Summary
