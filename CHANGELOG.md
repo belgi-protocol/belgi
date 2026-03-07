@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.11 — 2026-03-07
+
+### Summary
+Patch release locking Gate R to fail-fast / minimal-mutation doctrine on fatal early paths.
+
+### Changed
+- Gate R now stops immediately after `PROTOCOL-IDENTITY-001` failure and does not continue into mutation-producing snapshot work or later Gate R checks.
+- Gate R now treats R-snapshot index/persistence failure as terminal: if the snapshot index invariant fails or the R-snapshot manifest cannot be written, later checks do not execute.
+- `verify_report.results[]` now remains strictly execution-truthful on fatal early paths and contains executed checks only.
+- Updated Gate R and operations docs to state the fail-fast / minimal-mutation doctrine and the terminal chain-of-custody rule for snapshot manifest/index write failure.
+- Added regression coverage for protocol-identity short-circuiting, terminal snapshot write failure, normal PASS-path snapshot persistence, and doctrine wording drift.
+
+### Notes
+- Fatal early paths may now produce fewer side-effect artifacts by design.
+
 ## 1.4.10 — 2026-03-06
 
 ### Summary

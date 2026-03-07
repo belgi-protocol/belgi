@@ -447,17 +447,22 @@ Deterministic verifier (MUST-level enforcement):
   - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
 
 Verifier ordered-results contract (hardening note):
+- Gate R default doctrine is **fail-fast / minimal mutation**.
 - `chain/gate_r_verify.py` MUST emit an ordered `results[]` list in its report.
-- “Ordered” means:
+- `results[]` contains executed checks only.
+- “Ordered” means verifier execution order:
   - `PROTOCOL-IDENTITY-001` first
-  - `R-SNAPSHOT-INDEX-001` second
-  - `R-OVERLAY-001` third only when `--overlay` is supplied
-  - then the Gate R check registry order (`R0.*`, `R1`, `R2`, `R3`, `R-DOC-001`, `R4`, `R5`, `R6`, `R7`, `R8`)
+  - `R-SNAPSHOT-INDEX-001` next only if protocol identity passed
+  - `R-OVERLAY-001` next only when `--overlay` is supplied and earlier fatal-stop conditions did not trigger
+  - then the Gate R check registry order (`R0.*`, `R1`, `R2`, `R3`, `R-DOC-001`, `R4`, `R5`, `R6`, `R7`, `R8`) for the checks that actually execute
+- If `PROTOCOL-IDENTITY-001` fails, Gate R stops before mutation-producing snapshot work and `results[]` may contain only that entry.
+- If the snapshot index invariant fails or the R-snapshot manifest cannot be written, Gate R stops there and no later checks appear in `results[]`.
 - Primary cause is defined as the **first FAIL** entry in that ordered `results[]` list.
 - Any tooling that enforces primary-cause selection across fixtures (e.g., `tools/sweep.py fixtures-qr`) MUST **FAIL closed** if the verifier output lacks an ordered `results[]` list.
 
 Chain of custody note (R-Snapshot):
 - Gate R’s verdict references its EvidenceManifest by ObjectRef hash (`GateVerdict.evidence_manifest_ref`). Therefore, the EvidenceManifest used for Gate R MUST be treated as immutable after R evaluation.
+- Snapshot manifest/index write failure is terminal because Gate R must not continue later evaluation without a persisted evidence anchor.
 - Any evidence produced after R (e.g., C3 docs evidence) MUST be recorded in a Final EvidenceManifest that is an append-only extension of the R-Snapshot (see `evidence-bundles.md`).
 - Evidence kinds to record (must be present in `EvidenceManifest.artifacts[].kind` as required by tier):
   - Tier 0 requires: `diff`, `command_log`, `schema_validation`, `policy_report`

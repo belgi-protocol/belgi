@@ -18,6 +18,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import sys
@@ -601,109 +602,10 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(evidence, dict):
             raise ValueError("EvidenceManifest must be a JSON object")
 
-        protocol_identity_result = _protocol_identity_check_result(locked_spec=locked, protocol=protocol)
-
-        # Enforce/inject required snapshot indexing before running checks.
-        evidence, snapshot_preflight_result = _inject_or_verify_snapshot_indexes(
-            repo_root=repo_root,
-            manifest=evidence,
-            locked_spec_path=locked_spec_path,
-            gate_q_verdict_path=gate_q_verdict_path,
-        )
-        snapshot_written_ok = False
-        try:
-            _write_json_deterministic(r_snapshot_manifest_path, evidence)
-            snapshot_written_ok = True
-        except Exception as e:
-            write_fail = CheckResult(
-                check_id="R-SNAPSHOT-INDEX-001",
-                status="FAIL",
-                category="FR-INVARIANT-FAILED",
-                message=f"Failed to write R-snapshot EvidenceManifest: {e}",
-                pointers=[],
-                remediation_next_instruction=(
-                    "Do fix filesystem permissions/paths so Gate R can write the R-snapshot manifest, then re-run R."
-                ),
-            )
-            if snapshot_preflight_result.status == "FAIL":
-                snapshot_preflight_result = CheckResult(
-                    check_id="R-SNAPSHOT-INDEX-001",
-                    status="FAIL",
-                    category="FR-INVARIANT-FAILED",
-                    message=f"{snapshot_preflight_result.message} | {write_fail.message}",
-                    pointers=_dedupe_preserve_order(snapshot_preflight_result.pointers + write_fail.pointers),
-                    remediation_next_instruction=(
-                        write_fail.remediation_next_instruction or snapshot_preflight_result.remediation_next_instruction
-                    ),
-                )
-            else:
-                snapshot_preflight_result = write_fail
-
-        # Bind GateVerdict(R).evidence_manifest_ref to the snapshot manifest only if write succeeded.
-        if snapshot_written_ok:
-            evidence_manifest_path = r_snapshot_manifest_path
-
         run_id = locked.get("run_id")
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("LockedSpec.run_id missing/invalid")
         run_id = run_id.strip()
-
-        tier_id = None
-        tier = locked.get("tier")
-        if isinstance(tier, dict):
-            tier_id = tier.get("tier_id")
-        if not isinstance(tier_id, str) or not tier_id.strip():
-            raise ValueError("LockedSpec.tier.tier_id missing/invalid")
-        tier_id = tier_id.strip()
-
-        tier_params = load_tier_params(tiers_text, tier_id).to_legacy_map()
-
-        if isinstance(args.policy_payload_schema, str) and args.policy_payload_schema:
-            _require_dev_mode("--policy-payload-schema")
-            policy_schema_path = _resolve_repo_rel_path(
-                repo_root, str(args.policy_payload_schema), must_exist=True, must_be_file=True
-            )
-            policy_payload_schema = load_json(policy_schema_path)
-        else:
-            policy_payload_schema = protocol.read_json("schemas/PolicyReportPayload.schema.json")
-
-        if isinstance(args.test_payload_schema, str) and args.test_payload_schema:
-            _require_dev_mode("--test-payload-schema")
-            test_schema_path = _resolve_repo_rel_path(
-                repo_root, str(args.test_payload_schema), must_exist=True, must_be_file=True
-            )
-            test_payload_schema = load_json(test_schema_path)
-        else:
-            test_payload_schema = protocol.read_json("schemas/TestReportPayload.schema.json")
-        if not isinstance(policy_payload_schema, dict):
-            raise ValueError("PolicyReportPayload schema must be a JSON object")
-        if not isinstance(test_payload_schema, dict):
-            raise ValueError("TestReportPayload schema must be a JSON object")
-
-        overlay_preflight_result: CheckResult | None = None
-        if overlay_manifest_path is not None:
-            overlay_preflight_result = _overlay_preflight_result(
-                overlay_manifest_path=overlay_manifest_path,
-                repo_root=repo_root,
-                protocol=protocol,
-                evidence_manifest=evidence,
-                policy_payload_schema=policy_payload_schema,
-                evidence_manifest_path=evidence_manifest_path,
-            )
-
-        gate_verdict_obj = load_json(gate_verdict_path) if gate_verdict_path else None
-        if gate_verdict_obj is not None and not isinstance(gate_verdict_obj, dict):
-            raise ValueError("GateVerdict must be a JSON object")
-
-        upstream_commit_sha = ""
-        upstream_state = locked.get("upstream_state")
-        if isinstance(upstream_state, dict):
-            sha = upstream_state.get("commit_sha")
-            if isinstance(sha, str) and sha.strip():
-                upstream_commit_sha = sha.strip()
-
-        if not upstream_commit_sha:
-            raise ValueError("LockedSpec.upstream_state.commit_sha missing/invalid")
 
         evaluated_rev_raw = str(args.evaluated_revision)
         try:
@@ -721,36 +623,122 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 raise ValueError(str(e)) from e
 
+        protocol_identity_result = _protocol_identity_check_result(locked_spec=locked, protocol=protocol)
+        ordered_results: list[CheckResult] = [protocol_identity_result]
 
-        ctx = RCheckContext(
-            repo_root=repo_root,
-            protocol=protocol,
-            locked_spec_path=locked_spec_path,
-            evidence_manifest_path=evidence_manifest_path,
-            gate_verdict_path=gate_verdict_path,
-            locked_spec=locked,
-            evidence_manifest=evidence,
-            gate_verdict=gate_verdict_obj,
-            tier_params=tier_params,
-            fixture_context=fixture_ctx,
-            evaluated_revision=evaluated_commit_sha,
-            evaluated_revision_is_commit=evaluated_is_commit,
-            upstream_commit_sha=upstream_commit_sha,
-            policy_payload_schema=policy_payload_schema,
-            test_payload_schema=test_payload_schema,
-            required_policy_report_ids=_normalize_required_ids(str(args.required_policy_report_ids)),
-            required_test_report_id=str(args.required_test_report_id),
-        )
+        snapshot_preflight_result: CheckResult | None = None
+        overlay_preflight_result: CheckResult | None = None
+        tier_params: dict[str, Any] = {}
 
-        ordered_results: list[CheckResult] = [
-            protocol_identity_result,
-            snapshot_preflight_result,
-        ]
-        if overlay_preflight_result is not None:
-            ordered_results.append(overlay_preflight_result)
-        for run_check in get_checks():
-            batch = run_check(ctx)
-            ordered_results.extend(batch)
+        if protocol_identity_result.status != "FAIL":
+            # Enforce/inject required snapshot indexing before running later checks.
+            snapshot_candidate, snapshot_preflight_result = _inject_or_verify_snapshot_indexes(
+                repo_root=repo_root,
+                manifest=copy.deepcopy(evidence),
+                locked_spec_path=locked_spec_path,
+                gate_q_verdict_path=gate_q_verdict_path,
+            )
+            ordered_results.append(snapshot_preflight_result)
+            if snapshot_preflight_result.status != "FAIL":
+                try:
+                    _write_json_deterministic(r_snapshot_manifest_path, snapshot_candidate)
+                except Exception as e:
+                    snapshot_preflight_result = CheckResult(
+                        check_id="R-SNAPSHOT-INDEX-001",
+                        status="FAIL",
+                        category="FR-INVARIANT-FAILED",
+                        message=f"Failed to write R-snapshot EvidenceManifest: {e}",
+                        pointers=[],
+                        remediation_next_instruction=(
+                            "Do fix filesystem permissions/paths so Gate R can write the R-snapshot manifest and establish the persisted evidence anchor, then re-run R."
+                        ),
+                    )
+                    ordered_results[-1] = snapshot_preflight_result
+                else:
+                    evidence = snapshot_candidate
+                    evidence_manifest_path = r_snapshot_manifest_path
+
+            if snapshot_preflight_result.status != "FAIL":
+                tier_id = None
+                tier = locked.get("tier")
+                if isinstance(tier, dict):
+                    tier_id = tier.get("tier_id")
+                if not isinstance(tier_id, str) or not tier_id.strip():
+                    raise ValueError("LockedSpec.tier.tier_id missing/invalid")
+                tier_id = tier_id.strip()
+
+                tier_params = load_tier_params(tiers_text, tier_id).to_legacy_map()
+
+                if isinstance(args.policy_payload_schema, str) and args.policy_payload_schema:
+                    _require_dev_mode("--policy-payload-schema")
+                    policy_schema_path = _resolve_repo_rel_path(
+                        repo_root, str(args.policy_payload_schema), must_exist=True, must_be_file=True
+                    )
+                    policy_payload_schema = load_json(policy_schema_path)
+                else:
+                    policy_payload_schema = protocol.read_json("schemas/PolicyReportPayload.schema.json")
+
+                if isinstance(args.test_payload_schema, str) and args.test_payload_schema:
+                    _require_dev_mode("--test-payload-schema")
+                    test_schema_path = _resolve_repo_rel_path(
+                        repo_root, str(args.test_payload_schema), must_exist=True, must_be_file=True
+                    )
+                    test_payload_schema = load_json(test_schema_path)
+                else:
+                    test_payload_schema = protocol.read_json("schemas/TestReportPayload.schema.json")
+                if not isinstance(policy_payload_schema, dict):
+                    raise ValueError("PolicyReportPayload schema must be a JSON object")
+                if not isinstance(test_payload_schema, dict):
+                    raise ValueError("TestReportPayload schema must be a JSON object")
+
+                if overlay_manifest_path is not None:
+                    overlay_preflight_result = _overlay_preflight_result(
+                        overlay_manifest_path=overlay_manifest_path,
+                        repo_root=repo_root,
+                        protocol=protocol,
+                        evidence_manifest=evidence,
+                        policy_payload_schema=policy_payload_schema,
+                        evidence_manifest_path=evidence_manifest_path,
+                    )
+                    ordered_results.append(overlay_preflight_result)
+
+                gate_verdict_obj = load_json(gate_verdict_path) if gate_verdict_path else None
+                if gate_verdict_obj is not None and not isinstance(gate_verdict_obj, dict):
+                    raise ValueError("GateVerdict must be a JSON object")
+
+                upstream_commit_sha = ""
+                upstream_state = locked.get("upstream_state")
+                if isinstance(upstream_state, dict):
+                    sha = upstream_state.get("commit_sha")
+                    if isinstance(sha, str) and sha.strip():
+                        upstream_commit_sha = sha.strip()
+
+                if not upstream_commit_sha:
+                    raise ValueError("LockedSpec.upstream_state.commit_sha missing/invalid")
+
+                ctx = RCheckContext(
+                    repo_root=repo_root,
+                    protocol=protocol,
+                    locked_spec_path=locked_spec_path,
+                    evidence_manifest_path=evidence_manifest_path,
+                    gate_verdict_path=gate_verdict_path,
+                    locked_spec=locked,
+                    evidence_manifest=evidence,
+                    gate_verdict=gate_verdict_obj,
+                    tier_params=tier_params,
+                    fixture_context=fixture_ctx,
+                    evaluated_revision=evaluated_commit_sha,
+                    evaluated_revision_is_commit=evaluated_is_commit,
+                    upstream_commit_sha=upstream_commit_sha,
+                    policy_payload_schema=policy_payload_schema,
+                    test_payload_schema=test_payload_schema,
+                    required_policy_report_ids=_normalize_required_ids(str(args.required_policy_report_ids)),
+                    required_test_report_id=str(args.required_test_report_id),
+                )
+
+                for run_check in get_checks():
+                    batch = run_check(ctx)
+                    ordered_results.extend(batch)
 
         results = _serialize_results(ordered_results)
 

@@ -131,3 +131,30 @@ def test_prompt_hash_contract_explicitly_requires_c1_rendered_bytes_hashes() -> 
     for text in (running_docs, mirror_docs, c3_template):
         assert required_a in text
         assert required_b in text
+
+
+def test_gate_r_fail_fast_doctrine_docs_are_explicit() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+
+    doctrine = "Gate R default doctrine is **fail-fast / minimal mutation**."
+    executed_only = "`results[]` contains executed checks only."
+    identity_stop = (
+        "If `PROTOCOL-IDENTITY-001` fails, Gate R stops before mutation-producing snapshot work"
+    )
+    snapshot_stop = (
+        "Snapshot manifest/index write failure is terminal because Gate R must not continue later evaluation without a persisted evidence anchor."
+    )
+
+    for text in (gate_r, gate_r_pack, running_docs, running_docs_mirror):
+        assert doctrine in text
+        assert executed_only in text
+        assert snapshot_stop in text
+
+    for text in (gate_r, gate_r_pack):
+        assert "Gate R MUST stop before mutation-producing snapshot work" in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert identity_stop in text
