@@ -858,6 +858,10 @@ def test_gate_r_snapshot_index_hash_mismatch_is_no_go(tmp_path: Path) -> None:
 
     fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
     paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    _sync_locked_spec_protocol_identity(
+        tmp_path / paths["locked"],
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
 
     (tmp_path / "inputs").mkdir(parents=True, exist_ok=True)
     gate_q_rel = "inputs/GateVerdict.Q.json"
@@ -930,6 +934,10 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
     paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
     shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+    _sync_locked_spec_protocol_identity(
+        tmp_path / paths["locked"],
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
 
     # r_pass_tier1 references a shared consistency sweep artifact; copy it so Gate R does not fail
     # earlier on missing/mismatched bytes in this write-failure test.
@@ -970,13 +978,29 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
             "--evaluated-revision",
             commit_sha,
             "--out",
+            "out/verify_report.json",
+            "--gate-verdict-out",
             "out/GateVerdict.json",
         ],
         cwd=REPO_ROOT,
     )
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+    report = _read_json(tmp_path / "out" / "verify_report.json")
+    results = _report_results(report)
+    assert [str(row.get("check_id")) for row in results] == [
+        "PROTOCOL-IDENTITY-001",
+        "R-SNAPSHOT-INDEX-001",
+    ]
+    assert [str(row.get("status")) for row in results] == ["PASS", "FAIL"]
+    assert "Failed to write R-snapshot EvidenceManifest:" in str(results[1].get("message"))
+    assert str(results[1].get("remediation_next_instruction")) == (
+        "Do fix filesystem permissions/paths so Gate R can write the R-snapshot manifest and establish the persisted evidence anchor, then re-run R."
+    )
     gv = _read_json(tmp_path / "out" / "GateVerdict.json")
     assert gv.get("failure_category") == "FR-INVARIANT-FAILED"
+    failures = gv.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R-SNAPSHOT-INDEX-001"
 
 
 def test_gate_r_fixture_allows_opaque_revision_without_git(tmp_path: Path) -> None:
@@ -991,6 +1015,10 @@ def test_gate_r_fixture_allows_opaque_revision_without_git(tmp_path: Path) -> No
 
     fixture_dir = "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail"
     shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+    _sync_locked_spec_protocol_identity(
+        tmp_path / fixture_dir / "LockedSpec.json",
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
 
     # Fixture EvidenceManifests may reference shared policy artifacts.
     (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
@@ -1800,6 +1828,21 @@ def _tamper_locked_spec_pack_id(locked_path: Path, new_pack_id: str) -> None:
     )
 
 
+def _sync_locked_spec_protocol_identity(locked_path: Path, protocol_manifest_path: Path) -> None:
+    """Align LockedSpec protocol identity with the active protocol pack manifest."""
+    data = json.loads(locked_path.read_text(encoding="utf-8", errors="strict"))
+    manifest = json.loads(protocol_manifest_path.read_text(encoding="utf-8", errors="strict"))
+    data["protocol_pack"]["pack_id"] = manifest["pack_id"]
+    data["protocol_pack"]["manifest_sha256"] = _sha256_hex(protocol_manifest_path.read_bytes())
+    data["protocol_pack"]["pack_name"] = manifest["pack_name"]
+    locked_path.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
 def _remove_locked_spec_protocol_pack(locked_path: Path) -> None:
     """Remove protocol_pack field entirely from LockedSpec file."""
     data = json.loads(locked_path.read_text(encoding="utf-8", errors="strict"))
@@ -1831,6 +1874,10 @@ def _prepare_r_pass_tier1_fixture_repo(tmp_path: Path) -> dict[str, str]:
     shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
     (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
+    _sync_locked_spec_protocol_identity(
+        tmp_path / fixture_dir / "LockedSpec.json",
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
     return {
         "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
         "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
@@ -1878,6 +1925,10 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
 
     fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
     paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    _sync_locked_spec_protocol_identity(
+        tmp_path / paths["locked"],
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
 
     # Tamper pack_id in LockedSpec.
     locked_path = tmp_path / paths["locked"]
@@ -1924,6 +1975,7 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
             "--locked-spec", paths["locked"],
             "--gate-q-verdict", gate_q_rel,
             "--evidence-manifest", paths["evidence"],
+            "--r-snapshot-manifest-out", "out/EvidenceManifest.r_snapshot.json",
             "--evaluated-revision", commit_sha,
             "--out", verify_report_rel,
             "--gate-verdict-out", gate_verdict_rel,
@@ -1934,8 +1986,9 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
     verify_report = _read_json(verify_report_path)
     results = _report_results(verify_report)
-    assert str(results[0].get("check_id")) == "PROTOCOL-IDENTITY-001"
-    assert str(results[0].get("status")) == "FAIL"
+    assert [str(row.get("check_id")) for row in results] == ["PROTOCOL-IDENTITY-001"]
+    assert [str(row.get("status")) for row in results] == ["FAIL"]
+    assert not (tmp_path / "out" / "EvidenceManifest.r_snapshot.json").exists()
 
     gv = _read_json(gate_verdict_path)
     assert gv.get("failure_category") == "FR-PROTOCOL-IDENTITY-MISMATCH", gv
@@ -1952,6 +2005,10 @@ def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path)
 
     fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
     paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    _sync_locked_spec_protocol_identity(
+        tmp_path / paths["locked"],
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -1980,6 +2037,8 @@ def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path)
             paths["gate_q_verdict"],
             "--evidence-manifest",
             paths["evidence"],
+            "--r-snapshot-manifest-out",
+            "out/EvidenceManifest.r_snapshot.json",
             "--evaluated-revision",
             commit_sha,
             "--out",
@@ -1993,16 +2052,71 @@ def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path)
 
     verify_report = _read_json(tmp_path / verify_report_rel)
     results = _report_results(verify_report)
-    assert str(results[0].get("check_id")) == "PROTOCOL-IDENTITY-001"
-    assert str(results[0].get("status")) == "PASS"
-    assert str(results[1].get("check_id")) == "R-SNAPSHOT-INDEX-001"
-    assert str(results[1].get("status")) == "FAIL"
+    assert [str(row.get("check_id")) for row in results] == [
+        "PROTOCOL-IDENTITY-001",
+        "R-SNAPSHOT-INDEX-001",
+    ]
+    assert [str(row.get("status")) for row in results] == ["PASS", "FAIL"]
+    assert not (tmp_path / "out" / "EvidenceManifest.r_snapshot.json").exists()
 
     gate_verdict = _read_json(tmp_path / gate_verdict_rel)
     assert gate_verdict.get("failure_category") == "FR-INVARIANT-FAILED"
     failures = gate_verdict.get("failures")
     assert isinstance(failures, list) and failures
     assert failures[0].get("rule_id") == "R-SNAPSHOT-INDEX-001"
+
+
+def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: Path) -> None:
+    """Normal PASS path must still persist the R-snapshot and continue through later checks."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = "out/verify_report.pass.json"
+    verdict_rel = "out/GateVerdict.pass.json"
+    snapshot_path = tmp_path / "out" / "EvidenceManifest.r_snapshot.json"
+
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--r-snapshot-manifest-out",
+            "out/EvidenceManifest.r_snapshot.json",
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+    assert snapshot_path.exists()
+
+    report = _read_json(tmp_path / verify_rel)
+    results = _report_results(report)
+    assert [str(row.get("check_id")) for row in results[:2]] == [
+        "PROTOCOL-IDENTITY-001",
+        "R-SNAPSHOT-INDEX-001",
+    ]
+    assert [str(row.get("status")) for row in results[:2]] == ["PASS", "PASS"]
+    assert any(str(row.get("check_id")) == "R1" for row in results)
+
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("verdict") == "GO"
+    assert verdict.get("failure_category") is None
 
 
 def test_gate_r_missing_policy_supplychain_is_owned_by_r7(tmp_path: Path) -> None:
@@ -2221,6 +2335,10 @@ def test_gate_r_overlay_preflight_ordering_and_optional_presence(tmp_path: Path)
         "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
         "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
     }
+    _sync_locked_spec_protocol_identity(
+        tmp_path / paths["locked"],
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
     artifacts = evidence.get("artifacts")
@@ -2368,6 +2486,10 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
         "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
         "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
     }
+    _sync_locked_spec_protocol_identity(
+        tmp_path / paths["locked"],
+        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+    )
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)

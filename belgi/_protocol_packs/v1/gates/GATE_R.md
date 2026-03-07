@@ -74,19 +74,26 @@ Exit codes (deterministic):
 
 Deterministic selection rule for `GateVerdict.failure_category`:
 - Set it to the category of the **first failing check** in the ordered check list:
-  - PROTOCOL-IDENTITY-001 → R-SNAPSHOT-INDEX-001 → R-OVERLAY-001 (only when `--overlay` is supplied) →
-    R0.tier_parse → R0.evidence_sufficiency → R0.command_log_mode → R0.attestation_presence →
-    R1 → R2 → R3 → R-DOC-001 → R4 → R5 → R6 → R7 → R8.
+  - `PROTOCOL-IDENTITY-001`
+  - then `R-SNAPSHOT-INDEX-001` if protocol identity passed
+  - then `R-OVERLAY-001` only when `--overlay` is supplied and earlier fatal stops did not trigger
+  - then registry order: `R0.tier_parse` → `R0.evidence_sufficiency` → `R0.command_log_mode` → `R0.attestation_presence` →
+    `R1` → `R2` → `R3` → `R-DOC-001` → `R4` → `R5` → `R6` → `R7` → `R8`.
 
 **Primary-cause contract (hardening note):**
+- Gate R default doctrine is **fail-fast / minimal mutation**.
 - The **ordered check list** is the verifier execution order, serialized as an ordered array in the canonical verifier report: `verify_report.json.results[]`.
-- The report serialization MUST include each executed preflight exactly once in that same order (`PROTOCOL-IDENTITY-001`, `R-SNAPSHOT-INDEX-001`, and conditional `R-OVERLAY-001`).
-- Canonical source of truth for that order is `chain/logic/r_checks/registry.py` (the verifier MUST emit results in that order).
+- `results[]` contains executed checks only.
+- `PROTOCOL-IDENTITY-001` is always first. If it fails, Gate R MUST stop before mutation-producing snapshot work and MUST NOT execute later Gate R checks.
+- If protocol identity passes, Gate R MUST run `R-SNAPSHOT-INDEX-001` next. If the snapshot index invariant fails or the R-snapshot manifest cannot be written, Gate R MUST stop before later checks.
+- `R-OVERLAY-001` appears next only when `--overlay` is supplied and the earlier fatal-stop conditions did not trigger.
+- Canonical source of truth for later-check order is `chain/logic/r_checks/registry.py` (the verifier MUST emit results in that order).
 - Consumers MUST treat the **first FAIL** entry in `results[]` as the primary cause and MUST NOT re-sort failures.
 - If a verifier output does not include an ordered `results[]` list, any tool enforcing primary-cause selection MUST **FAIL closed** (no guessing from unordered sets).
 
 ### 3.2 Evidence manifest reference
-`GateVerdict.evidence_manifest_ref` MUST point to the EvidenceManifest used for evaluation.
+`GateVerdict.evidence_manifest_ref` MUST point to the persisted EvidenceManifest used for evaluation.
+- Snapshot manifest/index write failure is terminal because Gate R must not continue later evaluation without a persisted evidence anchor.
 
 ## 4. Evidence Sufficiency Rule (Deterministic)
 Gate R MUST be **NO-GO** if required evidence is missing, regardless of how acceptable the patch appears.
