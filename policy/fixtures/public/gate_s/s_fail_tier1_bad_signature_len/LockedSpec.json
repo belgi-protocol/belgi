@@ -46,8 +46,8 @@
     "storage_ref": "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/prompt.json"
   },
   "protocol_pack": {
-    "manifest_sha256": "910b39106586438dba3c48e87300339f9e033bddfb1135fbb50f6ecc0cb38308",
-    "pack_id": "b8311e5bb86bca69bea74a0213dc260c06a610e679e6c250b9044ce319bd64d9",
+    "manifest_sha256": "0168994362e8613a19eca0b114570125e1bc9ddd796343100775e8b90aff4c71",
+    "pack_id": "af3ea9ca7a7af0d2bac869b001b06730448cb958d74e5198830d9acdee93a11f",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },

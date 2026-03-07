@@ -9,6 +9,7 @@ from belgi.core.jail import normalize_repo_rel_path, resolve_storage_ref
 from belgi.core.schema import parse_rfc3339, validate_schema
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id, stable_unique
 from .context import RCheckContext
+from .report_run_binding import required_report_run_binding_error, required_report_run_binding_remediation
 
 _FINDINGS_MODE_VALUES = ("warn", "fail")
 _EVALUATED_AT_FALLBACK = "1970-01-01T00:00:00Z"
@@ -94,6 +95,14 @@ def _load_policy_report(ctx: RCheckContext, report_id: str) -> tuple[dict[str, A
     if schema_errs:
         first = schema_errs[0]
         return None, f"policy_report payload schema invalid at {first.path}: {first.message}"
+
+    run_binding_err = required_report_run_binding_error(
+        payload=obj,
+        locked_run_id=ctx.locked_spec.get("run_id"),
+        where=f"policy_report[{report_id}]",
+    )
+    if run_binding_err:
+        return None, run_binding_err
 
     return obj, ""
 
@@ -280,7 +289,9 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                 category="FR-SCHEMA-ARTIFACT-INVALID",
                 message=err,
                 pointers=[],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                remediation_next_instruction=required_report_run_binding_remediation()
+                if "belongs to a different run" in err
+                else "Do fix schema validation errors in required artifact then re-run R.",
             )
         ]
 

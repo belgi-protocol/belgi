@@ -11,6 +11,7 @@ from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id
 
 from .context import RCheckContext
+from .report_run_binding import required_report_run_binding_error, required_report_run_binding_remediation
 
 _DEDICATED_POLICY_REPORT_OWNERS: set[str] = {
     "policy.supplychain",        # R7 owns deterministic missing/invalid categorization
@@ -375,6 +376,35 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
     # deterministic failure categorization.
     for report_id in ctx.required_policy_report_ids:
         if report_id in _DEDICATED_POLICY_REPORT_OWNERS:
+            arts = find_artifacts_by_kind_id(ctx.evidence_manifest.get("artifacts"), kind="policy_report", artifact_id=report_id)
+            if len(arts) != 1:
+                continue
+            art = arts[0]
+            payload, perr = _read_and_validate_objectref_json(
+                ctx,
+                art,
+                payload_schema=ctx.policy_payload_schema,
+                where=f"policy_report[{report_id}]",
+            )
+            if payload is None:
+                continue
+            run_binding_err = required_report_run_binding_error(
+                payload=payload,
+                locked_run_id=run_id_locked,
+                where=f"policy_report[{report_id}]",
+            )
+            if run_binding_err:
+                storage_ref = str(art.get("storage_ref") or "")
+                return [
+                    CheckResult(
+                        check_id="R4",
+                        status="FAIL",
+                        category="FR-SCHEMA-ARTIFACT-INVALID",
+                        message=run_binding_err,
+                        pointers=[locked_ptr + "#/run_id", f"{storage_ref}#/run_id" if storage_ref else storage_ref],
+                        remediation_next_instruction=required_report_run_binding_remediation(),
+                    )
+                ]
             continue
 
         art, err = _require_exactly_one(ctx, "policy_report", report_id)  # uniqueness enforcement
@@ -400,6 +430,24 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                     message=perr,
                     pointers=[str(art.get("storage_ref") or "")],
                     remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                )
+            ]
+
+        run_binding_err = required_report_run_binding_error(
+            payload=payload,
+            locked_run_id=run_id_locked,
+            where=f"policy_report[{report_id}]",
+        )
+        if run_binding_err:
+            storage_ref = str(art.get("storage_ref") or "")
+            return [
+                CheckResult(
+                    check_id="R4",
+                    status="FAIL",
+                    category="FR-SCHEMA-ARTIFACT-INVALID",
+                    message=run_binding_err,
+                    pointers=[locked_ptr + "#/run_id", f"{storage_ref}#/run_id" if storage_ref else storage_ref],
+                    remediation_next_instruction=required_report_run_binding_remediation(),
                 )
             ]
 
@@ -431,6 +479,24 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                     message=terr,
                     pointers=[str(art.get("storage_ref") or "")],
                     remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                )
+            ]
+
+        run_binding_err = required_report_run_binding_error(
+            payload=payload,
+            locked_run_id=run_id_locked,
+            where=f"test_report[{ctx.required_test_report_id}]",
+        )
+        if run_binding_err:
+            storage_ref = str(art.get("storage_ref") or "")
+            return [
+                CheckResult(
+                    check_id="R4",
+                    status="FAIL",
+                    category="FR-SCHEMA-ARTIFACT-INVALID",
+                    message=run_binding_err,
+                    pointers=[locked_ptr + "#/run_id", f"{storage_ref}#/run_id" if storage_ref else storage_ref],
+                    remediation_next_instruction=required_report_run_binding_remediation(),
                 )
             ]
 

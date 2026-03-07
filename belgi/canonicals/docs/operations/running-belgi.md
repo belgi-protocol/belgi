@@ -445,6 +445,7 @@ Deterministic verifier (MUST-level enforcement):
 - Run the canonical verifier and write a deterministic JSON report:
   - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
   - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
+- Required `policy_report` and `test_report` payloads are not accepted on schema/hash validity alone; they must also bind to the current run via `payload.run_id == LockedSpec.run_id`.
 
 Verifier ordered-results contract (hardening note):
 - Gate R default doctrine is **fail-fast / minimal mutation**.

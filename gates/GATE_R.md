@@ -191,7 +191,11 @@ For any evidence artifact that is **required** by Gate R by specific `(kind,id)`
 3) Decode the bytes as UTF-8 JSON and validate the resulting object against the deterministic payload schema:
   - For `policy_report`: [../schemas/PolicyReportPayload.schema.json](../schemas/PolicyReportPayload.schema.json)
   - For `test_report`: [../schemas/TestReportPayload.schema.json](../schemas/TestReportPayload.schema.json)
-4) Reject hollow payloads by enforcing minimum semantic sufficiency:
+4) Bind the required report payload to the current run:
+  - Required `policy_report` payloads MUST have `payload.run_id == LockedSpec.run_id`.
+  - Required `test_report` payloads MUST have `payload.run_id == LockedSpec.run_id`.
+  - A schema-valid, hash-valid report from a different run is structurally invalid and MUST be rejected fail-closed.
+5) Reject hollow payloads by enforcing minimum semantic sufficiency:
   - Required `policy_report` payload MUST include non-empty `checks[]`.
   - Required `policy_report` payload MUST include `summary.failed` as an integer (non-boolean).
   - Required `test_report` payload MUST include `summary.failed` as an integer (non-boolean) for structural validity.
@@ -354,6 +358,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
     - `genesis_seal`: allowed producers `{C1, R}`
   4) Verify each EvidenceManifest artifact has a valid ObjectRef (`id`, `hash`, `storage_ref`) and permitted enum values.
   5) For each Gate R **required** report artifact (required by `(kind,id)`), apply the Required report artifact integrity + payload schema validation procedure (see §5.2.1), including the uniqueness rule.
+     - Required report payloads MUST also bind to the current run via `payload.run_id == LockedSpec.run_id`.
   6) Verify `command_log` artifact exists and passes bytes→hash integrity check.
   7) Optional post-R evidence verification (defense-in-depth):
      - Gate R MUST NOT require `docs_compilation_log` (it is produced by C3 post-R).

@@ -8,6 +8,7 @@ from belgi.core.schema import validate_schema
 from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, command_satisfied, find_artifacts_by_kind_id
 from .context import RCheckContext
+from .report_run_binding import required_report_run_binding_error, required_report_run_binding_remediation
 
 
 def _find_required_command_strings(commands: Any, target: str) -> bool:
@@ -87,6 +88,14 @@ def _load_and_validate_test_report(ctx: RCheckContext, artifact_id: str) -> tupl
     if not isinstance(failed, int) or isinstance(failed, bool):
         return None, "test_report payload summary.failed missing/invalid"
 
+    run_binding_err = required_report_run_binding_error(
+        payload=obj,
+        locked_run_id=ctx.locked_spec.get("run_id"),
+        where=f"test_report[{artifact_id}]",
+    )
+    if run_binding_err:
+        return None, run_binding_err
+
     return obj, ""
 
 
@@ -112,14 +121,17 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         if len(arts) == 1:
             payload, err = _load_and_validate_test_report(ctx, ctx.required_test_report_id)
             if payload is None:
+                category = "FR-SCHEMA-ARTIFACT-INVALID" if "belongs to a different run" in err else "FR-TESTS-POLICY-FAILED"
                 return [
                     CheckResult(
                         check_id="R5",
                         status="FAIL",
-                        category="FR-TESTS-POLICY-FAILED",
+                        category=category,
                         message=err,
                         pointers=[],
-                        remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                        remediation_next_instruction=required_report_run_binding_remediation()
+                        if "belongs to a different run" in err
+                        else "Do fix schema validation errors in required artifact then re-run R.",
                     )
                 ]
             summary = payload.get("summary")
@@ -148,14 +160,17 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
     # required == yes
     payload, err = _load_and_validate_test_report(ctx, ctx.required_test_report_id)
     if payload is None:
+        category = "FR-SCHEMA-ARTIFACT-INVALID" if "belongs to a different run" in err else "FR-TESTS-POLICY-FAILED"
         return [
             CheckResult(
                 check_id="R5",
                 status="FAIL",
-                category="FR-TESTS-POLICY-FAILED",
+                category=category,
                 message=err,
                 pointers=[],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                remediation_next_instruction=required_report_run_binding_remediation()
+                if "belongs to a different run" in err
+                else "Do fix schema validation errors in required artifact then re-run R.",
             )
         ]
 
