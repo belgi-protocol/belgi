@@ -77,6 +77,7 @@ Deterministic selection rule for `GateVerdict.failure_category`:
   - `PROTOCOL-IDENTITY-001`
   - then `R-SNAPSHOT-INDEX-001` if protocol identity passed
   - then `R-OVERLAY-001` only when `--overlay` is supplied and earlier fatal stops did not trigger
+  - then `R4` only when a required `policy_report`/`test_report` is present exactly once, is schema-valid, but its payload `run_id` belongs to a different run
   - then registry order: `R0.tier_parse` → `R0.evidence_sufficiency` → `R0.command_log_mode` → `R0.attestation_presence` →
     `R1` → `R2` → `R3` → `R-DOC-001` → `R4` → `R5` → `R6` → `R7` → `R8`.
 
@@ -87,6 +88,8 @@ Deterministic selection rule for `GateVerdict.failure_category`:
 - `PROTOCOL-IDENTITY-001` is always first. If it fails, Gate R MUST stop before mutation-producing snapshot work and MUST NOT execute later Gate R checks.
 - If protocol identity passes, Gate R MUST run `R-SNAPSHOT-INDEX-001` next. If the snapshot index invariant fails or the R-snapshot manifest cannot be written, Gate R MUST stop before later checks.
 - `R-OVERLAY-001` appears next only when `--overlay` is supplied and the earlier fatal-stop conditions did not trigger.
+- Gate R applies required-report current-run binding structurally under `R4` before semantic checks (`R1`, `R5`, `R7`, `R8`) rely on those required report payloads.
+- If that structural `R4` prevalidation fails, Gate R stops there and the registry checks do not execute.
 - Canonical source of truth for later-check order is `chain/logic/r_checks/registry.py` (the verifier MUST emit results in that order).
 - Consumers MUST treat the **first FAIL** entry in `results[]` as the primary cause and MUST NOT re-sort failures.
 - If a verifier output does not include an ordered `results[]` list, any tool enforcing primary-cause selection MUST **FAIL closed** (no guessing from unordered sets).
@@ -191,7 +194,11 @@ For any evidence artifact that is **required** by Gate R by specific `(kind,id)`
 3) Decode the bytes as UTF-8 JSON and validate the resulting object against the deterministic payload schema:
   - For `policy_report`: [../schemas/PolicyReportPayload.schema.json](../schemas/PolicyReportPayload.schema.json)
   - For `test_report`: [../schemas/TestReportPayload.schema.json](../schemas/TestReportPayload.schema.json)
-4) Reject hollow payloads by enforcing minimum semantic sufficiency:
+4) Bind the required report payload to the current run:
+  - Required `policy_report` payloads MUST have `payload.run_id == LockedSpec.run_id`.
+  - Required `test_report` payloads MUST have `payload.run_id == LockedSpec.run_id`.
+  - A schema-valid, hash-valid report from a different run is structurally invalid and MUST be rejected fail-closed.
+5) Reject hollow payloads by enforcing minimum semantic sufficiency:
   - Required `policy_report` payload MUST include non-empty `checks[]`.
   - Required `policy_report` payload MUST include `summary.failed` as an integer (non-boolean).
   - Required `test_report` payload MUST include `summary.failed` as an integer (non-boolean) for structural validity.
@@ -226,9 +233,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
      - Require a successful command record for `belgi invariant-eval` (see command matching rule).
      - Require a `policy_report` artifact with `id == "policy.invariant_eval"`.
   3) If either obligation is missing => fail.
-  4) Apply the Required report artifact integrity + payload schema validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.invariant_eval")`.
-     - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
-     - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-INVARIANT-FAILED`.
+  4) After `R4` structurally accepts the required report for the current run (§5.2.1), interpret the accepted `policy.invariant_eval` payload semantically.
+     - If the accepted report indicates failures (`summary.failed != 0`) => fail `FR-INVARIANT-FAILED`.
 - tier params used: `command_log_mode`
 - failure category:
   - `FR-COMMAND-FAILED` if the required command is missing/failed
@@ -354,6 +360,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
     - `genesis_seal`: allowed producers `{C1, R}`
   4) Verify each EvidenceManifest artifact has a valid ObjectRef (`id`, `hash`, `storage_ref`) and permitted enum values.
   5) For each Gate R **required** report artifact (required by `(kind,id)`), apply the Required report artifact integrity + payload schema validation procedure (see §5.2.1), including the uniqueness rule.
+     - Required report payloads MUST also bind to the current run via `payload.run_id == LockedSpec.run_id`.
+     - Gate R applies this required-report current-run binding structurally under `R4` before semantic checks (`R1`, `R5`, `R7`, `R8`) rely on those required report payloads.
   6) Verify `command_log` artifact exists and passes bytes→hash integrity check.
   7) Optional post-R evidence verification (defense-in-depth):
      - Gate R MUST NOT require `docs_compilation_log` (it is produced by C3 post-R).
@@ -378,7 +386,7 @@ Optional binding check (when GateVerdict is provided to the verifier):
     - Otherwise pass.
   2) If `test_policy.required == yes`:
     - Require a `test_report` artifact with `(kind,id) == ("test_report", "tests.report")`.
-    - Apply the Required report artifact integrity + payload schema validation procedure (see §5.2.1) for that required test report.
+    - Require `R4` structural acceptance of that required test report for the current run (see §5.2.1) before semantic evaluation.
     - For tiers where `command_log_mode == "structured"` (tiers >= 1), require `test_report.summary` is present.
     - Extract `test_summary` from `test_report.json` payload (SSOT source).
     - If `test_summary` is present, require `failed == 0`.
@@ -441,9 +449,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
 - deterministic procedure (v1, deterministic):
   1) Require required command `belgi supplychain-scan` is present and successful (per command matching rule).
   2) Require a `policy_report` artifact with `id == "policy.supplychain"`.
-  3) Apply the Required report artifact integrity + payload schema validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.supplychain")`.
-     - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
-     - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED`.
+  3) Require `R4` structural acceptance of the required `policy.supplychain` report for the current run (§5.2.1) before semantic interpretation.
+     - If the accepted report indicates failures (`summary.failed != 0`) => fail `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED`.
   4) Gate R does not publish path classification lists or signatures; it treats the scan command + policy report as the authoritative, deterministic evidence obligation.
   5) Tier ownership note: Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes declared `LockedSpec.environment_envelope.pinned_toolchain_refs` as evidence context but does not read that tier parameter.
 - tier params used: `command_log_mode`
@@ -467,9 +474,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
 - deterministic procedure (v1, deterministic):
   1) Require required command `belgi adversarial-scan` is present and successful (per command matching rule).
   2) Require a `policy_report` artifact with `id == "policy.adversarial_scan"`.
-  3) Apply the Required report artifact integrity + payload schema validation procedure (§5.2.1) to the required `policy_report` `(kind,id) == ("policy_report", "policy.adversarial_scan")`.
-     - If the report is invalid (uniqueness/integrity/payload schema/sufficiency failure) => fail `FR-SCHEMA-ARTIFACT-INVALID`.
-     - If the report is valid but indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`.
+  3) Require `R4` structural acceptance of the required `policy.adversarial_scan` report for the current run (§5.2.1) before semantic interpretation.
+     - If the accepted report indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`.
   4) Gate R does not publish signatures, patterns, regexes, or thresholds; it treats the scan command + policy report as the deterministic evidence obligation.
 - tier params used: `waiver_policy.allowed`, `command_log_mode`
 - failure category:

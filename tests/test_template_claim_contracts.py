@@ -158,3 +158,46 @@ def test_gate_r_fail_fast_doctrine_docs_are_explicit() -> None:
 
     for text in (running_docs, running_docs_mirror):
         assert identity_stop in text
+
+
+def test_required_report_payloads_are_explicitly_bound_to_current_run() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+
+    required_policy = "Required `policy_report` payloads MUST have `payload.run_id == LockedSpec.run_id`."
+    required_test = "Required `test_report` payloads MUST have `payload.run_id == LockedSpec.run_id`."
+    required_ops = (
+        "Required `policy_report` and `test_report` payloads are not accepted on schema/hash validity alone; "
+        "they must also bind to the current run via `payload.run_id == LockedSpec.run_id`."
+    )
+
+    for text in (gate_r, gate_r_pack):
+        assert required_policy in text
+        assert required_test in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert required_ops in text
+
+
+def test_required_report_current_run_binding_is_owned_by_r4_only() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+
+    required_owner = (
+        "Gate R applies this required-report current-run binding structurally under `R4` before semantic checks "
+        "(`R1`, `R5`, `R7`, `R8`) rely on those required report payloads."
+    )
+    required_ops = (
+        "Required `policy_report` and `test_report` payloads are structurally accepted under `R4` before semantic "
+        "checks consume them."
+    )
+
+    for text in (gate_r, gate_r_pack):
+        assert required_owner in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert required_ops in text

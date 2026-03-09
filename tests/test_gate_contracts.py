@@ -1885,6 +1885,44 @@ def _prepare_r_pass_tier1_fixture_repo(tmp_path: Path) -> dict[str, str]:
     }
 
 
+def _rewrite_required_report_payload_run_id(
+    tmp_path: Path,
+    *,
+    evidence_rel: str,
+    kind: str,
+    artifact_id: str,
+    run_id: str,
+) -> None:
+    evidence_path = tmp_path / evidence_rel
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    target = next(
+        (
+            row
+            for row in artifacts
+            if isinstance(row, dict) and row.get("kind") == kind and row.get("id") == artifact_id
+        ),
+        None,
+    )
+    assert isinstance(target, dict)
+    storage_ref = target.get("storage_ref")
+    assert isinstance(storage_ref, str) and storage_ref
+
+    payload_path = tmp_path / Path(*storage_ref.split("/"))
+    payload = _read_json(payload_path)
+    payload["run_id"] = run_id
+    payload_bytes = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    payload_path.write_bytes(payload_bytes)
+    target["hash"] = _sha256_hex(payload_bytes)
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
 def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     """Gate Q MUST emit FQ-PROTOCOL-IDENTITY-MISMATCH on pack_id mismatch."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
@@ -2117,6 +2155,201 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
     verdict = _read_json(tmp_path / verdict_rel)
     assert verdict.get("verdict") == "GO"
     assert verdict.get("failure_category") is None
+
+
+@pytest.mark.parametrize(
+    ("report_id", "semantic_owner"),
+    [
+        ("policy.invariant_eval", "R1"),
+        ("policy.supplychain", "R7"),
+        ("policy.adversarial_scan", "R8"),
+    ],
+)
+def test_gate_r_foreign_run_required_policy_report_is_structurally_invalid(
+    tmp_path: Path,
+    report_id: str,
+    semantic_owner: str,
+) -> None:
+    """Foreign-run required policy reports must fail under structural invalidity."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+
+    _rewrite_required_report_payload_run_id(
+        tmp_path,
+        evidence_rel=paths["evidence"],
+        kind="policy_report",
+        artifact_id=report_id,
+        run_id="foreign-run",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = f"out/verify_report.{report_id.replace('.', '_')}.foreign_run.json"
+    verdict_rel = f"out/GateVerdict.{report_id.replace('.', '_')}.foreign_run.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    report = _read_json(tmp_path / verify_rel)
+    results = _report_results(report)
+    first_fail = _first_fail_result(results)
+    assert first_fail.get("check_id") == "R4"
+    assert first_fail.get("category") == "FR-SCHEMA-ARTIFACT-INVALID"
+    assert "belongs to a different run" in str(first_fail.get("message"))
+    assert not any(str(row.get("check_id")) == semantic_owner for row in results)
+
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("failure_category") == "FR-SCHEMA-ARTIFACT-INVALID"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R4"
+    remediation = verdict.get("remediation")
+    assert isinstance(remediation, dict)
+    assert remediation.get("next_instruction") == "Do regenerate the required report for the current LockedSpec.run_id then re-run R."
+
+
+def test_gate_r_foreign_run_required_test_report_is_structurally_invalid(tmp_path: Path) -> None:
+    """Foreign-run required test reports must fail under structural invalidity."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+
+    _rewrite_required_report_payload_run_id(
+        tmp_path,
+        evidence_rel=paths["evidence"],
+        kind="test_report",
+        artifact_id="tests.report",
+        run_id="foreign-run",
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = "out/verify_report.tests_report.foreign_run.json"
+    verdict_rel = "out/GateVerdict.tests_report.foreign_run.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    report = _read_json(tmp_path / verify_rel)
+    results = _report_results(report)
+    first_fail = _first_fail_result(results)
+    assert first_fail.get("check_id") == "R4"
+    assert first_fail.get("category") == "FR-SCHEMA-ARTIFACT-INVALID"
+    assert "belongs to a different run" in str(first_fail.get("message"))
+    assert not any(str(row.get("check_id")) == "R5" for row in results)
+
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("failure_category") == "FR-SCHEMA-ARTIFACT-INVALID"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0].get("rule_id") == "R4"
+    remediation = verdict.get("remediation")
+    assert isinstance(remediation, dict)
+    assert remediation.get("next_instruction") == "Do regenerate the required report for the current LockedSpec.run_id then re-run R."
+
+
+@pytest.mark.parametrize(
+    ("kind", "artifact_id", "semantic_owner"),
+    [
+        ("policy_report", "policy.invariant_eval", "R1"),
+        ("policy_report", "policy.supplychain", "R7"),
+        ("policy_report", "policy.adversarial_scan", "R8"),
+        ("test_report", "tests.report", "R5"),
+    ],
+)
+def test_gate_r_current_run_required_report_payloads_still_pass(
+    tmp_path: Path,
+    kind: str,
+    artifact_id: str,
+    semantic_owner: str,
+) -> None:
+    """Current-run required report payloads must continue to pass structural binding."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    locked = _read_json(tmp_path / paths["locked"])
+    locked_run_id = str(locked.get("run_id"))
+
+    _rewrite_required_report_payload_run_id(
+        tmp_path,
+        evidence_rel=paths["evidence"],
+        kind=kind,
+        artifact_id=artifact_id,
+        run_id=locked_run_id,
+    )
+
+    commit_sha = _init_git_repo(tmp_path)
+    verify_rel = f"out/verify_report.{artifact_id.replace('.', '_')}.current_run.json"
+    verdict_rel = f"out/GateVerdict.{artifact_id.replace('.', '_')}.current_run.json"
+    cp = _run_module(
+        "chain.gate_r_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--locked-spec",
+            paths["locked"],
+            "--gate-q-verdict",
+            paths["gate_q_verdict"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--evaluated-revision",
+            commit_sha,
+            "--out",
+            verify_rel,
+            "--gate-verdict-out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+    report = _read_json(tmp_path / verify_rel)
+    assert any(str(row.get("check_id")) == semantic_owner for row in _report_results(report))
+    verdict = _read_json(tmp_path / verdict_rel)
+    assert verdict.get("verdict") == "GO"
 
 
 def test_gate_r_missing_policy_supplychain_is_owned_by_r7(tmp_path: Path) -> None:

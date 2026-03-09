@@ -11,11 +11,90 @@ from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id
 
 from .context import RCheckContext
+from .report_run_binding import required_report_run_binding_error, required_report_run_binding_remediation
 
 _DEDICATED_POLICY_REPORT_OWNERS: set[str] = {
-    "policy.supplychain",        # R7 owns deterministic missing/invalid categorization
-    "policy.adversarial_scan",   # R8 owns deterministic missing/invalid categorization
+    "policy.supplychain",
+    "policy.adversarial_scan",
 }
+
+
+def _required_report_run_binding_failure(ctx: RCheckContext, *, locked_ptr: str) -> CheckResult | None:
+    run_id_locked = ctx.locked_spec.get("run_id")
+
+    def _binding_fail(*, artifact: dict[str, Any], where: str, err: str) -> CheckResult:
+        storage_ref = str(artifact.get("storage_ref") or "")
+        return CheckResult(
+            check_id="R4",
+            status="FAIL",
+            category="FR-SCHEMA-ARTIFACT-INVALID",
+            message=err,
+            pointers=[locked_ptr + "#/run_id", f"{storage_ref}#/run_id" if storage_ref else storage_ref],
+            remediation_next_instruction=required_report_run_binding_remediation(),
+        )
+
+    for report_id in ctx.required_policy_report_ids:
+        arts = find_artifacts_by_kind_id(ctx.evidence_manifest.get("artifacts"), kind="policy_report", artifact_id=report_id)
+        if len(arts) != 1:
+            continue
+        art = arts[0]
+        payload, perr = _read_and_validate_objectref_json(
+            ctx,
+            art,
+            payload_schema=ctx.policy_payload_schema,
+            where=f"policy_report[{report_id}]",
+        )
+        if payload is None:
+            continue
+        run_binding_err = required_report_run_binding_error(
+            payload=payload,
+            locked_run_id=run_id_locked,
+            where=f"policy_report[{report_id}]",
+        )
+        if run_binding_err:
+            return _binding_fail(artifact=art, where=f"policy_report[{report_id}]", err=run_binding_err)
+
+    if ctx.tier_params.get("test_policy.required") == "yes":
+        art, _ = _require_exactly_one(ctx, "test_report", ctx.required_test_report_id)
+        if art is not None:
+            payload, terr = _read_and_validate_objectref_json(
+                ctx,
+                art,
+                payload_schema=ctx.test_payload_schema,
+                where=f"test_report[{ctx.required_test_report_id}]",
+            )
+            if payload is not None:
+                run_binding_err = required_report_run_binding_error(
+                    payload=payload,
+                    locked_run_id=run_id_locked,
+                    where=f"test_report[{ctx.required_test_report_id}]",
+                )
+                if run_binding_err:
+                    return _binding_fail(
+                        artifact=art,
+                        where=f"test_report[{ctx.required_test_report_id}]",
+                        err=run_binding_err,
+                    )
+
+    return None
+
+
+def prevalidate_required_report_run_binding(ctx: RCheckContext) -> CheckResult | None:
+    """Return the first R4-owned foreign-run binding failure for required reports, if any.
+
+    This prevalidation is intentionally narrow:
+    - it only fires when the required report is present exactly once
+    - bytes/hash/schema validation already succeed
+    - payload.run_id belongs to a different run
+
+    Missing/duplicate/schema-invalid required reports remain owned by their existing
+    deterministic checks.
+    """
+
+    return _required_report_run_binding_failure(
+        ctx,
+        locked_ptr=safe_relpath(ctx.repo_root, ctx.locked_spec_path),
+    )
 
 
 def _load_schema(ctx: RCheckContext, rel: str) -> dict[str, Any]:
@@ -373,6 +452,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
     # R4 validates structure/integrity only (uniqueness + bytes hash + schema).
     # Semantic pass/fail is enforced by dedicated checks (R1/R7/R8/R5) to preserve
     # deterministic failure categorization.
+    run_binding_failure = _required_report_run_binding_failure(ctx, locked_ptr=locked_ptr)
+    if run_binding_failure is not None:
+        return [run_binding_failure]
+
     for report_id in ctx.required_policy_report_ids:
         if report_id in _DEDICATED_POLICY_REPORT_OWNERS:
             continue

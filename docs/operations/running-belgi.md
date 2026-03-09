@@ -445,6 +445,8 @@ Deterministic verifier (MUST-level enforcement):
 - Run the canonical verifier and write a deterministic JSON report:
   - `python -m chain.gate_r_verify --repo . --protocol-pack belgi/_protocol_packs/v1 --locked-spec LockedSpec.json --gate-q-verdict GateVerdict.Q.json --evidence-manifest EvidenceManifest.json --evaluated-revision <EVALUATED_SHA40> --gate-verdict-out GateVerdict.R.json --out policy/verify_report.json`
   - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
+- Required `policy_report` and `test_report` payloads are not accepted on schema/hash validity alone; they must also bind to the current run via `payload.run_id == LockedSpec.run_id`.
+- Required `policy_report` and `test_report` payloads are structurally accepted under `R4` before semantic checks consume them.
 
 Verifier ordered-results contract (hardening note):
 - Gate R default doctrine is **fail-fast / minimal mutation**.
@@ -454,9 +456,11 @@ Verifier ordered-results contract (hardening note):
   - `PROTOCOL-IDENTITY-001` first
   - `R-SNAPSHOT-INDEX-001` next only if protocol identity passed
   - `R-OVERLAY-001` next only when `--overlay` is supplied and earlier fatal-stop conditions did not trigger
+  - `R4` next only when a required `policy_report` or required `test_report` is present exactly once, is schema-valid, but belongs to a different run
   - then the Gate R check registry order (`R0.*`, `R1`, `R2`, `R3`, `R-DOC-001`, `R4`, `R5`, `R6`, `R7`, `R8`) for the checks that actually execute
 - If `PROTOCOL-IDENTITY-001` fails, Gate R stops before mutation-producing snapshot work and `results[]` may contain only that entry.
 - If the snapshot index invariant fails or the R-snapshot manifest cannot be written, Gate R stops there and no later checks appear in `results[]`.
+- If the R4-owned required-report current-run prevalidation fails, Gate R stops there and semantic checks do not execute.
 - Primary cause is defined as the **first FAIL** entry in that ordered `results[]` list.
 - Any tooling that enforces primary-cause selection across fixtures (e.g., `tools/sweep.py fixtures-qr`) MUST **FAIL closed** if the verifier output lacks an ordered `results[]` list.
 

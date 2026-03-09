@@ -37,6 +37,7 @@ from chain.logic.base import CheckResult, load_json, verify_protocol_identity
 from chain.logic.r_checks.context import RCheckContext
 from chain.logic.r_checks.git_ops import git_resolve_commit, is_fixture_context
 from chain.logic.r_checks.registry import get_checks
+from chain.logic.r_checks import r4_schema_contract
 
 from belgi.protocol.pack import (
     ProtocolContext,
@@ -736,9 +737,13 @@ def main(argv: list[str] | None = None) -> int:
                     required_test_report_id=str(args.required_test_report_id),
                 )
 
-                for run_check in get_checks():
-                    batch = run_check(ctx)
-                    ordered_results.extend(batch)
+                required_report_binding_failure = r4_schema_contract.prevalidate_required_report_run_binding(ctx)
+                if required_report_binding_failure is not None:
+                    ordered_results.append(required_report_binding_failure)
+                else:
+                    for run_check in get_checks():
+                        batch = run_check(ctx)
+                        ordered_results.extend(batch)
 
         results = _serialize_results(ordered_results)
 
