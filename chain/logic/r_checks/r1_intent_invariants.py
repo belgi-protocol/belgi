@@ -8,7 +8,6 @@ from belgi.core.schema import validate_schema
 from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, command_satisfied, find_artifacts_by_kind_id
 from .context import RCheckContext
-from .report_run_binding import required_report_run_binding_error, required_report_run_binding_remediation
 
 
 def _find_required_command_strings(commands: Any, target: str) -> bool:
@@ -147,23 +146,6 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                 message=err,
                 pointers=[],
                 remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
-            )
-        ]
-
-    run_binding_err = required_report_run_binding_error(
-        payload=payload,
-        locked_run_id=ctx.locked_spec.get("run_id"),
-        where="policy_report[policy.invariant_eval]",
-    )
-    if run_binding_err:
-        return [
-            CheckResult(
-                check_id="R1",
-                status="FAIL",
-                category="FR-SCHEMA-ARTIFACT-INVALID",
-                message=run_binding_err,
-                pointers=[],
-                remediation_next_instruction=required_report_run_binding_remediation(),
             )
         ]
 

@@ -10,9 +10,9 @@ Patch release binding required policy/test report payloads to the current `Locke
 ### Changed
 - Gate R now rejects required `policy_report` payloads whose `payload.run_id` does not match the current `LockedSpec.run_id`, even when artifact hash and payload schema are otherwise valid.
 - Gate R now rejects required `test_report` payloads whose `payload.run_id` does not match the current `LockedSpec.run_id`, closing cross-run evidence acceptance on required reports.
-- Foreign-run required report payloads fail closed under `FR-SCHEMA-ARTIFACT-INVALID` with remediation to regenerate the report for the current run.
-- Updated Gate R and operations docs to state the current-run binding rule for required report payloads.
-- Added regression coverage for foreign-run `policy.supplychain`, `policy.adversarial_scan`, and required `test_report` payload rejection, plus current-run positive controls.
+- Foreign-run required report payloads fail closed under `R4` with `FR-SCHEMA-ARTIFACT-INVALID`; semantic owners (`R1`, `R5`, `R7`, `R8`) only evaluate required reports after that structural current-run acceptance.
+- Updated Gate R and operations docs to state the structural R4 ownership model for required-report current-run binding.
+- Added regression coverage for foreign-run `policy.invariant_eval`, `policy.supplychain`, `policy.adversarial_scan`, and required `test_report` rejection, plus current-run positive controls.
 
 ### Notes
 - This release closes a replay-integrity / cross-run evidence acceptance gap without expanding features.

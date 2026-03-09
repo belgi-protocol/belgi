@@ -2157,10 +2157,18 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
     assert verdict.get("failure_category") is None
 
 
-@pytest.mark.parametrize("report_id", ["policy.supplychain", "policy.adversarial_scan"])
+@pytest.mark.parametrize(
+    ("report_id", "semantic_owner"),
+    [
+        ("policy.invariant_eval", "R1"),
+        ("policy.supplychain", "R7"),
+        ("policy.adversarial_scan", "R8"),
+    ],
+)
 def test_gate_r_foreign_run_required_policy_report_is_structurally_invalid(
     tmp_path: Path,
     report_id: str,
+    semantic_owner: str,
 ) -> None:
     """Foreign-run required policy reports must fail under structural invalidity."""
 
@@ -2204,10 +2212,12 @@ def test_gate_r_foreign_run_required_policy_report_is_structurally_invalid(
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
 
     report = _read_json(tmp_path / verify_rel)
-    first_fail = _first_fail_result(_report_results(report))
+    results = _report_results(report)
+    first_fail = _first_fail_result(results)
     assert first_fail.get("check_id") == "R4"
     assert first_fail.get("category") == "FR-SCHEMA-ARTIFACT-INVALID"
     assert "belongs to a different run" in str(first_fail.get("message"))
+    assert not any(str(row.get("check_id")) == semantic_owner for row in results)
 
     verdict = _read_json(tmp_path / verdict_rel)
     assert verdict.get("failure_category") == "FR-SCHEMA-ARTIFACT-INVALID"
@@ -2262,10 +2272,12 @@ def test_gate_r_foreign_run_required_test_report_is_structurally_invalid(tmp_pat
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
 
     report = _read_json(tmp_path / verify_rel)
-    first_fail = _first_fail_result(_report_results(report))
+    results = _report_results(report)
+    first_fail = _first_fail_result(results)
     assert first_fail.get("check_id") == "R4"
     assert first_fail.get("category") == "FR-SCHEMA-ARTIFACT-INVALID"
     assert "belongs to a different run" in str(first_fail.get("message"))
+    assert not any(str(row.get("check_id")) == "R5" for row in results)
 
     verdict = _read_json(tmp_path / verdict_rel)
     assert verdict.get("failure_category") == "FR-SCHEMA-ARTIFACT-INVALID"
@@ -2278,17 +2290,19 @@ def test_gate_r_foreign_run_required_test_report_is_structurally_invalid(tmp_pat
 
 
 @pytest.mark.parametrize(
-    ("kind", "artifact_id"),
+    ("kind", "artifact_id", "semantic_owner"),
     [
-        ("policy_report", "policy.supplychain"),
-        ("policy_report", "policy.adversarial_scan"),
-        ("test_report", "tests.report"),
+        ("policy_report", "policy.invariant_eval", "R1"),
+        ("policy_report", "policy.supplychain", "R7"),
+        ("policy_report", "policy.adversarial_scan", "R8"),
+        ("test_report", "tests.report", "R5"),
     ],
 )
 def test_gate_r_current_run_required_report_payloads_still_pass(
     tmp_path: Path,
     kind: str,
     artifact_id: str,
+    semantic_owner: str,
 ) -> None:
     """Current-run required report payloads must continue to pass structural binding."""
 
@@ -2332,6 +2346,8 @@ def test_gate_r_current_run_required_report_payloads_still_pass(
         cwd=REPO_ROOT,
     )
     assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+    report = _read_json(tmp_path / verify_rel)
+    assert any(str(row.get("check_id")) == semantic_owner for row in _report_results(report))
     verdict = _read_json(tmp_path / verdict_rel)
     assert verdict.get("verdict") == "GO"
 

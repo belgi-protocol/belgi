@@ -48,8 +48,8 @@
     "storage_ref": "prompt_bundle.txt"
   },
   "protocol_pack": {
-    "manifest_sha256": "0168994362e8613a19eca0b114570125e1bc9ddd796343100775e8b90aff4c71",
-    "pack_id": "af3ea9ca7a7af0d2bac869b001b06730448cb958d74e5198830d9acdee93a11f",
+    "manifest_sha256": "da0dc7909fc7d0605d90a088932534b364a50b40c430fec94d7facef2cebf687",
+    "pack_id": "59d01200d3c6e14d960eb0ed4b64c6ba6500ed8cf648680f75cd7ba3675e5396",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },
