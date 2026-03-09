@@ -2,6 +2,24 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.13 — 2026-03-09
+
+### Summary
+Patch release aligning the public R8 contract to the already-implemented runtime semantics.
+
+### Changed
+- Updated Gate R and operations docs to state that `belgi adversarial-scan` command success is satisfied by `exit_code == 0` only; legacy alternative success-code wording is no longer part of the public contract.
+- Documented that R8 semantic verdicting is driven by `adversarial_policy.findings_mode` after `R4` structurally accepts the required `policy.adversarial_scan` report for the current run.
+- Documented the current bounded R8 verdict split:
+  - `warn` mode does not fail on findings by itself when command/report/waiver structure is otherwise valid
+  - `fail` mode emits `FR-ADVERSARIAL-DIFF-SUSPECT` only for unwaived findings
+  - R8 can PASS when findings are present but all findings are covered by applicable active waivers allowed by the selected tier
+- Updated failure taxonomy wording so `FR-ADVERSARIAL-DIFF-SUSPECT` no longer overstates `summary.failed != 0` as an unconditional fail condition.
+- Added deterministic doc-contract guards for rc=`0` only, `adversarial_policy.findings_mode`, `warn` vs `fail`, and waiver-to-PASS wording across root and mirrored R8 contract surfaces.
+
+### Notes
+- Runtime behavior is unchanged; this release closes a public-truth gap only.
+
 ## 1.4.12 — 2026-03-07
 
 ### Summary
