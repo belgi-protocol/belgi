@@ -224,7 +224,8 @@ Unless a gate explicitly declares a deterministic substitution above, tokens are
 
 Note (v1 deterministic emission):
 - `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED` is emitted deterministically when the required `policy.supplychain` report is present, schema-valid, and has `summary.failed != 0`.
-- `FR-ADVERSARIAL-DIFF-SUSPECT` is emitted deterministically when the required `policy.adversarial_scan` report is present, schema-valid, and has `summary.failed != 0`.
+- `FR-ADVERSARIAL-DIFF-SUSPECT` is emitted deterministically when the required `policy.adversarial_scan` report is present, schema-valid, `adversarial_policy.findings_mode == "fail"`, and has one or more unwaived findings (`summary.failed != 0`).
+- `FR-ADVERSARIAL-DIFF-SUSPECT` is not emitted in `warn` mode and is not emitted when all findings are covered by applicable active waivers allowed by the selected tier.
 - Consumers MUST treat these categories as NO-GO when they appear.
 
 ### FR-PROTOCOL-IDENTITY-MISMATCH

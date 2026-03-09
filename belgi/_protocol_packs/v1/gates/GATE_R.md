@@ -171,7 +171,7 @@ When a check requires a command, Gate R evaluates it deterministically against `
 - In `strings` mode, a required command `belgi <subcommand>` is satisfied iff there exists a string entry exactly equal to `"belgi <subcommand>"`.
 
 If a required command is missing or has `exit_code != 0`, Gate R fails with `FR-COMMAND-FAILED`.
-- For `belgi adversarial-scan`, findings are policy report data (`policy.adversarial_scan.summary.failed`), not a command exit-code signal.
+- For `belgi adversarial-scan`, successful execution means `exit_code == 0` only; findings are policy report data (`policy.adversarial_scan.summary.failed`), not a command exit-code signal. Legacy alternative success codes are not accepted.
 
 ### 5.2 Policy report naming convention (used by R1/R7/R8)
 Where a check requires a policy report, Gate R requires an EvidenceManifest artifact with:
@@ -205,7 +205,11 @@ For any evidence artifact that is **required** by Gate R by specific `(kind,id)`
   - **NOTE:** Required `test_report` pass/fail semantics (`summary.failed == 0`) are NOT enforced here; they are deferred to R5 to ensure deterministic failure categorization under `FR-TESTS-POLICY-FAILED`.
 
 Deterministic interpretation of required `policy_report.summary.failed` (v1):
-- For policy reports with dedicated semantic checks (R1/R7/R8), those checks MUST enforce `summary.failed == 0` and MUST emit their specified failure category tokens.
+- For `R1` and `R7`, the accepted required report MUST have `summary.failed == 0`; otherwise those checks emit their specified failure category tokens.
+- For `R8`, semantic verdicting is driven by `adversarial_policy.findings_mode` after `R4` structural acceptance:
+  - `findings_mode == "fail"`: unwaived findings with `summary.failed != 0` emit `FR-ADVERSARIAL-DIFF-SUSPECT`.
+  - `findings_mode == "warn"`: findings do not themselves cause `R8` to fail if command/report/waiver structure is otherwise valid.
+  - If findings are present but all findings are covered by applicable active waivers allowed by the selected tier, `R8` PASSes.
 - R4 validates required report integrity + payload schema (and does not gate on `summary.failed == 0`) to preserve deterministic failure selection for the dedicated checks.
 
 ### 5.2.2 Canonical deterministic verifier (MUST)
@@ -472,17 +476,20 @@ Optional binding check (when GateVerdict is provided to the verifier):
   - `LockedSpec.constraints.forbidden_primitives` (optional; category tokens only)
   - Optional waivers (if tier allows): [../schemas/Waiver.schema.json](../schemas/Waiver.schema.json)
 - deterministic procedure (v1, deterministic):
-  1) Require required command `belgi adversarial-scan` is present and successful (per command matching rule).
+  1) Require required command `belgi adversarial-scan` is present and successful (per command matching rule, `exit_code == 0` only).
   2) Require a `policy_report` artifact with `id == "policy.adversarial_scan"`.
   3) Require `R4` structural acceptance of the required `policy.adversarial_scan` report for the current run (§5.2.1) before semantic interpretation.
-     - If the accepted report indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`.
-  4) Gate R does not publish signatures, patterns, regexes, or thresholds; it treats the scan command + policy report as the deterministic evidence obligation.
-- tier params used: `waiver_policy.allowed`, `command_log_mode`
+  4) Resolve semantic verdicting from `adversarial_policy.findings_mode`:
+     - `findings_mode == "warn"`: findings do not themselves cause `R8` to fail if command/report/waiver structure is otherwise valid.
+     - `findings_mode == "fail"`: if the accepted report indicates failures (`summary.failed != 0`) and one or more findings remain unwaived, fail `FR-ADVERSARIAL-DIFF-SUSPECT`.
+  5) If findings are present but all findings are covered by applicable active waivers allowed by the selected tier, `R8` PASSes.
+  6) Gate R does not publish signatures, patterns, regexes, or thresholds; it treats the scan command + policy report as the deterministic evidence obligation.
+- tier params used: `waiver_policy.allowed`, `adversarial_policy.findings_mode`, `command_log_mode`
 - failure category:
   - `FR-COMMAND-FAILED` if `belgi adversarial-scan` is missing/failed
   - `FR-ADVERSARIAL-SCAN-MISSING` if the `policy.adversarial_scan` policy report artifact is missing
   - `FR-SCHEMA-ARTIFACT-INVALID` if the required `policy.adversarial_scan` report payload is invalid (schema/integrity/sufficiency)
-  - `FR-ADVERSARIAL-DIFF-SUSPECT` if the required `policy.adversarial_scan` report is valid but indicates failures (`summary.failed != 0`)
+  - `FR-ADVERSARIAL-DIFF-SUSPECT` if the required `policy.adversarial_scan` report is valid, `adversarial_policy.findings_mode == "fail"`, and one or more findings remain unwaived (`summary.failed != 0`)
 - required evidence kinds: `policy_report`, `command_log`
 - remediation.next_instruction templates:
   - (for `FR-COMMAND-FAILED`) `Do ensure required command record belgi <subcommand> exists with exit_code 0 in EvidenceManifest.commands_executed then re-run R.`

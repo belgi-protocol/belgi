@@ -201,3 +201,67 @@ def test_required_report_current_run_binding_is_owned_by_r4_only() -> None:
 
     for text in (running_docs, running_docs_mirror):
         assert required_ops in text
+
+
+def test_r8_public_docs_match_runtime_contract() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+    failure_taxonomy = _read_text("gates/failure-taxonomy.md")
+    failure_taxonomy_pack = _read_text("belgi/_protocol_packs/v1/gates/failure-taxonomy.md")
+
+    command_rule = "successful execution means `exit_code == 0` only"
+    findings_mode_line = "semantic verdicting is driven by `adversarial_policy.findings_mode`"
+    warn_line = (
+        '`findings_mode == "warn"`: findings do not themselves cause `R8` to fail if command/report/waiver '
+        "structure is otherwise valid."
+    )
+    fail_line = (
+        '`findings_mode == "fail"`: if the accepted report indicates failures (`summary.failed != 0`) and one or '
+        "more findings remain unwaived, fail `FR-ADVERSARIAL-DIFF-SUSPECT`."
+    )
+    waiver_pass_line = (
+        "If findings are present but all findings are covered by applicable active waivers allowed by the selected "
+        "tier, `R8` PASSes."
+    )
+    running_docs_command = (
+        "R8 command success is satisfied only by a `belgi adversarial-scan` command record with `exit_code == 0`."
+    )
+    running_docs_warn = (
+        'When `adversarial_policy.findings_mode == "warn"`, findings do not themselves cause `R8` to fail if '
+        "command/report/waiver structure is otherwise valid."
+    )
+    running_docs_fail = (
+        'When `adversarial_policy.findings_mode == "fail"`, unwaived findings can produce '
+        "`FR-ADVERSARIAL-DIFF-SUSPECT`."
+    )
+    running_docs_waiver = (
+        "If findings are present but all findings are covered by applicable active waivers allowed by the selected "
+        "tier, `R8` can PASS."
+    )
+    stale_rc2 = "rc=2"
+    stale_flat_fail = "if the accepted report indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`."
+
+    for text in (gate_r, gate_r_pack):
+        assert command_rule in text
+        assert findings_mode_line in text
+        assert warn_line in text
+        assert fail_line in text
+        assert waiver_pass_line in text
+        assert stale_rc2 not in text.lower()
+        assert stale_flat_fail not in text.lower()
+
+    for text in (running_docs, running_docs_mirror):
+        assert running_docs_command in text
+        assert "R8 semantic verdicting is driven by `adversarial_policy.findings_mode`" in text
+        assert running_docs_warn in text
+        assert running_docs_fail in text
+        assert running_docs_waiver in text
+        assert stale_rc2 not in text.lower()
+
+    for text in (failure_taxonomy, failure_taxonomy_pack):
+        assert '`adversarial_policy.findings_mode == "fail"`' in text
+        assert "one or more unwaived findings (`summary.failed != 0`)" in text
+        assert "is not emitted in `warn` mode" in text
+        assert "is not emitted when all findings are covered by applicable active waivers" in text

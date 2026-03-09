@@ -447,6 +447,11 @@ Deterministic verifier (MUST-level enforcement):
   - If you need to schema-validate an existing GateVerdict input (defense-in-depth), pass it via `--gate-verdict <path>`.
 - Required `policy_report` and `test_report` payloads are not accepted on schema/hash validity alone; they must also bind to the current run via `payload.run_id == LockedSpec.run_id`.
 - Required `policy_report` and `test_report` payloads are structurally accepted under `R4` before semantic checks consume them.
+- R8 command success is satisfied only by a `belgi adversarial-scan` command record with `exit_code == 0`.
+- R8 semantic verdicting is driven by `adversarial_policy.findings_mode` after `R4` structural acceptance of `policy.adversarial_scan`.
+- When `adversarial_policy.findings_mode == "warn"`, findings do not themselves cause `R8` to fail if command/report/waiver structure is otherwise valid.
+- When `adversarial_policy.findings_mode == "fail"`, unwaived findings can produce `FR-ADVERSARIAL-DIFF-SUSPECT`.
+- If findings are present but all findings are covered by applicable active waivers allowed by the selected tier, `R8` can PASS.
 
 Verifier ordered-results contract (hardening note):
 - Gate R default doctrine is **fail-fast / minimal mutation**.
