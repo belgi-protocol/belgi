@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import base64
 import json
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import safe_relpath
 from belgi.core.schema import validate_schema
+from belgi.trust_anchor import TRUST_ANCHOR_RELPATH, TrustAnchorError, load_pinned_trust_anchor, validate_genesis_seal_payload
 from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id
 
@@ -146,42 +146,14 @@ def _read_and_validate_objectref_json(ctx: RCheckContext, artifact: dict[str, An
     return obj, ""
 
 
-def _canonical_json(obj: Any) -> str:
-    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def _load_ed25519_public_key(pem_bytes: bytes) -> Any:
-    try:
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError(
-            "Missing crypto dependency for Ed25519 verification (install 'cryptography' in the declared Environment Envelope)."
-        ) from e
-
-    # Allow either PEM SubjectPublicKeyInfo OR raw 32-byte public key stored as ASCII hex.
-    blob = pem_bytes.strip()
-    try:
-        hex_s = blob.decode("ascii", errors="strict").strip()
-        if len(hex_s) == 64 and all(c in "0123456789abcdefABCDEF" for c in hex_s):
-            return Ed25519PublicKey.from_public_bytes(bytes.fromhex(hex_s))
-    except Exception:
-        pass
-
-    key = serialization.load_pem_public_key(pem_bytes)
-    if not isinstance(key, Ed25519PublicKey):
-        raise ValueError("Public key is not Ed25519")
-    return key
-
-
 def _enforce_genesis_seal(ctx: RCheckContext, *, em_ptr: str) -> tuple[bool, list[CheckResult]]:
     """Tier-3 only: require and verify genesis_seal artifact.
 
     Deterministic contract:
     - Exactly one artifact of kind==genesis_seal.
     - Payload validates against GenesisSealPayload schema.
-    - Payload fields match the pinned canonical strings.
-    - Signature verifies under a pinned Ed25519 public key.
+    - The canonical Tier-3 trust-anchor object is belgi/anchor/v1/TrustAnchor.json.
+    - genesis_seal evidence is accepted only when it matches that canonical authority.
     """
 
     if ctx.locked_spec.get("tier", {}).get("tier_id") != "tier-3":
@@ -241,68 +213,31 @@ def _enforce_genesis_seal(ctx: RCheckContext, *, em_ptr: str) -> tuple[bool, lis
             )
         ]
 
-    expected_philosophy = "Hayatta en hakiki mürşit ilimdir. (M.K. Atatürk)"
-    expected_dedication = "Bilge (8)"
-    expected_architect = "Batuhan Turgay"
-    if payload.get("philosophy") != expected_philosophy or payload.get("dedication") != expected_dedication or payload.get("architect") != expected_architect:
+    try:
+        authority = load_pinned_trust_anchor(ctx.repo_root)
+    except Exception as e:
         return False, [
             CheckResult(
                 check_id="R4",
                 status="FAIL",
                 category="FR-SCHEMA-ARTIFACT-INVALID",
-                message="genesis_seal payload fields must match the pinned canonical genesis strings.",
-                pointers=[str(genesis_arts[0].get("storage_ref") or "")],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
-            )
-        ]
-
-    sig_b64 = payload.get("signature")
-    if not isinstance(sig_b64, str) or not sig_b64.strip():
-        return False, [
-            CheckResult(
-                check_id="R4",
-                status="FAIL",
-                category="FR-SCHEMA-ARTIFACT-INVALID",
-                message="genesis_seal signature missing/empty.",
-                pointers=[str(genesis_arts[0].get("storage_ref") or "")],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                message=f"Canonical Tier-3 TrustAnchor invalid: {e}",
+                pointers=[TRUST_ANCHOR_RELPATH],
+                remediation_next_instruction="Do restore belgi/anchor/v1/TrustAnchor.json to the pinned canonical authority bytes, then re-run R.",
             )
         ]
 
     try:
-        sig = base64.b64decode(sig_b64, validate=True)
-    except Exception:
+        validate_genesis_seal_payload(payload, authority=authority, source="genesis_seal")
+    except TrustAnchorError as e:
         return False, [
             CheckResult(
                 check_id="R4",
                 status="FAIL",
                 category="FR-SCHEMA-ARTIFACT-INVALID",
-                message="genesis_seal signature is not valid base64.",
-                pointers=[str(genesis_arts[0].get("storage_ref") or "")],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
-            )
-        ]
-
-    # Signature is over canonical JSON of the payload with signature fields removed.
-    to_verify = dict(payload)
-    to_verify.pop("signature", None)
-    to_verify.pop("signature_alg", None)
-    msg = _canonical_json(to_verify).encode("utf-8")
-
-    # Pinned genesis public key (raw 32-byte Ed25519 public key encoded as hex).
-    pinned_pubkey_hex = "6fcedddd158088888bdedb899b51011f3bb82b07e93d07913af8acfcc0ac30ca"
-    try:
-        pubkey = _load_ed25519_public_key(pinned_pubkey_hex.encode("ascii"))
-        pubkey.verify(sig, msg)
-    except Exception:
-        return False, [
-            CheckResult(
-                check_id="R4",
-                status="FAIL",
-                category="FR-SCHEMA-ARTIFACT-INVALID",
-                message="genesis_seal signature verification failed under pinned genesis public key.",
-                pointers=[str(genesis_arts[0].get("storage_ref") or "")],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                message=str(e),
+                pointers=[str(genesis_arts[0].get("storage_ref") or ""), TRUST_ANCHOR_RELPATH],
+                remediation_next_instruction="Do regenerate genesis_seal from the canonical Tier-3 TrustAnchor authority and re-index it, then re-run R.",
             )
         ]
 

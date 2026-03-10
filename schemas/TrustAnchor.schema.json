@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "TrustAnchor.schema.json",
+  "title": "TrustAnchor",
+  "description": "Canonical Tier-3 trust-anchor authority artifact. This pins the public Tier-3 authority object that validates genesis_seal evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "anchor_payload",
+    "public_key_hex",
+    "signature_alg",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "anchor_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "philosophy",
+        "dedication",
+        "architect"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "philosophy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dedication": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architect": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "public_key_hex": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "Raw 32-byte Ed25519 public key encoded as lowercase/uppercase hex."
+    },
+    "signature_alg": {
+      "type": "string",
+      "const": "ed25519"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+      "description": "Base64 Ed25519 signature over canonical_json(anchor_payload)."
+    }
+  }
+}

@@ -224,6 +224,10 @@ Gate R deterministically enforces that the EvidenceManifest contains the tier’
 Tier 3 addendum (Tier 3 ONLY):
 - Tier 3 (`tier-3`) minimums:
   - Tier 1–2 minimums **plus** `genesis_seal`
+- Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`.
+- `genesis_seal` is the Tier-3 evidence kind; `TrustAnchor.json` is the canonical authority object used to verify that evidence.
+- Internet publication of the trust anchor is secondary only; the repo artifact is the primary Tier-3 authority surface.
+- `belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload, not the canonical authority object.
 
 Important: `docs_compilation_log` exists but is produced after Gate R (C3). Gate R MUST NOT require it (`../../tiers/tier-packs.json`).
 
@@ -374,6 +378,15 @@ Tier 3 addendum (Tier 3 ONLY):
 ```text
   artifacts/
     genesis-seal-001.json
+```
+
+Canonical Tier-3 authority object (repo-primary, not an evidence artifact):
+
+```text
+  belgi/
+    anchor/
+      v1/
+        TrustAnchor.json
 ```
 
 Pinned source bytes (example):

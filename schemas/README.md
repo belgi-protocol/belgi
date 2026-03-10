@@ -336,7 +336,8 @@ HOTLApproval artifacts enforce **human-on-the-loop (HOTL) approvals** for audit-
 | GateVerdict | CANONICALS.md#q-gate-1-lock-verify, CANONICALS.md#r-gate-2-verify, CANONICALS.md#failure-taxonomy-interface, CANONICALS.md#go, CANONICALS.md#no-go, CANONICALS.md#evidence-sufficiency | Includes rule_id per Failure Taxonomy Interface. |
 | EvidenceManifest | CANONICALS.md#evidence-bundle, CANONICALS.md#evidence-sufficiency, CANONICALS.md#environment-envelope, CANONICALS.md#bounded-trust | Evidence index supports determinism and replay checks. |
 | SealManifest | CANONICALS.md#s-seal, CANONICALS.md#lockedspec, CANONICALS.md#waivers, CANONICALS.md#evidence-bundle | Seals references/hashes without embedding bypass heuristics. |
-| GenesisSealPayload | CANONICALS.md#evidence-bundle, CANONICALS.md#bounded-trust | Signed genesis root-of-trust payload required for Tier-3 runs (enforced by Gate R R4). |
+| GenesisSealPayload | CANONICALS.md#evidence-bundle, CANONICALS.md#bounded-trust | Tier-3 evidence payload (`genesis_seal`) verified under the canonical TrustAnchor authority in Gate R R4. |
+| TrustAnchor | CANONICALS.md#bounded-trust, CANONICALS.md#evidence-bundle | Canonical Tier-3 trust-anchor authority artifact (`belgi/anchor/v1/TrustAnchor.json`) used to verify `genesis_seal`. |
 | Waiver | CANONICALS.md#waivers, CANONICALS.md#hotl, CANONICALS.md#no-go | Waivers are explicitly human-authored and time-bounded. |
 | HOTLApproval | CANONICALS.md#hotl, CANONICALS.md#role-confusion | Human-on-the-loop approvals prevent role confusion (LLM/agent ↔ human) in audit-grade runs. Enforced by Gate Q (Q-HOTL-001). |
 | EnvAttestationPayload | CANONICALS.md#environment-envelope, CANONICALS.md#bounded-trust | Payload for env_attestation evidence; verified and bound at Gate R (R6) to prevent hollow or unbound attestations. |

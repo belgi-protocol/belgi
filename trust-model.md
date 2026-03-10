@@ -69,6 +69,12 @@ Within BELGI’s bounded claim, the declared Environment Envelope (Canonical def
 - Bounded-trust: CLI/CI execution only inside the declared Environment Envelope (Canonical definition: [CANONICALS.md#environment-envelope](CANONICALS.md#environment-envelope)).
 - Deterministic: the gate decisions and compiler outputs are stable given the same LockedSpec (Canonical definition: [CANONICALS.md#lockedspec](CANONICALS.md#lockedspec)).
 
+## 5.1 Tier-3 Canonical Authority Boundary (Operational Note)
+- Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`.
+- `genesis_seal` is the Tier-3 evidence kind; it is not the authority object.
+- `belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload and is not authoritative for canonical Tier-3 trust-anchor verification.
+- Internet publication of the Tier-3 trust anchor is secondary only; the repo artifact is the primary authority surface.
+
 ## 6. Canonical Pointers (No Definitions)
 
 Deterministic (BELGI sense). Canonical definition: [CANONICALS.md#deterministic-belgi](CANONICALS.md#deterministic-belgi). Operational note (non-normative): determinism is scoped to the locked inputs and the declared Environment Envelope.

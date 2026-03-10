@@ -21,7 +21,7 @@ maintainers = [
 ]
 
 keywords = ["deterministic", "verification", "governance", "protocol"]
-dependencies = []
+dependencies = ["cryptography>=41"]
 
 classifiers = [
   "Programming Language :: Python :: 3",

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.protocol.pack import get_builtin_protocol_context
+from belgi.trust_anchor import load_pinned_trust_anchor
 
 
 def test_no_repo_shadowing() -> None:
@@ -101,6 +103,7 @@ def test_all_schemas_loadable() -> None:
         "schemas/EnvAttestationPayload.schema.json",
         "schemas/DocsCompilationLogPayload.schema.json",
         "schemas/GenesisSealPayload.schema.json",
+        "schemas/TrustAnchor.schema.json",
         "schemas/TierPacks.schema.json",
     ]
     
@@ -219,3 +222,19 @@ def test_cli_module_importable() -> None:
     
     assert hasattr(cli, "main"), "belgi.cli must have main() function"
     assert callable(cli.main), "belgi.cli.main must be callable"
+
+
+def test_packaged_trust_anchor_loads() -> None:
+    """Verify packaged canonical Tier-3 trust-anchor resource loads and validates."""
+    authority = load_pinned_trust_anchor()
+    assert authority.signature_alg == "ed25519"
+    assert authority.public_key_hex
+    assert authority.anchor_payload["architect"]
+
+    from importlib.resources import files
+
+    trust_anchor = json.loads(
+        files("belgi").joinpath("anchor", "v1", "TrustAnchor.json").read_text(encoding="utf-8", errors="strict")
+    )
+    assert isinstance(trust_anchor, dict)
+    assert trust_anchor.get("public_key_hex") == authority.public_key_hex

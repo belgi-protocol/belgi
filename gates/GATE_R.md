@@ -352,7 +352,10 @@ Optional binding check (when GateVerdict is provided to the verifier):
   2c) Enforce Tier-3 Genesis Root-of-Trust (fail-closed):
     - If `LockedSpec.tier.tier_id == "tier-3"`, EvidenceManifest MUST include exactly one artifact with `kind == "genesis_seal"`.
     - The referenced payload MUST validate against [../schemas/GenesisSealPayload.schema.json](../schemas/GenesisSealPayload.schema.json).
-    - The verifier MUST enforce the pinned canonical genesis strings and a valid Ed25519 signature over the canonical JSON payload (with signature fields removed).
+    - Tier-3 canonical authority is rooted in [../belgi/anchor/v1/TrustAnchor.json](../belgi/anchor/v1/TrustAnchor.json), not in the historical repo-local genesis reference payload.
+    - The verifier MUST compute `sha256(bytes)` over canonical `TrustAnchor.json` bytes and compare that digest against one pinned constant before consuming Tier-3 authority fields.
+    - After digest verification, the verifier MUST use `TrustAnchor.anchor_payload` + `TrustAnchor.public_key_hex` to verify the `genesis_seal` payload and signature.
+    - `belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference surface only; it is not authoritative for canonical Tier-3 trust-anchor verification.
   3) Enforce per-kind producer constraints ("LLMs propose; gates dispose"):
      - `schema_validation`: allowed producers `{C1, R}`
      - `policy_report`: allowed producers `{C1, R}`
