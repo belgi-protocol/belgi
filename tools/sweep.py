@@ -2927,6 +2927,11 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "belgi/canonicals/docs/research/README.md",
         "belgi/canonicals/docs/research/experiment-design.md",
         "belgi/canonicals/docs/research/metrics.md",
+        # Tier-3 canonical authority surfaces
+        "belgi/anchor/v1/TrustAnchor.json",
+        "belgi/genesis/GenesisSealPayload.json",
+        "belgi/genesis/README.md",
+        "belgi/trust_anchor.py",
         # Operator convenience scripts (public ergonomics surface)
         "scripts/belgi_latest_run.ps1",
         "scripts/belgi_latest_run.py",
@@ -2946,6 +2951,7 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "tools/normalize.py",
         "tools/rehash.py",
         "tools/check_codeowners.py",
+        "tools/report.py",
         "tools/sweep.py",
         "tools/wheel_boundary.py",
         # Fixture governance
@@ -3692,6 +3698,15 @@ def _sweep_managed_surface_files(root: Path) -> list[str]:
             out.add(rel)
             continue
         if rel.startswith("belgi/canonicals/") and rel.endswith(".md"):
+            out.add(rel)
+            continue
+        if rel in {
+            "belgi/anchor/v1/TrustAnchor.json",
+            "belgi/genesis/GenesisSealPayload.json",
+            "belgi/genesis/README.md",
+            "belgi/trust_anchor.py",
+            "tools/report.py",
+        }:
             out.add(rel)
             continue
         if rel.startswith(".github/workflows/") and rel.endswith((".yml", ".yaml")):

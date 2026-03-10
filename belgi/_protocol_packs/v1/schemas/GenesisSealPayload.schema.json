@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "GenesisSealPayload.schema.json",
   "title": "GenesisSealPayload",
-  "description": "A signed, deterministic genesis root-of-trust payload. Used by Gate R (R4) to enforce Tier-3 genesis requirements.",
+  "description": "A signed, deterministic Tier-3 evidence payload (`genesis_seal`) validated under the canonical TrustAnchor authority artifact. It is not itself the Tier-3 authority object.",
   "type": "object",
   "additionalProperties": false,
   "required": [

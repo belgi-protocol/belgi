@@ -47,6 +47,12 @@ from belgi.core.jail import resolve_repo_rel_path
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import safe_relpath
 from belgi.core.jail import resolve_storage_ref
+from belgi.trust_anchor import (
+    TrustAnchorError,
+    load_pinned_trust_anchor,
+    validate_genesis_seal_payload,
+    validate_genesis_seal_schema,
+)
 from chain.logic.base import load_json
 
 
@@ -115,28 +121,18 @@ def _extract_genesis_from_evidence(
     if not isinstance(payload_obj, dict):
         raise _UserInputError("Tier-3: genesis_seal payload must be a JSON object")
 
-    philosophy = _require_str(payload_obj, "philosophy", where="Tier-3 genesis_seal")
-    dedication = _require_str(payload_obj, "dedication", where="Tier-3 genesis_seal")
-    architect = _require_str(payload_obj, "architect", where="Tier-3 genesis_seal")
+    try:
+        validate_genesis_seal_schema(payload_obj, repo_root=repo_root, source="Tier-3 genesis_seal")
+        authority = load_pinned_trust_anchor(repo_root)
+        validate_genesis_seal_payload(payload_obj, authority=authority, source="Tier-3 genesis_seal")
+    except TrustAnchorError as e:
+        raise _UserInputError(str(e)) from e
 
-    # Defense-in-depth: ensure the reported strings match the canonical genesis payload checked into the repo.
-    canonical_path = resolve_repo_rel_path(
-        repo_root,
-        "belgi/genesis/GenesisSealPayload.json",
-        must_exist=True,
-        must_be_file=True,
-        allow_backslashes=False,
-        forbid_symlinks=True,
-    )
-    canonical = _read_json_dict(canonical_path, where="canonical GenesisSealPayload")
-    if philosophy != _require_str(canonical, "philosophy", where="canonical GenesisSealPayload"):
-        raise _UserInputError("Tier-3: genesis_seal philosophy mismatch vs canonical GenesisSealPayload.json")
-    if dedication != _require_str(canonical, "dedication", where="canonical GenesisSealPayload"):
-        raise _UserInputError("Tier-3: genesis_seal dedication mismatch vs canonical GenesisSealPayload.json")
-    if architect != _require_str(canonical, "architect", where="canonical GenesisSealPayload"):
-        raise _UserInputError("Tier-3: genesis_seal architect mismatch vs canonical GenesisSealPayload.json")
-
-    return {"philosophy": philosophy, "dedication": dedication, "architect": architect}, declared_hash
+    return {
+        "philosophy": authority.anchor_payload["philosophy"],
+        "dedication": authority.anchor_payload["dedication"],
+        "architect": authority.anchor_payload["architect"],
+    }, declared_hash
 
 
 def _format_gate_verdict(verdict: dict[str, Any], *, title: str) -> str:

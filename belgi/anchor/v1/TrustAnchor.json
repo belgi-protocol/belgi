@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "anchor_payload": {
+    "schema_version": "1.0.0",
+    "philosophy": "Hayatta en hakiki mürşit ilimdir. (M.K. Atatürk)",
+    "dedication": "Bilge (8)",
+    "architect": "Batuhan Turgay"
+  },
+  "public_key_hex": "7bdb5cd9f4ca31f9b1e1e1fd30d58f296a519c2e0ad510a1961f9a18e5f8b677",
+  "signature_alg": "ed25519",
+  "signature": "gQNEU6ntBoFjZ6exltiGfJv3bqzxZGndWx2xJlclRQ4pMs9+Jr0MqXGRIkZ/g6whfkoIVTzzykm2V/R/T7I2BQ=="
+}

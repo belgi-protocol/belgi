@@ -478,6 +478,10 @@ Chain of custody note (R-Snapshot):
   - Tier 1–3 require: `diff`, `command_log`, `schema_validation`, `policy_report`, `test_report`, `env_attestation`
   - Tier 3 additionally requires: `genesis_seal`
   - (From `../../tiers/tier-packs.json`: `docs_compilation_log` exists but is produced after Gate R (C3). Gate R MUST NOT require it.)
+- Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`.
+- `genesis_seal` remains the Tier-3 evidence kind consumed under that canonical authority boundary.
+- `belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload and is not authoritative for canonical Tier-3 trust-anchor verification.
+- Internet publication of the Tier-3 trust anchor is secondary only; the repo artifact is the primary authority surface.
 - Gate checks satisfied:
   - Gate R: R1–R8, R-DOC-001
   - Additionally, Gate R enforces Evidence Sufficiency (rule_id `R0.evidence_sufficiency`) and `command_log_mode` (rule_id `R0.command_log_mode`) per `../../gates/GATE_R.md`.
@@ -494,7 +498,7 @@ Failure handling:
 
 Notes:
 - This is an operator convenience tool and is **not** a gate requirement.
-- For Tier 3, the report includes an explicit YAML frontmatter block with the genesis insignia, sourced from the `genesis_seal` evidence artifact.
+- For Tier 3, the report includes an explicit YAML frontmatter block with the genesis insignia only after the `genesis_seal` evidence is verified under canonical `belgi/anchor/v1/TrustAnchor.json` authority.
 
 Run (example):
 

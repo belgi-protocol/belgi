@@ -95,6 +95,10 @@ Canonical trigger:
 - belgi/canonicals/docs/research/README.md
 - belgi/canonicals/docs/research/experiment-design.md
 - belgi/canonicals/docs/research/metrics.md
+- belgi/anchor/v1/TrustAnchor.json
+- belgi/genesis/GenesisSealPayload.json
+- belgi/genesis/README.md
+- belgi/trust_anchor.py
 - belgi/templates/PromptBundle.blocks.md
 - belgi/templates/DocsCompiler.template.md
 - scripts/belgi_latest_run.ps1
@@ -105,6 +109,7 @@ Canonical trigger:
 - schemas/*.schema.json
 - schemas/README.md
 - tools/README.md
+- tools/report.py
 - chain/logic/r_checks/context.py
 - chain/logic/r_checks/registry.py
 - chain/logic/r_checks/r0_evidence_sufficiency.py

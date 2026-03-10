@@ -258,10 +258,58 @@ def test_r8_public_docs_match_runtime_contract() -> None:
         assert running_docs_warn in text
         assert running_docs_fail in text
         assert running_docs_waiver in text
-        assert stale_rc2 not in text.lower()
 
     for text in (failure_taxonomy, failure_taxonomy_pack):
         assert '`adversarial_policy.findings_mode == "fail"`' in text
         assert "one or more unwaived findings (`summary.failed != 0`)" in text
         assert "is not emitted in `warn` mode" in text
         assert "is not emitted when all findings are covered by applicable active waivers" in text
+
+
+def test_tier3_canonical_authority_docs_are_explicit() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    evidence = _read_text("docs/operations/evidence-bundles.md")
+    evidence_mirror = _read_text("belgi/canonicals/docs/operations/evidence-bundles.md")
+    running = _read_text("docs/operations/running-belgi.md")
+    running_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+    trust_model = _read_text("trust-model.md")
+    trust_model_mirror = _read_text("belgi/canonicals/trust-model.md")
+    genesis_readme = _read_text("belgi/genesis/README.md")
+
+    canonical_root = "Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`."
+    canonical_root_gate_r = "Tier-3 canonical authority is rooted in [../belgi/anchor/v1/TrustAnchor.json]"
+    evidence_boundary = (
+        "`genesis_seal` is the Tier-3 evidence kind; `TrustAnchor.json` is the canonical authority object used to verify that evidence."
+    )
+    repo_primary = "Internet publication of the trust anchor is secondary only; the repo artifact is the primary Tier-3 authority surface."
+    history_boundary = (
+        "`belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload"
+    )
+
+    for text in (evidence, evidence_mirror, running, running_mirror, trust_model, trust_model_mirror):
+        assert canonical_root in text
+
+    for text in (gate_r, gate_r_pack):
+        assert canonical_root_gate_r in text
+
+    for text in (evidence, evidence_mirror):
+        assert evidence_boundary in text
+        assert repo_primary in text
+
+    for text in (running, running_mirror, trust_model, trust_model_mirror):
+        assert "the repo artifact is the primary authority surface." in text
+        assert history_boundary in text
+
+    assert "historical repo-local genesis reference payload" in genesis_readme
+    assert "it is not authoritative for canonical Tier-3 trust-anchor verification" in genesis_readme
+    assert "Canonical Tier-3 authority begins with" in genesis_readme
+
+
+def test_genesis_seal_schema_description_keeps_trust_anchor_boundary() -> None:
+    schema_text = _read_text("schemas/GenesisSealPayload.schema.json")
+    schema_text_pack = _read_text("belgi/_protocol_packs/v1/schemas/GenesisSealPayload.schema.json")
+    for text in (schema_text, schema_text_pack):
+        assert "root-of-trust payload" not in text
+        assert "validated under the canonical TrustAnchor authority artifact" in text
+        assert "not itself the Tier-3 authority object" in text

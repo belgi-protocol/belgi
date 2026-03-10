@@ -2,6 +2,27 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.14 — 2026-03-10
+
+### Summary
+Patch release introducing the first canonical Tier-3 trust-anchor artifact and converging Tier-3 authority verification onto that single authority path.
+
+### Changed
+- Added `belgi/anchor/v1/TrustAnchor.json` as the first canonical Tier-3 trust-anchor artifact.
+- Added `schemas/TrustAnchor.schema.json` and a shared `belgi.trust_anchor` helper that loads canonical trust-anchor bytes, validates the tracked artifact structure/signature, and enforces one pinned `sha256(bytes)` digest before Tier-3 authority fields are consumed.
+- Updated Gate R `R4` so Tier-3 `genesis_seal` verification now uses canonical `TrustAnchor.anchor_payload` + `TrustAnchor.public_key_hex` instead of split hardcoded architect/philosophy/dedication/public-key constants.
+- Updated the report tool to consume the same canonical Tier-3 authority helper as Gate R; Tier-3 report frontmatter is now emitted only after `genesis_seal` evidence validates under canonical `TrustAnchor.json` authority.
+- Preserved `belgi/genesis/GenesisSealPayload.json` as a historical repo-local genesis reference surface and added `belgi/genesis/README.md` to make the historical-vs-canonical boundary explicit.
+- Added `cryptography>=41` as a runtime package dependency because packaged Tier-3 trust-anchor loading and verification is now part of the shipped wheel surface.
+- Added deterministic coverage for trust-anchor validation, digest mismatch, signature/key drift, field drift, verifier/report shared authority logic, Tier-3 evidence validation, and Tier-2 non-regression.
+- Updated public docs, canonical mirrors, and sweep coverage so Tier-3 authority wording now consistently states:
+  - canonical Tier-3 authority is rooted in `belgi/anchor/v1/TrustAnchor.json`
+  - `genesis_seal` remains the Tier-3 evidence kind
+  - internet publication is secondary only; the repo artifact is the primary authority surface
+
+### Notes
+- Tier-2 is unchanged and remains out of scope for this trust-anchor change.
+
 ## 1.4.13 — 2026-03-09
 
 ### Summary
