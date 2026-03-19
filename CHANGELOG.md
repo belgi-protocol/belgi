@@ -2,6 +2,28 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.16 — 2026-03-19
+
+### Summary
+Patch release stabilizing hosted required-check governance, tightening repository-verification package proof topology, and removing the ambient-backend pinned-install shortcut without changing BELGI protocol semantics.
+
+### Changed
+- Added stable hosted gate jobs `repository-verification-gate` and `pull-request-proof-gate` so rulesets/branch protection can bind to explicit gate contexts instead of volatile matrix/job surfaces.
+- Refactored `Repository Verification` package proof topology to:
+  - build one canonical wheel
+  - verify the wheel boundary on that canonical artifact
+  - upload the built wheel once
+  - install and smoke-test that same exact wheel artifact across the supported Python matrix
+- Preserved `Repository Verification` ownership for repo/package verification and kept repo health, sweeps, boundary verification, and installed-wheel runtime proof intact.
+- Preserved `Pull Request Proof` as the exact PR-head review surface and added stable gate aggregation so the required context resolves truthfully instead of remaining expected/pending.
+- Kept `Pull Request Proof` label-gated by `proof:full`; without that label the gate now remains explicitly unsatisfied instead of silently relying on skipped proof jobs.
+- Removed `--no-build-isolation` from `Pinned Install Proof` so pinned `pip install git+repo@sha` follows the package’s declared build-system requirements across hosted runners.
+- Kept `Pinned Install Proof` manual/reusable, preserved BELGI ref keyed artifact naming, and added a final workflow-local readability gate without making it a PR-required context.
+- Updated workflow operations docs, README wording, and workflow contract tests so proof surfaces and hosted required gate contexts are defined separately and truthfully.
+
+### Notes
+- Protocol/gate semantics are unchanged in this release.
+
 ## 1.4.15 — 2026-03-19
 
 ### Summary

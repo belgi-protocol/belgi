@@ -225,3 +225,41 @@ jobs:
           name: proof-wheel-logs-${{ needs.preflight.outputs.pr_sha }}
           if-no-files-found: error
           path: proof_wheel/
+
+  pull-request-proof-gate:
+    name: pull-request-proof-gate
+    if: ${{ always() }}
+    needs:
+      - preflight
+      - smoke
+      - wheel-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate pull request proof gate
+        shell: bash
+        env:
+          PROOF_FULL_LABEL_PRESENT: ${{ contains(github.event.pull_request.labels.*.name, 'proof:full') && 'true' || 'false' }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}
+          WHEEL_RESULT: ${{ needs.wheel-smoke.result }}
+        run: |
+          set -euo pipefail
+          echo "proof:full=${PROOF_FULL_LABEL_PRESENT}"
+          if [ "${PROOF_FULL_LABEL_PRESENT}" != "true" ]; then
+            echo "NO-GO: add label proof:full so exact PR-head proof runs and this gate can pass" >&2
+            exit 1
+          fi
+
+          for item in \
+            "preflight:${PREFLIGHT_RESULT}" \
+            "smoke:${SMOKE_RESULT}" \
+            "wheel-smoke:${WHEEL_RESULT}"
+          do
+            job_name="${item%%:*}"
+            job_result="${item#*:}"
+            echo "${job_name}=${job_result}"
+            if [ "${job_result}" != "success" ]; then
+              echo "NO-GO: ${job_name} concluded ${job_result}" >&2
+              exit 1
+            fi
+          done
