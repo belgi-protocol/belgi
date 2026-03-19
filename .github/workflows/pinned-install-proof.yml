@@ -94,7 +94,7 @@ jobs:
           install_target = f"git+{repo_url}@{ref}"
           cmds = [
               [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-              [sys.executable, "-m", "pip", "install", "--no-build-isolation", install_target],
+              [sys.executable, "-m", "pip", "install", install_target],
               ["belgi", "about"],
           ]
           for cmd in cmds:
@@ -187,3 +187,22 @@ jobs:
             ${{ steps.smoke.outputs.attempt_dir }}/run.summary.json
             ${{ steps.smoke.outputs.attempt_dir }}/repo/out/**
             ${{ steps.smoke.outputs.attempt_dir }}/logs/**
+
+  pinned-install-proof-gate:
+    name: pinned-install-proof-gate
+    if: ${{ always() }}
+    needs:
+      - belgi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate pinned install proof gate
+        shell: bash
+        env:
+          BELGI_RESULT: ${{ needs.belgi.result }}
+        run: |
+          set -euo pipefail
+          echo "belgi=${BELGI_RESULT}"
+          if [ "${BELGI_RESULT}" != "success" ]; then
+            echo "NO-GO: pinned install proof concluded ${BELGI_RESULT}" >&2
+            exit 1
+          fi

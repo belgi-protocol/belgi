@@ -31,6 +31,7 @@ def test_guard_accepts_sha_pinned_external_refs_and_local_refs(tmp_path: Path) -
                 "  test:",
                 "    steps:",
                 "      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+                "      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16",
                 "      - uses: ./.github/actions/demo",
                 "      - uses: owner/repo/.github/workflows/reusable.yml@0123456789abcdef0123456789abcdef01234567",
             ]
@@ -59,6 +60,7 @@ def test_guard_rejects_floating_external_refs(tmp_path: Path) -> None:
                 "  test:",
                 "    steps:",
                 "      - uses: actions/checkout@v4",
+                "      - uses: actions/download-artifact@v4",
                 "      - uses: actions/upload-artifact@main",
                 "      - uses: docker://alpine:3.20",
             ]
@@ -70,5 +72,6 @@ def test_guard_rejects_floating_external_refs(tmp_path: Path) -> None:
 
     assert module.find_floating_external_action_refs(tmp_path) == [
         (".github/workflows/example.yml", 4, "actions/checkout@v4"),
-        (".github/workflows/example.yml", 5, "actions/upload-artifact@main"),
+        (".github/workflows/example.yml", 5, "actions/download-artifact@v4"),
+        (".github/workflows/example.yml", 6, "actions/upload-artifact@main"),
     ]
