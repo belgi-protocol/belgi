@@ -24,9 +24,14 @@
 /chain/logic/s_checks/**                        @sovsparrow
 
 # Governance tooling and CI policy
-/.github/workflows/ci.yml                       @sovsparrow
-/.github/workflows/proof-tier1.yml              @sovsparrow
-/.github/workflows/belgi-tier1-reusable.yml     @sovsparrow
+/.github/actions/belgi-python-setup/action.yml  @sovsparrow
+/.github/scripts/check_external_action_pins.py  @sovsparrow
+/.github/scripts/resolve_belgi_workflow_inputs.py @sovsparrow
+/.github/scripts/run_belgi_smoke.py             @sovsparrow
+/.github/scripts/validate_belgi_ref_pin.py      @sovsparrow
+/.github/workflows/repository-verification.yml  @sovsparrow
+/.github/workflows/pull-request-proof.yml       @sovsparrow
+/.github/workflows/pinned-install-proof.yml     @sovsparrow
 /tools/sweep.py                                 @sovsparrow
 /tools/check_drift.py                           @sovsparrow
 /tools/build_builtin_pack.py                    @sovsparrow

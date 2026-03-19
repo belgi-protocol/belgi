@@ -1,5 +1,5 @@
 # Policy: fork pull_request runs fail closed by design because BELGI_REF repository variables are unavailable.
-name: BELGI Tier-1
+name: Pinned Install Proof
 
 on:
   pull_request:
@@ -41,10 +41,11 @@ jobs:
     needs: preflight
     # Copy BELGI reusable workflow file into .github/workflows/ and helper scripts into
     # .github/scripts/ before using this stub:
-    #   - .github/workflows/belgi-tier1-reusable.yml
+    #   - .github/workflows/pinned-install-proof.yml
     #   - .github/scripts/validate_belgi_ref_pin.py
     #   - .github/scripts/run_belgi_smoke.py
-    uses: ./.github/workflows/belgi-tier1-reusable.yml
+    #   - .github/scripts/resolve_belgi_workflow_inputs.py
+    uses: ./.github/workflows/pinned-install-proof.yml
     permissions:
       contents: read
     secrets: {}

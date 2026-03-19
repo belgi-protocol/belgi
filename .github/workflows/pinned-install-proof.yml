@@ -1,4 +1,4 @@
-name: BELGI Tier-1 Reusable
+name: Pinned Install Proof
 
 on:
   workflow_call:
@@ -48,56 +48,24 @@ jobs:
       TZ: "UTC"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/belgi-python-setup
         with:
           python-version: "3.11"
-          cache: pip
 
-      - name: Resolve BELGI_REF (fail-closed)
-        shell: python
+      - name: Resolve BELGI workflow inputs (fail-closed)
+        id: resolve_inputs
+        shell: bash
         env:
           BELGI_REF_INPUT: ${{ inputs.belgi_ref }}
           BELGI_REPO_URL_INPUT: ${{ inputs.belgi_repo_url }}
           BELGI_VARS_JSON: ${{ toJson(vars) }}
         run: |
-          import os
-          import pathlib
-          import sys
-
-          from tools.github_vars_sanitize import SecretLikeVariableError, sanitize_vars_map
-
-          vars_raw = os.environ.get("BELGI_VARS_JSON", "") or ""
-          try:
-              vars_map = sanitize_vars_map(vars_raw)
-          except SecretLikeVariableError as e:
-              print(str(e), file=sys.stderr)
-              raise SystemExit(1)
-
-          ref = (os.environ.get("BELGI_REF_INPUT", "") or "").strip()
-          if not ref:
-              ref = str(vars_map.get("BELGI_REF", "") or "").strip()
-          if not ref:
-              print(
-                  "BELGI_REF is required. Set workflow input 'belgi_ref' or repository variable 'BELGI_REF'.",
-                  file=sys.stderr,
-              )
-              raise SystemExit(1)
-
-          env_path = os.environ.get("GITHUB_ENV", "")
-          if not env_path:
-              print("GITHUB_ENV is not set", file=sys.stderr)
-              raise SystemExit(1)
-
-          with pathlib.Path(env_path).open("a", encoding="utf-8") as handle:
-              handle.write(f"BELGI_REF={ref}\n")
-              repo_url = (os.environ.get("BELGI_REPO_URL_INPUT", "") or "").strip()
-              if not repo_url:
-                  repo_url = str(vars_map.get("BELGI_REPO_URL", "") or "").strip()
-              if not repo_url:
-                  repo_url = "https://github.com/belgi-protocol/belgi.git"
-              handle.write(f"BELGI_REPO_URL={repo_url}\n")
+          set -euo pipefail
+          python .github/scripts/resolve_belgi_workflow_inputs.py
 
       - name: Validate immutable BELGI_REF pin (fail-closed)
         shell: python
@@ -210,9 +178,9 @@ jobs:
 
       - name: Upload BELGI run artifact
         if: ${{ steps.act_context.outputs.is_act != '1' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: belgi-run-${{ github.sha }}-${{ matrix.os }}-${{ matrix.tier }}
+          name: pinned-install-${{ steps.resolve_inputs.outputs.belgi_ref_short }}-${{ matrix.os }}-${{ matrix.tier }}
           if-no-files-found: error
           path: |
             ${{ steps.smoke.outputs.run_log }}

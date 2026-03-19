@@ -1,4 +1,4 @@
-name: CI
+name: Repository Verification
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: repository-verification-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
@@ -32,6 +32,9 @@ jobs:
           python-version: "3.11"
           editable: "true"
           install-pytest: "true"
+
+      - name: External action SHA pin guard
+        run: python .github/scripts/check_external_action_pins.py --repo .
 
       - name: Byte Guard (normalize / CRLF drift check)
         run: python -m tools.normalize --repo . --check --tracked-only
@@ -87,7 +90,7 @@ jobs:
 
       - name: Upload consistency sweep artifacts
         if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: consistency-sweep
           if-no-files-found: error
@@ -123,7 +126,7 @@ jobs:
       TZ: "UTC"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 

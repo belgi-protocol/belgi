@@ -275,7 +275,7 @@ def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, mon
         tmp_path,
         {
             "docs/operations/workflows.md": "# workflows\n",
-            ".github/workflows/proof-tier1.yml": "name: proof\n",
+            ".github/workflows/pull-request-proof.yml": "name: proof\n",
             ".github/scripts/validate_belgi_ref_pin.py": "print('ok')\n",
             "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
@@ -302,7 +302,7 @@ def test_cs_sweep_002_passes_when_managed_surface_is_listed(tmp_path: Path, monk
         tmp_path,
         {
             "docs/operations/workflows.md": "# workflows\n",
-            ".github/workflows/proof-tier1.yml": "name: proof\n",
+            ".github/workflows/pull-request-proof.yml": "name: proof\n",
             ".github/scripts/validate_belgi_ref_pin.py": "print('ok')\n",
             "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
