@@ -859,6 +859,47 @@ def check_cs_term_001(root: Path) -> InvariantResult:
     )
 
 
+def _normalize_cs_can_001_subject(text: str) -> str:
+    subject = re.sub(r"\s+", " ", str(text or "").strip())
+    if len(subject) >= 2 and subject.startswith("`") and subject.endswith("`"):
+        inner = subject[1:-1].strip()
+        if inner:
+            subject = inner
+    return re.sub(r"\s+", " ", subject).casefold()
+
+
+def _extract_cs_can_001_term_map_subjects(term_map: str) -> set[str]:
+    subjects: set[str] = set()
+    for raw_line in term_map.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line.startswith("|") and line.endswith("|"):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) >= 2 and cells[0].lower() != "term":
+                if re.search(r"\(CANONICALS\.md#[^)]+\)", cells[1]):
+                    normalized = _normalize_cs_can_001_subject(cells[0])
+                    if normalized:
+                        subjects.add(normalized)
+            continue
+
+        link_match = re.match(r"^\s*[-*+]\s+\[([^\]]+)\]\((CANONICALS\.md#[^)]+)\)\s*$", line)
+        if link_match:
+            normalized = _normalize_cs_can_001_subject(link_match.group(1))
+            if normalized:
+                subjects.add(normalized)
+    return subjects
+
+
+def _extract_cs_can_001_definitional_subject(line: str) -> str | None:
+    match = re.match(r"^(?P<subject>.+?)\s+is\s+(?:an|the|a)\s+.+$", str(line or "").strip(), re.IGNORECASE)
+    if not match:
+        return None
+    subject = _normalize_cs_can_001_subject(match.group("subject") or "")
+    return subject or None
+
+
 def check_cs_can_001(root: Path) -> InvariantResult:
     """CS-CAN-001 — Terminology is pointers-only (best-effort)."""
 
@@ -889,6 +930,14 @@ def check_cs_can_001(root: Path) -> InvariantResult:
                 ["terminology.md#term-map"],
                 f"Term Map has non-canonical links (must start with CANONICALS.md#): {bad_links[:5]}",
             )
+        canonical_subjects = _extract_cs_can_001_term_map_subjects(term_map)
+        if not canonical_subjects:
+            return InvariantResult(
+                "CS-CAN-001",
+                "FAIL",
+                ["terminology.md#term-map"],
+                "Populate the 'Term Map' section with canonical term pointers to CANONICALS.md#<anchor>.",
+            )
     else:
         return InvariantResult(
             "CS-CAN-001",
@@ -898,14 +947,20 @@ def check_cs_can_001(root: Path) -> InvariantResult:
         )
 
     remaining_lines = strip_code_blocks_and_tables(md)
-    rx = re.compile(r"^.+ is (the|a) .+", re.IGNORECASE)
-    offenders = [ln for ln in remaining_lines if rx.match(ln.strip())]
+    offenders = []
+    for raw_line in remaining_lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        subject = _extract_cs_can_001_definitional_subject(line)
+        if subject and subject in canonical_subjects:
+            offenders.append(line)
     if offenders:
         return InvariantResult(
             "CS-CAN-001",
             "FAIL",
             ["terminology.md"],
-            "Remove non-pointer definitions from terminology.md (found definitional sentences of the form 'X is the/a Y').",
+            "Remove non-pointer term definitions from terminology.md (found glossary-like definitional sentences for canonical term subjects of the form '<term> is a/an/the ...').",
         )
 
     return InvariantResult(

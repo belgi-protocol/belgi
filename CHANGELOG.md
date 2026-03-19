@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.18 — 2026-03-19
+
+### Summary
+Patch release retiring the current non-blocking debt items around CRLF result parsing assertions, markdown tier-pack strictness, and `CS-CAN-001` terminology detection before the Tier-2/3 adopter-path push.
+
+### Changed
+- Strengthened the CRLF BELGI result parser test so it now asserts `ok == True` and `verdict == "GO"` in addition to `run_key` and `attempt_id`.
+- Removed the markdown tier-pack parser fallback from `command_log_mode` to `adversarial_policy.findings_mode`; markdown tier params now fail closed if `findings_mode` is missing.
+- Added regression coverage that current markdown tier-pack surfaces still load with explicit `findings_mode` values and that missing `findings_mode` is rejected deterministically.
+- Tightened `CS-CAN-001` definitional-sentence detection by deriving canonical-term subjects from BELGI's live `terminology.md` Term Map pointers instead of a hard-coded style subset, without reopening the old broad prose matcher.
+- `CS-CAN-001` now rejects glossary-like definitional sentences for live canonical term subjects using `is a`, `is an`, or `is the` after deterministic normalization of optional outer backticks, whitespace, and case.
+- Added regression coverage for the live canonical subject families used by BELGI, including the missing `is an` article form for parenthesized and hyphenated terms, plus the benign prose non-match `This is a test.`; consistency-sweep docs were re-aligned to the enforced rule.
+
+### Notes
+- Protocol/gate semantics are unchanged in this release.
+
 ## 1.4.17 — 2026-03-19
 
 ### Summary
