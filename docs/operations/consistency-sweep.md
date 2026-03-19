@@ -148,12 +148,13 @@ Canonical trigger:
 - check procedure (deterministic):
   1) Confirm terminology.md contains the Rule of Use statement: “MUST NOT define or redefine terms.”
   2) Confirm every entry in terminology.md “Term Map” links to CANONICALS.md#<anchor>.
-  3) Confirm terminology.md contains no sections that introduce new normative definitions.
+  3) Derive the live canonical-term subject set from the link text of terminology.md “Term Map” pointers, then confirm terminology.md contains no glossary-like definitional sentences for those BELGI canonical terms.
   Filter scope:
   - Exclude table rows: any line that starts with `|`.
   - Exclude fenced code blocks: toggle exclusion when a line starts with ``` (any language tag allowed); stop excluding when the line is exactly ```.
-  Reject if any remaining non-excluded line matches the case-insensitive regex:
-  `^\s*[^\n]{1,120}\s+is\s+(a|an|the)\s+[^\n]{1,200}\.?\s*$`
+  Reject if any remaining non-excluded line matches `<canonical_term_subject> is a ...`, `<canonical_term_subject> is an ...`, or `<canonical_term_subject> is the ...`, where `<canonical_term_subject>` is a live BELGI term-map entry.
+  Subject comparison is normalized deterministically for surrounding backticks, whitespace, and case only; this check is grounded in the live canonical term set rather than a hard-coded style subset.
+  Benign prose such as `This is a test.` is not a target unless the subject itself is a live BELGI canonical term.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if steps 1–2 succeed and step 3 finds no matches.

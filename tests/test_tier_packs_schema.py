@@ -13,6 +13,7 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.core.schema import validate_schema
+from chain.logic.tier_packs import load_tier_params
 
 
 def _load_json(path: Path) -> dict:
@@ -102,3 +103,24 @@ def test_gate_parameter_map_keeps_pinned_toolchain_refs_owned_by_q5() -> None:
 
     assert q5_params == ["envelope_policy.pinned_toolchain_refs_required"]
     assert r7_params == ["command_log_mode"]
+
+
+def test_tier_packs_markdown_requires_explicit_findings_mode() -> None:
+    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
+
+    loaded = load_tier_params(tiers_md, "tier-0")
+    assert loaded.params is not None, loaded.parse_error
+    assert loaded.params.adversarial_policy_findings_mode == "warn"
+
+    loaded = load_tier_params(tiers_md, "tier-1")
+    assert loaded.params is not None, loaded.parse_error
+    assert loaded.params.adversarial_policy_findings_mode == "fail"
+
+
+def test_tier_packs_markdown_fails_closed_when_findings_mode_is_missing() -> None:
+    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
+    mutated = tiers_md.replace("  - findings_mode: `warn`\n", "", 1)
+
+    loaded = load_tier_params(mutated, "tier-0")
+    assert loaded.params is None
+    assert loaded.parse_error == "Missing mandatory adversarial_policy.findings_mode"

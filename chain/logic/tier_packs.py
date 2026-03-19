@@ -300,10 +300,8 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
     if afm:
         params["adversarial_policy.findings_mode"] = afm.group(1)
     else:
-        # Legacy generated markdown may not carry this key yet.
-        # Deterministic fallback preserves tier gradient:
-        # strings => warn (tier-0), structured => fail (tier-1+)
-        params["adversarial_policy.findings_mode"] = "warn" if params.get("command_log_mode") == "strings" else "fail"
+        params["_tier_parse_error"] = "Missing mandatory adversarial_policy.findings_mode"
+        return params
 
     # envelope_policy.requires_attestation: mandatory.
     ra = re.search(

@@ -120,6 +120,25 @@ def _init_tracked_temp_repo(root: Path, files: dict[str, str]) -> None:
     subprocess.run(["git", "add", "--all"], cwd=root, check=True)
 
 
+def _write_terminology_fixture(tmp_path: Path, term_entries: list[tuple[str, str]], note_line: str) -> None:
+    (tmp_path / "terminology.md").write_text(
+        "\n".join(
+            [
+                "# Terminology",
+                "Rule of Use: terminology.md MUST NOT define or redefine canonical terms.",
+                "## Term Map",
+                *[f"- [{term}](CANONICALS.md#{anchor})" for term, anchor in term_entries],
+                "## Notes",
+                note_line,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
 def test_cs_term_001_fails_on_validation_posture_phrase(tmp_path: Path) -> None:
     from tools import sweep as sweep_mod
 
@@ -151,6 +170,162 @@ def test_cs_term_001_allows_schema_validation_context(tmp_path: Path) -> None:
 
     res = sweep_mod.check_cs_term_001(tmp_path)
     assert res.invariant_id == "CS-TERM-001"
+    assert res.status == "PASS"
+
+
+def test_cs_can_001_derives_live_subjects_from_repo_term_map() -> None:
+    from tools import sweep as sweep_mod
+
+    md = (REPO_ROOT / "terminology.md").read_text(encoding="utf-8", errors="strict")
+    match = re.search(r"(?is)#+\s*(?:\d+(?:\.\d+)*\.?\s*)?Term Map\b(.*?)(\n#+\s|\Z)", md)
+    assert match is not None
+
+    subjects = sweep_mod._extract_cs_can_001_term_map_subjects(match.group(1))
+    expected = {
+        sweep_mod._normalize_cs_can_001_subject("LockedSpec"),
+        sweep_mod._normalize_cs_can_001_subject("pack_id"),
+        sweep_mod._normalize_cs_can_001_subject("HOTL"),
+        sweep_mod._normalize_cs_can_001_subject("Protocol Pack"),
+        sweep_mod._normalize_cs_can_001_subject("Waivers"),
+        sweep_mod._normalize_cs_can_001_subject("Deterministic (BELGI Sense)"),
+        sweep_mod._normalize_cs_can_001_subject("R-Snapshot"),
+    }
+    assert expected.issubset(subjects)
+
+
+def test_cs_can_001_extracts_definitional_subject_for_a_an_the() -> None:
+    from tools import sweep as sweep_mod
+
+    assert sweep_mod._extract_cs_can_001_definitional_subject("Waivers is a temporary scoped exception.") == "waivers"
+    assert sweep_mod._extract_cs_can_001_definitional_subject("R-Snapshot is an immutable Gate R evidence snapshot.") == "r-snapshot"
+    assert sweep_mod._extract_cs_can_001_definitional_subject("LockedSpec is the canonical lock artifact.") == "lockedspec"
+    assert sweep_mod._extract_cs_can_001_definitional_subject("This is a test.") == "this"
+
+
+def test_cs_can_001_rejects_term_like_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("LockedSpec", "lockedspec")],
+        "LockedSpec is the canonical lock artifact.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+    assert "glossary-like definitional sentences" in res.remediation
+
+
+def test_cs_can_001_rejects_lower_snake_case_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("pack_id", "pack-id")],
+        "pack_id is the canonical protocol identity field.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_rejects_backticked_lower_snake_case_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("pack_id", "pack-id")],
+        "`pack_id` is the canonical protocol identity field.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_rejects_multiword_title_case_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("Protocol Pack", "protocol-pack")],
+        "Protocol Pack is the canonical rules bundle.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_rejects_allcaps_term_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("HOTL", "hotl")],
+        "HOTL is the human control point.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_rejects_single_word_title_case_term_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("Waivers", "waivers")],
+        "Waivers is a temporary scoped exception.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_rejects_parenthesized_term_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("Deterministic (BELGI sense)", "deterministic-belgi")],
+        "Deterministic (BELGI Sense) is an execution-bounded reproducibility rule.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_rejects_hyphenated_term_definition(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("R-Snapshot", "r-snapshot")],
+        "R-Snapshot is an immutable Gate R evidence snapshot.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+
+
+def test_cs_can_001_allows_benign_prose_sentence(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_terminology_fixture(
+        tmp_path,
+        [("LockedSpec", "lockedspec")],
+        "This is a test.",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
     assert res.status == "PASS"
 
 

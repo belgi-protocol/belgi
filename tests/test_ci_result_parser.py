@@ -76,6 +76,8 @@ def test_parse_belgi_result_accepts_whitespace_marker_with_crlf(tmp_path: Path) 
     )
 
     parsed = parse_belgi_result_file(log_path)
+    assert parsed["ok"] is True
+    assert parsed["verdict"] == "GO"
     assert parsed["run_key"] == "crlf"
     assert parsed["attempt_id"] == "attempt-0003"
 
