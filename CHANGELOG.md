@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.17 — 2026-03-19
+
+### Summary
+Patch release refreshing tracked external GitHub Action pins to Node.js 24-capable releases so hosted runs stop warning on Node.js 20 deprecation, without changing BELGI workflow topology or proof semantics.
+
+### Changed
+- Repinned tracked `actions/checkout` refs from the prior SHA to `v6.0.1` commit `8e8c483db84b4bee98b60c0593521ed34d9990e8`.
+- Repinned tracked `actions/setup-python` refs from the prior SHA to `v6.2.0` commit `a309ff8b426b58ec0e2a45f0f869d46889d02405`.
+- Repinned tracked `actions/upload-artifact` refs from the prior SHA to `v6.0.0` commit `b7c566a772e6b6bfb58ed0dc250532a479d7789f`.
+- Repinned tracked `actions/download-artifact` refs to `v5.0.0` commit `634f93cb2916e3fdff6788551b99b062d0335ce0` so the repository-verification wheel artifact handoff no longer relies on the older runtime family.
+- Kept the workflow graph, gate names, proof surfaces, package-boundary checks, pinned-install semantics, and hosted governance contract unchanged.
+- Updated release/version references in workflow docs, README, and workflow contract tests where `v1.4.16` would otherwise become stale after this patch release.
+
+### Notes
+- Protocol/gate semantics are unchanged in this release.
+
 ## 1.4.16 — 2026-03-19
 
 ### Summary

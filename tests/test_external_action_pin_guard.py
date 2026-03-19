@@ -30,8 +30,8 @@ def test_guard_accepts_sha_pinned_external_refs_and_local_refs(tmp_path: Path) -
                 "jobs:",
                 "  test:",
                 "    steps:",
-                "      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
-                "      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16",
+                "      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8",
+                "      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
                 "      - uses: ./.github/actions/demo",
                 "      - uses: owner/repo/.github/workflows/reusable.yml@0123456789abcdef0123456789abcdef01234567",
             ]
@@ -41,7 +41,7 @@ def test_guard_accepts_sha_pinned_external_refs_and_local_refs(tmp_path: Path) -
         errors="strict",
     )
     action.write_text(
-        "runs:\n  using: composite\n  steps:\n    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n",
+        "runs:\n  using: composite\n  steps:\n    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405\n",
         encoding="utf-8",
         errors="strict",
     )

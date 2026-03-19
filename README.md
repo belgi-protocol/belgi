@@ -154,7 +154,7 @@ For cross-repo checkout jobs, a valid `GITHUB_TOKEN` secret is required locally;
 The three hosted proof surfaces and their boundaries are defined in [docs/operations/workflows.md](docs/operations/workflows.md).
 Hosted merge governance should bind only to the stable gate contexts `repository-verification-gate` and `pull-request-proof-gate`.
 GitHub will still show additional job-level checks for proof-carrying jobs and matrix entries.
-`Pinned Install Proof` remains manual/reusable and is not a PR-required context in `v1.4.16`.
+`Pinned Install Proof` remains manual/reusable and is not a PR-required context in `v1.4.17`.
 
 From the repo workspace:
 
