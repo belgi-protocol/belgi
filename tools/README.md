@@ -46,8 +46,21 @@ Behavior contract:
 - Never logs variable values.
 
 Integration:
-- Imported by `.github/workflows/belgi-tier1-reusable.yml` Python step (`Resolve BELGI_REF (fail-closed)`).
+- Imported by `.github/scripts/resolve_belgi_workflow_inputs.py`, which is called by `.github/workflows/pinned-install-proof.yml`.
 - Tested by `tests/test_github_vars_sanitize.py`.
+
+## check_external_action_pins.py
+
+Purpose: deterministic guard that fails closed when tracked workflow/action surfaces use floating external GitHub Action refs.
+
+Behavior contract:
+- Scans tracked workflow/action surfaces under `.github/workflows/` and `.github/actions/`.
+- Allows local `./...` uses and `docker://...` uses.
+- Requires every external GitHub Action `uses:` entry to be pinned by full 40-hex commit SHA.
+
+Integration:
+- Invoked by `Repository Verification` before repo/package proof steps.
+- Tested by `tests/test_external_action_pin_guard.py`.
 
 ## rehash.py
 

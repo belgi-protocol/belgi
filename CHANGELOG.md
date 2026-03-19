@@ -2,6 +2,33 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.4.15 — 2026-03-19
+
+### Summary
+Patch release closing remaining hosted workflow truth gaps, hardening tracked GitHub Action pinning, and fixing the reusable pinned-install bootstrap path without changing BELGI protocol semantics.
+
+### Changed
+- Renamed the three hosted workflow surfaces to purpose-first public names and file paths:
+  - `Repository Verification` at `.github/workflows/repository-verification.yml`
+  - `Pull Request Proof` at `.github/workflows/pull-request-proof.yml`
+  - `Pinned Install Proof` at `.github/workflows/pinned-install-proof.yml`
+- Preserved the three distinct hosted proof obligations:
+  - repo/package verification ownership remains with `Repository Verification`
+  - exact PR-head review proof remains with `Pull Request Proof`
+  - reusable/manual pinned-install proof remains with `Pinned Install Proof`
+- Replaced floating tracked external GitHub Action refs with full commit SHAs for `actions/checkout`, `actions/setup-python`, and `actions/upload-artifact`.
+- Added `.github/scripts/check_external_action_pins.py` and wired it into `Repository Verification` so tracked workflow/action surfaces fail closed on floating external `uses:` refs.
+- Fixed the reusable pinned-install bootstrap bug by moving BELGI ref / repo URL resolution into checked-in helper `.github/scripts/resolve_belgi_workflow_inputs.py`; the workflow no longer relies on inline temporary-script imports of `tools.github_vars_sanitize`.
+- Updated pinned-install artifact naming so hosted artifacts now carry the resolved BELGI ref short prefix (`pinned-install-<belgi_ref_short>-<os>-<tier>`) instead of only `${{ github.sha }}`.
+- Updated workflow docs, README references, CODEOWNERS, sweep authority inputs, and template comments to the renamed workflow surfaces and explicit three-surface ownership model.
+- Documented the current hosted release boundary factually:
+  - BELGI signs/verifies protocol evidence
+  - release/publish remains manual/operator-owned
+  - stronger release artifact provenance is future work, not a present claim
+
+### Notes
+- Protocol/gate semantics are unchanged in this release.
+
 ## 1.4.14 — 2026-03-10
 
 ### Summary

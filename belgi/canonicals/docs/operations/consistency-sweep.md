@@ -41,10 +41,12 @@ Canonical trigger:
 - gates/GATE_S.md
 - gates/failure-taxonomy.md
 - .github/scripts/run_belgi_smoke.py
+- .github/scripts/check_external_action_pins.py
+- .github/scripts/resolve_belgi_workflow_inputs.py
 - .github/scripts/validate_belgi_ref_pin.py
-- .github/workflows/belgi-tier1-reusable.yml
-- .github/workflows/ci.yml
-- .github/workflows/proof-tier1.yml
+- .github/workflows/pinned-install-proof.yml
+- .github/workflows/pull-request-proof.yml
+- .github/workflows/repository-verification.yml
 - .github/CODEOWNERS
 - tiers/tier-packs.json
 - tiers/tier-packs.template.md

@@ -6,8 +6,8 @@
 </p>
 
 <div align="center">
-  <a href="https://github.com/belgi-protocol/belgi/actions/workflows/ci.yml">
-  <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/ci.yml?branch=main&label=Gate%20R%20Verifier&style=flat-square&logo=github" alt="CI" />
+  <a href="https://github.com/belgi-protocol/belgi/actions/workflows/repository-verification.yml">
+  <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/repository-verification.yml?branch=main&label=Repository%20Verification&style=flat-square&logo=github" alt="Repository Verification" />
 </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square&logo=apache" alt="License" />
@@ -140,16 +140,18 @@ Operator CLI quickstart and NO-GO triage SSOT: [docs/operations/cli.md](docs/ope
 
 Chain-module reference commands (`python -m chain.*`): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
 
-Local CI proof (Docker + `act`) is recommended before pushing workflow changes:
+Local workflow checks with Docker + `act` are recommended before pushing workflow changes:
 
 ```bash
-act push -W .github/workflows/demo_matrix.yml -j demo \
-  -P ubuntu-24.04=catthehacker/ubuntu:full-latest \
-  -P windows-latest=catthehacker/ubuntu:full-latest \
-  --secret GITHUB_TOKEN="$(gh auth token)"
+act -W .github/workflows/repository-verification.yml -j health \
+  -P ubuntu-24.04=catthehacker/ubuntu:full-latest
+act -W .github/workflows/repository-verification.yml -j wheel-smoke \
+  -P ubuntu-24.04=catthehacker/ubuntu:full-latest
 ```
 
 For cross-repo checkout jobs, a valid `GITHUB_TOKEN` secret is required locally; missing/invalid token is a fail-closed NO-GO.
+
+The three hosted proof surfaces and their boundaries are defined in [docs/operations/workflows.md](docs/operations/workflows.md).
 
 From the repo workspace:
 
