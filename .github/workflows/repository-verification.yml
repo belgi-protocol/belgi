@@ -24,7 +24,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           fetch-depth: 0
 
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload consistency sweep artifacts
         if: ${{ always() && steps.act_context.outputs.is_act != '1' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: consistency-sweep
           if-no-files-found: error
@@ -125,7 +125,7 @@ jobs:
       TZ: "UTC"
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           fetch-depth: 0
 
@@ -154,7 +154,7 @@ jobs:
           python -m tools.wheel_boundary --wheel "$WHEEL" 2>&1 | tee wheel_proof/boundary.log
 
       - name: Upload canonical wheel artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: ${{ steps.meta.outputs.artifact_name }}
           if-no-files-found: error
@@ -173,7 +173,7 @@ jobs:
       TZ: "UTC"
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           fetch-depth: 0
 
@@ -182,7 +182,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Download canonical wheel artifact
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           name: ${{ needs.wheel-build.outputs.artifact_name }}
           path: dist

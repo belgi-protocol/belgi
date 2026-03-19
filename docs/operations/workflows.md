@@ -31,7 +31,7 @@ Hosted rulesets or branch protection should require these stable gate contexts:
 Do not bind hosted governance to volatile matrix/job surfaces.
 Do not bind hosted governance to workflow display names alone.
 
-`Pinned Install Proof` is not a PR-required context in `v1.4.16`.
+`Pinned Install Proof` is not a PR-required context in `v1.4.17`.
 If present, `pinned-install-proof-gate` is a human-readable summary inside that workflow, not a hosted merge requirement in this release.
 
 ## Repository Verification
@@ -115,7 +115,7 @@ Hosted job topology:
 - `pinned-install-proof-gate`
 
 It is a bounded pinned-install path, not a PR-artifact collector.
-It is manual/reusable and not PR-required in `v1.4.16`.
+It is manual/reusable and not PR-required in `v1.4.17`.
 Artifact names include the resolved BELGI ref short prefix so the verified install target remains visible across OS/tier matrix entries.
 
 Pinned install uses the declared build path for `pip install git+repo@sha`.
