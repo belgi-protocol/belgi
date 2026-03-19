@@ -46,6 +46,21 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
   3. explicit `--base-revision <40-hex SHA>`
 - If none of the above can resolve a valid base revision, `belgi run` fails closed with `USER_ERROR (20)`.
 
+Tier-2 on the shipped CLI uses the same `belgi run` backbone with explicit local-only refs:
+- `--attestation-pubkey-ref <object_id>=<repo-relative-path>`
+- `--seal-pubkey-ref <object_id>=<repo-relative-path>`
+- `--hotl-approval-ref <repo-relative-path>`
+- `--attestation-signing-key-ref <repo-relative-path>`
+- exactly one of `--seal-private-key-ref <repo-relative-path>` or `--seal-signature-ref <repo-relative-path>`
+
+Shared Tier-2 run behavior:
+- the pubkey refs are locked through C1 into `LockedSpec.environment_envelope`
+- the operator-supplied `hotl_approval` artifact is indexed into the pre-Q `EvidenceManifest`
+- `test_report` and signed `env_attestation` are produced on the same run spine before Gate R
+- the Tier-2 seal signature is produced or verified on the same run spine before Gate S
+
+Tier-3 remains outside this shipped CLI expansion.
+
 ## What BELGI creates
 
 - `.belgi/`:

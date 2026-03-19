@@ -224,6 +224,105 @@ def _write_applied_waiver(
     return waiver_path
 
 
+def _ed25519_pubkey_hex(seed_hex: str) -> str:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    private_key = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex))
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return public_key.hex()
+
+
+def _rewrite_tier2_intent_for_empty_doc_impact(repo: Path, *, run_id: str) -> Path:
+    intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
+    text = intent_path.read_text(encoding="utf-8", errors="strict")
+    updated = text.replace(
+        'doc_impact:\n  required_paths:\n    - "README.md"\n  note_on_empty: "Docs updated to reflect behavior change."\n',
+        'doc_impact:\n  required_paths: []\n  note_on_empty: "No documentation updates are required for this deterministic tier-2 test run."\n',
+    )
+    assert updated != text
+    intent_path.write_text(updated, encoding="utf-8", errors="strict", newline="\n")
+    return intent_path
+
+
+def _write_tier2_operator_inputs(repo: Path, *, run_id: str) -> dict[str, str]:
+    tier2_dir = repo / ".belgi" / "runs" / run_id / "inputs" / "tier2"
+    tier2_dir.mkdir(parents=True, exist_ok=True)
+
+    attestation_seed = "41" * 32
+    seal_seed = "52" * 32
+
+    attestation_pubkey_path = tier2_dir / "attestation_pubkey.hex"
+    seal_pubkey_path = tier2_dir / "seal_pubkey.hex"
+    hotl_path = tier2_dir / "hotl_approval.json"
+    attestation_signing_key_path = tier2_dir / "attestation_signing_key.hex"
+    seal_private_key_path = tier2_dir / "seal_private_key.hex"
+
+    attestation_pubkey_path.write_text(
+        _ed25519_pubkey_hex(attestation_seed) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    seal_pubkey_path.write_text(
+        _ed25519_pubkey_hex(seal_seed) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    attestation_signing_key_path.write_text(
+        attestation_seed + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    seal_private_key_path.write_text(
+        seal_seed + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    hotl_doc = {
+        "schema_version": "1.0.0",
+        "approval_id": "hotl-tier2-approval",
+        "run_id": run_id,
+        "approver": "human:test@example.com",
+        "approval_type": "pre-proposal",
+        "reviewed_artifacts": [
+            {
+                "id": "intent-spec",
+                "hash": "0" * 64,
+                "storage_ref": f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            }
+        ],
+        "decision": "approved",
+        "approved_at": "1970-01-01T00:00:00Z",
+        "justification": "Tier-2 shared-path approval for deterministic operator-run test.",
+        "audit_trail_ref": {
+            "id": "audit-hotl-001",
+            "storage_ref": f".belgi/runs/{run_id}/inputs/tier2/hotl_audit.log",
+        },
+    }
+    hotl_path.write_text(
+        json.dumps(hotl_doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    return {
+        "attestation_pubkey_ref": f"env.attestation_pubkey=.belgi/runs/{run_id}/inputs/tier2/attestation_pubkey.hex",
+        "seal_pubkey_ref": f"env.seal_pubkey=.belgi/runs/{run_id}/inputs/tier2/seal_pubkey.hex",
+        "hotl_approval_ref": f".belgi/runs/{run_id}/inputs/tier2/hotl_approval.json",
+        "attestation_signing_key_ref": f".belgi/runs/{run_id}/inputs/tier2/attestation_signing_key.hex",
+        "seal_private_key_ref": f".belgi/runs/{run_id}/inputs/tier2/seal_private_key.hex",
+    }
+
+
 def _refresh_summary_artifact_hashes(repo: Path, attempt_dir: Path, artifact_paths: list[Path]) -> None:
     summary_path = attempt_dir / "run.summary.json"
     summary_obj = json.loads(summary_path.read_text(encoding="utf-8", errors="strict"))
@@ -315,6 +414,118 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
 
     rc_verify_2 = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify_2 == 0
+
+
+def test_run_tier2_rejects_missing_required_operator_inputs(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-2", "--base-revision", head_sha])
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    reason = str(machine["primary_reason"])
+    assert "--attestation-pubkey-ref" in reason
+    assert "--seal-pubkey-ref" in reason
+    assert "--hotl-approval-ref" in reason
+    assert "--attestation-signing-key-ref" in reason
+    assert "--seal-private-key-ref or --seal-signature-ref" in reason
+
+
+def test_run_tier2_shared_path_accepts_valid_inputs_and_verify_passes(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier2-shared"
+
+    rc_init = belgi_main(["init", "--repo", str(repo)])
+    assert rc_init == 0
+    _ = capsys.readouterr()
+
+    rc_new = belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id])
+    assert rc_new == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_tier2_intent_for_empty_doc_impact(repo, run_id=run_id)
+    tier2_inputs = _write_tier2_operator_inputs(repo, run_id=run_id)
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-2",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            tier2_inputs["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            tier2_inputs["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            tier2_inputs["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            tier2_inputs["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            tier2_inputs["seal_private_key_ref"],
+        ]
+    )
+    assert rc_run == 0
+    captured_run = capsys.readouterr()
+
+    machine_run = json.loads(captured_run.out.splitlines()[0])
+    assert machine_run["ok"] is True
+    assert machine_run["verdict"] == "GO"
+    run_key = str(machine_run["run_key"])
+    attempt_id = str(machine_run["attempt_id"])
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
+    assert attempt_dir.is_dir()
+
+    locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    envelope = locked_spec.get("environment_envelope")
+    assert isinstance(envelope, dict)
+    attestation_pubkey_ref = envelope.get("attestation_pubkey_ref")
+    seal_pubkey_ref = envelope.get("seal_pubkey_ref")
+    assert isinstance(attestation_pubkey_ref, dict)
+    assert isinstance(seal_pubkey_ref, dict)
+    assert attestation_pubkey_ref.get("id") == "env.attestation_pubkey"
+    assert seal_pubkey_ref.get("id") == "env.seal_pubkey"
+    assert str(attestation_pubkey_ref.get("storage_ref") or "").startswith("out/inputs/tier2/")
+    assert str(seal_pubkey_ref.get("storage_ref") or "").startswith("out/inputs/tier2/")
+
+    evidence_manifest = json.loads((attempt_dir / "repo" / "out" / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict"))
+    artifacts = evidence_manifest.get("artifacts")
+    assert isinstance(artifacts, list)
+    kinds = {artifact.get("kind") for artifact in artifacts if isinstance(artifact, dict)}
+    assert "hotl_approval" in kinds
+    assert "test_report" in kinds
+    assert "env_attestation" in kinds
+
+    hotl_artifacts = [artifact for artifact in artifacts if isinstance(artifact, dict) and artifact.get("kind") == "hotl_approval"]
+    assert len(hotl_artifacts) == 1
+    assert hotl_artifacts[0].get("storage_ref") == "out/inputs/tier2/hotl_approval.json"
+
+    seal_manifest = json.loads((attempt_dir / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict"))
+    assert seal_manifest.get("signature_alg") == "ed25519"
+    assert isinstance(seal_manifest.get("signature"), str) and bool(str(seal_manifest["signature"]).strip())
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    captured_verify = capsys.readouterr()
+    machine_verify = json.loads(captured_verify.out.splitlines()[0])
+    assert machine_verify["ok"] is True
+    assert machine_verify["verdict"] == "GO"
 
 
 def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) -> None:

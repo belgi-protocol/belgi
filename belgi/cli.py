@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 from belgi.core.run_orchestrator import (
     CHAIN_OUT_DIRNAME,
     CHAIN_REPO_DIRNAME,
+    Tier2RunInputs,
     orchestrate_chain_run,
     render_default_intent_spec,
 )
@@ -59,8 +60,9 @@ DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
 RUN_KEY_DIR_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
+ALLOWED_RUN_TIERS = {"tier-0", "tier-1", "tier-2"}
 RUN_INPUTS_DIRNAME = "inputs"
+RUN_TIER2_INPUTS_DIRNAME = "tier2"
 RUN_STORE_DIRNAME = "store"
 RUN_STORE_RUNS_REPO_REL = "store/runs"
 RUN_INTENT_REPO_REL = "inputs/intent/IntentSpec.core.md"
@@ -651,7 +653,7 @@ def _discover_base_revision(
 def _validate_tier_id(raw: str) -> str:
     tier_id = str(raw or "").strip()
     if tier_id not in ALLOWED_RUN_TIERS:
-        raise ValueError("--tier must be one of: tier-0, tier-1")
+        raise ValueError("--tier must be one of: tier-0, tier-1, tier-2")
     return tier_id
 
 
@@ -1348,6 +1350,15 @@ def _render_runbook_template(*, run_id: str) -> str:
         "```bash\n"
         f"belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md --base-revision \"${{BASE_SHA40}}\"\n"
         "```\n\n"
+        "Tier-2 uses the same `belgi run` backbone with explicit local-only refs:\n\n"
+        "```bash\n"
+        f"belgi run --repo . --tier tier-2 --intent-spec .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md --base-revision \"${{BASE_SHA40}}\" \\\n"
+        f"  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/{run_id}/inputs/tier2/attestation_pubkey.hex \\\n"
+        f"  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/{run_id}/inputs/tier2/seal_pubkey.hex \\\n"
+        f"  --hotl-approval-ref .belgi/runs/{run_id}/inputs/tier2/hotl_approval.json \\\n"
+        f"  --attestation-signing-key-ref .belgi/runs/{run_id}/inputs/tier2/attestation_signing_key.hex \\\n"
+        f"  --seal-private-key-ref .belgi/runs/{run_id}/inputs/tier2/seal_private_key.hex\n"
+        "```\n\n"
         "5. Verify and triage:\n\n"
         "```bash\n"
         "belgi verify --repo .\n"
@@ -1431,6 +1442,7 @@ def _seed_run_workspace(
     force: bool,
 ) -> tuple[list[Path], list[Path], list[Path]]:
     inputs_dir = run_dir / RUN_INPUTS_DIRNAME
+    tier2_inputs_dir = inputs_dir / RUN_TIER2_INPUTS_DIRNAME
     intent_path = _run_intent_path(run_dir)
     waivers_dir = _run_waivers_dir(run_dir)
     runbook_template_path = run_dir / "RUN.md"
@@ -1452,6 +1464,12 @@ def _seed_run_workspace(
     else:
         inputs_dir.mkdir(parents=True, exist_ok=True)
         created.append(inputs_dir)
+    if tier2_inputs_dir.exists():
+        if tier2_inputs_dir.is_symlink() or not tier2_inputs_dir.is_dir():
+            raise ValueError(f"invalid path in run workspace: {tier2_inputs_dir}")
+    else:
+        tier2_inputs_dir.mkdir(parents=True, exist_ok=True)
+        created.append(tier2_inputs_dir)
 
     if intent_path.exists():
         if intent_path.is_symlink() or not intent_path.is_file():
@@ -2426,6 +2444,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     findings_signal_emittable = False
     waivers_applied_count: int | None = None
     waivers_applied_refs: list[str] | None = None
+    tier2_inputs: Tier2RunInputs | None = None
+    operator_input_paths: list[Path] = []
     run_ref: str | None = None
     intent_open_path: Path | None = None
     requested_waiver_refs: list[str] = []
@@ -2451,6 +2471,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 candidates.extend(chain_repo_dir / Path(*ref.split("/")) for ref in waivers_applied_refs)
         elif requested_waiver_refs:
             candidates.extend(repo_root / Path(*ref.split("/")) for ref in requested_waiver_refs)
+        candidates.extend(operator_input_paths)
         out: list[Path] = []
         seen: set[str] = set()
         for path in candidates:
@@ -2540,6 +2561,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             intent_source_rel = "(auto)"
 
         protocol = get_builtin_protocol_context()
+        tier2_inputs, operator_input_paths = _resolve_tier2_run_inputs(
+            repo_root=repo_root,
+            args=args,
+            tier_id=tier_id,
+        )
         try:
             evaluated_revision = _repo_head_sha(repo_root)
         except ValueError as e:
@@ -2589,6 +2615,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 intent_bytes=intent_bytes,
                 protocol=protocol,
                 applied_waiver_refs=requested_waiver_refs if requested_waiver_refs else None,
+                tier2_inputs=tier2_inputs,
             )
         chain_repo_dir = chain_result.chain_repo_dir
         chain_out_dir = chain_result.chain_out_dir
@@ -2873,6 +2900,180 @@ def _load_json_object(path: Path, *, label: str) -> dict[str, object]:
     if not isinstance(obj, dict):
         raise ValueError(f"{label} must be a JSON object")
     return obj
+
+
+def _parse_object_ref_cli(raw: str, *, flag_name: str) -> tuple[str, str]:
+    spec = str(raw or "").strip()
+    if not spec:
+        raise _UserInputError(f"{flag_name} missing/invalid")
+    if "=" not in spec:
+        raise _UserInputError(f"{flag_name} must use <object_id>=<repo-relative-path>")
+    object_id, storage_ref = spec.split("=", 1)
+    object_id = object_id.strip()
+    storage_ref = storage_ref.strip()
+    if not object_id or not storage_ref:
+        raise _UserInputError(f"{flag_name} must use <object_id>=<repo-relative-path>")
+    return object_id, storage_ref
+
+
+def _resolve_local_input_file_ref(
+    repo_root: Path,
+    *,
+    raw: str,
+    flag_name: str,
+    required_suffix: str | None = None,
+) -> tuple[str, Path]:
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+
+    ref = str(raw or "").strip()
+    if not ref:
+        raise _UserInputError(f"{flag_name} missing/invalid")
+    try:
+        path = resolve_repo_rel_path(
+            repo_root,
+            ref,
+            must_exist=True,
+            must_be_file=True,
+            allow_backslashes=False,
+            forbid_symlinks=True,
+        )
+    except ValueError as e:
+        raise _UserInputError(str(e)) from e
+    if required_suffix is not None and path.suffix.lower() != required_suffix.lower():
+        raise _UserInputError(f"{flag_name} must point to a {required_suffix} file")
+    return safe_relpath(repo_root, path), path
+
+
+def _validate_hotl_approval_input(*, hotl_path: Path) -> None:
+    from belgi.core.schema import validate_schema
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    hotl_obj = _load_json_object(hotl_path, label="HOTL approval artifact")
+    protocol = get_builtin_protocol_context()
+    hotl_schema = protocol.read_json("schemas/HOTLApproval.schema.json")
+    if not isinstance(hotl_schema, dict):
+        raise _UserInputError("builtin HOTLApproval schema missing/invalid")
+    errs = validate_schema(hotl_obj, hotl_schema, root_schema=hotl_schema, path="HOTLApproval")
+    if errs:
+        first = errs[0]
+        raise _UserInputError(f"--hotl-approval-ref invalid at {first.path}: {first.message}")
+
+
+def _resolve_tier2_run_inputs(
+    *,
+    repo_root: Path,
+    args: argparse.Namespace,
+    tier_id: str,
+) -> tuple[Tier2RunInputs | None, list[Path]]:
+    tier2_arg_names = (
+        "attestation_pubkey_ref",
+        "seal_pubkey_ref",
+        "hotl_approval_ref",
+        "attestation_signing_key_ref",
+        "seal_private_key_ref",
+        "seal_signature_ref",
+    )
+    raw_args = {name: str(getattr(args, name, "") or "").strip() for name in tier2_arg_names}
+    has_any_tier2_input = any(raw_args.values())
+
+    if tier_id != "tier-2":
+        if has_any_tier2_input:
+            raise _UserInputError("Tier-2 operator inputs are allowed only with --tier tier-2")
+        return None, []
+
+    missing_required = [
+        flag_name
+        for flag_name in (
+            "--attestation-pubkey-ref",
+            "--seal-pubkey-ref",
+            "--hotl-approval-ref",
+            "--attestation-signing-key-ref",
+        )
+        if not raw_args[flag_name[2:].replace("-", "_")]
+    ]
+    if raw_args["seal_private_key_ref"] and raw_args["seal_signature_ref"]:
+        raise _UserInputError(
+            "tier-2 requires exactly one seal signing input: use --seal-private-key-ref or --seal-signature-ref"
+        )
+    if not raw_args["seal_private_key_ref"] and not raw_args["seal_signature_ref"]:
+        missing_required.append("--seal-private-key-ref or --seal-signature-ref")
+    if missing_required:
+        raise _UserInputError("tier-2 requires " + ", ".join(missing_required))
+
+    attestation_pubkey_id, attestation_pubkey_ref = _parse_object_ref_cli(
+        raw_args["attestation_pubkey_ref"],
+        flag_name="--attestation-pubkey-ref",
+    )
+    seal_pubkey_id, seal_pubkey_ref = _parse_object_ref_cli(
+        raw_args["seal_pubkey_ref"],
+        flag_name="--seal-pubkey-ref",
+    )
+
+    _, attestation_pubkey_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=attestation_pubkey_ref,
+        flag_name="--attestation-pubkey-ref",
+    )
+    _, seal_pubkey_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=seal_pubkey_ref,
+        flag_name="--seal-pubkey-ref",
+    )
+    hotl_approval_ref, hotl_approval_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=raw_args["hotl_approval_ref"],
+        flag_name="--hotl-approval-ref",
+        required_suffix=".json",
+    )
+    _validate_hotl_approval_input(hotl_path=hotl_approval_path)
+    attestation_signing_key_ref, attestation_signing_key_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=raw_args["attestation_signing_key_ref"],
+        flag_name="--attestation-signing-key-ref",
+    )
+
+    seal_private_key_ref: str | None = None
+    seal_private_key_path: Path | None = None
+    if raw_args["seal_private_key_ref"]:
+        seal_private_key_ref, seal_private_key_path = _resolve_local_input_file_ref(
+            repo_root,
+            raw=raw_args["seal_private_key_ref"],
+            flag_name="--seal-private-key-ref",
+        )
+
+    seal_signature_ref: str | None = None
+    seal_signature_path: Path | None = None
+    if raw_args["seal_signature_ref"]:
+        seal_signature_ref, seal_signature_path = _resolve_local_input_file_ref(
+            repo_root,
+            raw=raw_args["seal_signature_ref"],
+            flag_name="--seal-signature-ref",
+        )
+
+    open_paths = [
+        attestation_pubkey_path,
+        seal_pubkey_path,
+        hotl_approval_path,
+        attestation_signing_key_path,
+    ]
+    if seal_private_key_path is not None:
+        open_paths.append(seal_private_key_path)
+    if seal_signature_path is not None:
+        open_paths.append(seal_signature_path)
+
+    return (
+        Tier2RunInputs(
+            attestation_pubkey_id=attestation_pubkey_id,
+            attestation_pubkey_source_ref=attestation_pubkey_ref,
+            seal_pubkey_id=seal_pubkey_id,
+            seal_pubkey_source_ref=seal_pubkey_ref,
+            hotl_approval_source_ref=hotl_approval_ref,
+            attestation_signing_key_source_ref=attestation_signing_key_ref,
+            seal_private_key_source_ref=seal_private_key_ref,
+            seal_signature_source_ref=seal_signature_ref,
+        ),
+        open_paths,
+    )
 
 
 def _list_dirs_sorted(root: Path) -> list[Path]:
@@ -4344,6 +4545,36 @@ def main(argv: list[str] | None = None) -> int:
             "Optional 40-hex base commit SHA used only when CI base env and upstream merge-base "
             "discovery are unavailable"
         ),
+    )
+    p_run.add_argument(
+        "--attestation-pubkey-ref",
+        default=None,
+        help="Tier-2 only: local-only <object_id>=<repo-relative-path> for the attestation public key.",
+    )
+    p_run.add_argument(
+        "--seal-pubkey-ref",
+        default=None,
+        help="Tier-2 only: local-only <object_id>=<repo-relative-path> for the seal public key.",
+    )
+    p_run.add_argument(
+        "--hotl-approval-ref",
+        default=None,
+        help="Tier-2 only: repo-relative HOTLApproval JSON to index into the pre-Q EvidenceManifest.",
+    )
+    p_run.add_argument(
+        "--attestation-signing-key-ref",
+        default=None,
+        help="Tier-2 only: repo-relative Ed25519 seed file used by belgi verify-attestation.",
+    )
+    p_run.add_argument(
+        "--seal-private-key-ref",
+        default=None,
+        help="Tier-2 only: repo-relative seal private key file used by chain.seal_bundle.",
+    )
+    p_run.add_argument(
+        "--seal-signature-ref",
+        default=None,
+        help="Tier-2 only: repo-relative file containing a base64 seal signature verified by chain.seal_bundle.",
     )
     p_run.add_argument("--verbose", action="store_true", help="Verbose human output (deep paths and full open helpers)")
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")
