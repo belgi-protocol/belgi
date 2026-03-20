@@ -49,8 +49,7 @@ jobs:
       - name: Syntax check
         run: python -m compileall -q belgi chain tools wrapper
 
-      - name: Ruff lint (prepared, non-gating)
-        if: ${{ vars.BELGI_ENABLE_RUFF == '1' }}
+      - name: Ruff lint
         run: |
           python -m pip install "ruff==0.4.8"
           python -m ruff check belgi chain tools wrapper tests scripts .github/scripts

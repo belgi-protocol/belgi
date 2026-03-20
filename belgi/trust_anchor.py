@@ -11,7 +11,6 @@ from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_repo_rel_path
 from belgi.core.schema import validate_schema
 
-
 TRUST_ANCHOR_RELPATH = "belgi/anchor/v1/TrustAnchor.json"
 TRUST_ANCHOR_SCHEMA_RELPATH = "schemas/TrustAnchor.schema.json"
 GENESIS_SEAL_SCHEMA_RELPATH = "schemas/GenesisSealPayload.schema.json"

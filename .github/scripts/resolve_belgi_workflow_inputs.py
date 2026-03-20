@@ -6,14 +6,12 @@ import pathlib
 import re
 import sys
 
-
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 repo_root_str = str(REPO_ROOT)
 if repo_root_str not in sys.path:
     sys.path.insert(0, repo_root_str)
 
 from tools.github_vars_sanitize import SecretLikeVariableError, sanitize_vars_map
-
 
 DEFAULT_BELGI_REPO_URL = "https://github.com/belgi-protocol/belgi.git"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")

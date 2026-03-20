@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.5.2 — 2026-03-20
+
+### Summary
+Patch release landing the first `ruff` cleanup wave and activating the chosen `ruff` rule surface for repo maintenance.
+
+### Changed
+- Applied safe repo-wide `ruff` autofixes across the current target set, covering import sorting, unused imports, and other mechanical hygiene cleanup without changing operator or protocol semantics.
+- Removed the repeated `tools/sweep.py` `root` import/name collision that produced a large `F811` cluster.
+- Closed the remaining patch-safe `ruff` findings in the current rule set with small deterministic fixes such as direct attribute access in tests, explicit exception chaining, unused-variable cleanup, and `zip(..., strict=True)` where length equality is already asserted.
+- Activated `ruff` enforcement for the existing chosen `F`, `I`, and `B` surface on both `Repository Verification` and local `dev_sync`.
+
+### Notes
+- `ruff` is active as repo-maintenance enforcement only; Pyright remains non-gating.
+
 ## 1.5.1 — 2026-03-20
 
 ### Summary

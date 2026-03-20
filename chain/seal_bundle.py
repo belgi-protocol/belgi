@@ -22,10 +22,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from belgi.core.jail import resolve_repo_rel_path
-from belgi.core.jail import resolve_storage_ref
+from belgi.core.jail import resolve_repo_rel_path, resolve_storage_ref
 from belgi.core.schema import validate_schema
-
 
 _SHA256_RE = re_compile = None
 
@@ -361,7 +359,7 @@ def _load_ed25519_private_key(blob: bytes) -> Any:
 def _verify_ed25519_signature(pub: Any, sig_bytes: bytes, payload: bytes, *, context: str) -> None:
     try:
         pub.verify(sig_bytes, payload)
-    except Exception as e:
+    except Exception:
         # Any verification failure is a deterministic policy failure (NO-GO).
         # (cryptography.exceptions.InvalidSignature has an empty string repr)
         raise ValueError(f"Invalid Ed25519 signature ({context})") from None

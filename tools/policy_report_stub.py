@@ -11,7 +11,6 @@ from pathlib import Path
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_repo_rel_path, safe_relpath
 
-
 DEFAULT_GENERATED_AT = "1970-01-01T00:00:00Z"
 
 

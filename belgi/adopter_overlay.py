@@ -9,7 +9,6 @@ from belgi.core.hash import is_hex_sha256, sha256_bytes
 from belgi.core.jail import resolve_storage_ref
 from belgi.core.schema import validate_schema
 
-
 DOMAIN_PACK_MANIFEST_FILENAME = "DomainPackManifest.json"
 
 

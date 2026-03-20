@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
-from belgi.core.jail import resolve_storage_ref
+from belgi.core.jail import resolve_storage_ref, safe_relpath
 from chain.logic.base import CheckResult, find_artifacts_by_kind
 
 from .context import RCheckContext

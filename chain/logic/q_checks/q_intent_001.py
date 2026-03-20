@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from chain.logic.base import CheckResult
+
 from .context import QCheckContext
 
 

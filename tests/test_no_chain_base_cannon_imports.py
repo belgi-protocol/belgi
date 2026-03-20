@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-
 # Bunlar chain.logic.base'ten import edilmeyecek (SSOT belgi.core.*)
 FORBIDDEN_NAMES = {
     # schema / timestamps

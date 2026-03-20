@@ -29,19 +29,23 @@ import os
 import re
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any, Iterable
 
-from importlib.metadata import PackageNotFoundError, version as pkg_version
-
+from belgi.core.intent_yaml import (
+    YamlParseError,
+    extract_single_fenced_yaml,
+    parse_yaml_subset,
+)
 from belgi.core.jail import normalize_repo_rel, resolve_repo_rel_path
 from belgi.core.schema import SchemaError, validate_schema
-from belgi.protocol.pack import ProtocolContext, get_builtin_protocol_context, load_protocol_context_from_dir
-
-from belgi.core.intent_yaml import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
-
-
-
+from belgi.protocol.pack import (
+    ProtocolContext,
+    get_builtin_protocol_context,
+    load_protocol_context_from_dir,
+)
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 COMPILER_ID = "chain/compiler_c1_intent.py"
@@ -735,15 +739,17 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             belgi_version = pkg_version("belgi")
-        except PackageNotFoundError:
+        except PackageNotFoundError as e:
             if os.environ.get("CI"):
-                raise _UserInputError("belgi package metadata version unavailable in CI")
+                raise _UserInputError("belgi package metadata version unavailable in CI") from e
             if os.environ.get("BELGI_DEV") != "1":
-                raise _UserInputError("belgi package metadata version unavailable; install belgi or set BELGI_DEV=1")
+                raise _UserInputError(
+                    "belgi package metadata version unavailable; install belgi or set BELGI_DEV=1"
+                ) from e
             belgi_version_path = _resolve_repo_path(repo_root, "VERSION", must_exist=True, must_be_file=True)
             belgi_version = belgi_version_path.read_text(encoding="utf-8", errors="strict").strip()
             if not belgi_version:
-                raise _UserInputError("VERSION file is empty")
+                raise _UserInputError("VERSION file is empty") from e
 
         locked_spec: dict[str, Any] = {
             "schema_version": "1.0.0",

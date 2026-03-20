@@ -4,9 +4,10 @@ import json
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
-from belgi.core.schema import validate_schema
 from belgi.core.jail import resolve_storage_ref
+from belgi.core.schema import validate_schema
 from chain.logic.base import CheckResult, command_satisfied, find_artifacts_by_kind_id
+
 from .context import RCheckContext
 
 

@@ -33,7 +33,7 @@
       "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/policy.adversarial_scan.json"
     },
     {
-      "hash": "bfe696be20e12605757d69e39dc4a0d5e3cfac7a73f06e13379f4bcb1a9f06af",
+      "hash": "ce5c63bce68606dba5171c7f092d6846a24612669b1ce7eb32b693966b94d937",
       "id": "policy.consistency_sweep",
       "kind": "policy_report",
       "media_type": "application/json",

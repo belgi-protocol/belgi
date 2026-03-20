@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-
 FIXED_TIMESTAMP_UTC_Z = "1970-01-01T00:00:00Z"
 
 

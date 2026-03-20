@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -182,7 +182,6 @@ def test_manifest_init_gate_q_integration_passes_fixture() -> None:
     work = REPO_ROOT / Path(*base_rel.split("/"))
     work.mkdir(parents=True, exist_ok=True)
 
-    fixture_root = REPO_ROOT / "policy" / "fixtures" / "public" / "gate_q" / "q_pass_tier0"
     locked_rel = "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
     intent_rel = "policy/fixtures/public/gate_q/q_pass_tier0/IntentSpec.core.md"
 

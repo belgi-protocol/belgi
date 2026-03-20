@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import importlib
 import base64
+import hashlib
+import importlib
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
-import hashlib
-import os
-import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -27,8 +27,8 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes
-from chain.logic.s_checks.context import SCheckContext
 from chain.logic.s_checks import s2_objectref_binding
+from chain.logic.s_checks.context import SCheckContext
 
 
 def _taxonomy_ids(root: Path) -> set[str]:
@@ -189,8 +189,8 @@ def _compute_bundle_root_sha256(*, docs_bundle_manifest_sha256: str, bundle_sha2
 
 def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dict[str, str]:
     c1 = importlib.import_module("chain.compiler_c1_intent")
-    selector = getattr(c1, "_prompt_block_ids_for_tier")
-    render = getattr(c1, "_render_prompt_block")
+    selector = c1._prompt_block_ids_for_tier
+    render = c1._render_prompt_block
 
     tier_obj = locked_spec.get("tier")
     assert isinstance(tier_obj, dict)
@@ -394,7 +394,6 @@ def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output() -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(src.read_bytes())
 
-    out_rel = "temp/pytest_gate_contracts/fake_repo/out/GateVerdict.json"
     # Note: out is repo-relative *to fake_root*, not REPO_ROOT.
     out_path = fake_root / "out" / "GateVerdict.json"
 
@@ -1235,9 +1234,12 @@ def test_sweep_repo_revision_ignores_consistency_sweep_outputs(tmp_path: Path) -
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
     _init_git_repo(tmp_path)
 
+    from tools.sweep import (
+        CANONICAL_SWEEP_OUT,
+        CANONICAL_SWEEP_SUMMARY,
+        _git_tree_sha_excluding,
+    )
     from tools.sweep import _git_tree_sha as sweep_git_tree_sha
-    from tools.sweep import _git_tree_sha_excluding
-    from tools.sweep import CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY
 
     tree_full_1 = sweep_git_tree_sha(tmp_path)
     tree_ex_1 = _git_tree_sha_excluding(tmp_path, [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY])
@@ -1269,8 +1271,7 @@ def test_sweep_repo_revision_blob_override_changes_tree(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
     _init_git_repo(tmp_path)
 
-    from tools.sweep import _git_tree_sha_excluding
-    from tools.sweep import CANONICAL_SWEEP_OUT
+    from tools.sweep import CANONICAL_SWEEP_OUT, _git_tree_sha_excluding
 
     tree_base = _git_tree_sha_excluding(tmp_path, [CANONICAL_SWEEP_OUT])
     tree_override = _git_tree_sha_excluding(
@@ -1344,7 +1345,7 @@ def test_cs_byte_001_tracked_only_fails_on_tracked_crlf(tmp_path: Path) -> None:
 
 
 def test_cs_ev_006_fix_manifest_idempotent() -> None:
-    from tools.sweep import _fix_cs_ev_006_manifest, CANONICAL_SWEEP_OUT
+    from tools.sweep import CANONICAL_SWEEP_OUT, _fix_cs_ev_006_manifest
 
     expected = "0" * 64
     em = {"artifacts": []}
@@ -1366,7 +1367,11 @@ def test_cs_ev_006_normalization_stable_missing_vs_present() -> None:
     were present with a $0 placeholder, so adding it later doesn't change the total's hash.
     """
 
-    from tools.sweep import _ev006_normalized_manifest_bytes, CANONICAL_SWEEP_OUT, ZERO_SHA256
+    from tools.sweep import (
+        CANONICAL_SWEEP_OUT,
+        ZERO_SHA256,
+        _ev006_normalized_manifest_bytes,
+    )
 
     base = {
         "schema_version": "1.0.0",
@@ -1474,7 +1479,7 @@ def test_fix_fixtures_regen_only_touched_seal_fixtures(tmp_path: Path, monkeypat
 
     _write_cases_json(tmp_path, rel="policy/fixtures/public/gate_s/cases.json", case_ids=["case1", "case2"], expected_exit_code=0)
     case1_rel = _write_min_gate_s_fixture_case(tmp_path, case_id="case1")
-    case2_rel = _write_min_gate_s_fixture_case(tmp_path, case_id="case2")
+    _write_min_gate_s_fixture_case(tmp_path, case_id="case2")
 
     seal1 = tmp_path / "policy" / "fixtures" / "public" / "gate_s" / "case1" / "SealManifest.json"
     seal2 = tmp_path / "policy" / "fixtures" / "public" / "gate_s" / "case2" / "SealManifest.json"
@@ -1565,7 +1570,11 @@ def test_post_regen_gate_s_verify_passes(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_cs_ev_006_pass_omits_details_and_is_fixed_point_stable(tmp_path: Path) -> None:
-    from tools.sweep import InvariantResult, _canonical_json_bytes, _eval_cs_ev_006_expected_hash
+    from tools.sweep import (
+        InvariantResult,
+        _canonical_json_bytes,
+        _eval_cs_ev_006_expected_hash,
+    )
 
     expected_hash = "a" * 64
 

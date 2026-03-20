@@ -25,10 +25,10 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
-import re
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, metadata, version
 from importlib.resources import files as resource_files
@@ -65,7 +65,6 @@ for _k in list(sys.modules.keys()):
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_repo_rel_path, safe_relpath
 from belgi.core.json_canon import canonical_json_bytes
-
 
 # Deterministic timestamp for reproducible runs
 FIXED_TIMESTAMP = "1970-01-01T00:00:00Z"
@@ -1200,7 +1199,7 @@ def cmd_invariant_eval(args: argparse.Namespace) -> int:
     
     invariants = locked_spec.get("invariants", [])
     if not isinstance(invariants, list):
-        print(f"[belgi invariant-eval] ERROR: LockedSpec.invariants must be a list", file=sys.stderr)
+        print("[belgi invariant-eval] ERROR: LockedSpec.invariants must be a list", file=sys.stderr)
         return 3
     
     checks: list[dict[str, Any]] = []
@@ -1300,7 +1299,7 @@ def cmd_invariant_eval(args: argparse.Namespace) -> int:
         print(f"[belgi invariant-eval] FAIL: {failed_count} invariant(s) failed", file=sys.stderr)
         return 1
     
-    print(f"[belgi invariant-eval] PASS: all invariants satisfied", file=sys.stderr)
+    print("[belgi invariant-eval] PASS: all invariants satisfied", file=sys.stderr)
     return 0
 
 
@@ -1399,8 +1398,10 @@ def cmd_verify_attestation(args: argparse.Namespace) -> int:
 
     if resolved_signing_key.strip():
         try:
-            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        except Exception as e:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PrivateKey,
+            )
+        except Exception:
             print(
                 "[belgi verify-attestation] ERROR: missing crypto dependency for Ed25519 signing (install 'cryptography' in the declared Environment Envelope).",
                 file=sys.stderr,
@@ -1432,7 +1433,7 @@ def cmd_verify_attestation(args: argparse.Namespace) -> int:
     print(f"[belgi verify-attestation] Attestation ID: {attestation_id}", file=sys.stderr)
     print(f"[belgi verify-attestation] Command log SHA256: {command_log_sha256}", file=sys.stderr)
     
-    print(f"[belgi verify-attestation] PASS: attestation generated", file=sys.stderr)
+    print("[belgi verify-attestation] PASS: attestation generated", file=sys.stderr)
     return 0
 
 
@@ -1490,7 +1491,7 @@ def cmd_diff_capture(args: argparse.Namespace) -> int:
 
     _atomic_write_bytes(out_path, p.stdout or b"")
     print(f"[belgi diff-capture] Wrote: {out_path}", file=sys.stderr)
-    print(f"[belgi diff-capture] PASS: diff captured", file=sys.stderr)
+    print("[belgi diff-capture] PASS: diff captured", file=sys.stderr)
     return 0
 
 
@@ -1642,7 +1643,7 @@ def cmd_pack_build(args: argparse.Namespace) -> int:
     
     # If out_dir != in_dir, we need to copy content first (not implemented here; use build_builtin_pack.py for that).
     if out_dir != in_dir:
-        print(f"[belgi pack build] ERROR: --out must equal --in (use build_builtin_pack.py for copy workflows)", file=sys.stderr)
+        print("[belgi pack build] ERROR: --out must equal --in (use build_builtin_pack.py for copy workflows)", file=sys.stderr)
         return 3
     
     try:
@@ -1674,7 +1675,7 @@ def cmd_pack_build(args: argparse.Namespace) -> int:
     print(f"[belgi pack build] pack_id: {pack_id}", file=sys.stderr)
     print(f"[belgi pack build] manifest_sha256: {manifest_sha256}", file=sys.stderr)
     print(f"[belgi pack build] files: {file_count}", file=sys.stderr)
-    print(f"[belgi pack build] PASS: manifest built and validated", file=sys.stderr)
+    print("[belgi pack build] PASS: manifest built and validated", file=sys.stderr)
     return 0
 
 
@@ -1685,10 +1686,9 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
     validates that manifest matches actual file hashes/sizes,
     and that pack_id is correctly computed.
     """
-    from importlib.resources import as_file, files
-
     # Lazy import. Ensure repo root is on path to avoid shadowing by tools/belgi.py.
     import sys
+    from importlib.resources import as_file, files
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
@@ -1700,8 +1700,8 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
 
     def _emit_manifest_files_diff(*, pack_root: Path, manifest_bytes: bytes) -> None:
         try:
-            from belgi.protocol.pack import scan_pack_dir
             from belgi.core.jail import normalize_repo_rel_path
+            from belgi.protocol.pack import scan_pack_dir
         except Exception as e:  # pragma: no cover
             print(f"[belgi pack verify] NOTE: cannot import diff helpers: {e}", file=sys.stderr)
             return
@@ -1799,16 +1799,16 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
         manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
 
         if bool(getattr(args, "verbose", False)):
-            print(f"[belgi pack verify] source: builtin (installed package)", file=sys.stderr)
+            print("[belgi pack verify] source: builtin (installed package)", file=sys.stderr)
             print(f"[belgi pack verify] pack_name: {pack_name}", file=sys.stderr)
             print(f"[belgi pack verify] pack_id: {pack_id}", file=sys.stderr)
             print(f"[belgi pack verify] manifest_sha256: {manifest_sha256}", file=sys.stderr)
             print(f"[belgi pack verify] files: {file_count}", file=sys.stderr)
-            print(f"[belgi pack verify] PASS: builtin manifest verified", file=sys.stderr)
+            print("[belgi pack verify] PASS: builtin manifest verified", file=sys.stderr)
         return 0
 
     if not args.input:
-        print(f"[belgi pack verify] ERROR: --in or --builtin required", file=sys.stderr)
+        print("[belgi pack verify] ERROR: --in or --builtin required", file=sys.stderr)
         return 3
     
     in_dir = Path(args.input).resolve()
@@ -1852,7 +1852,7 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
     print(f"[belgi pack verify] pack_id: {pack_id}", file=sys.stderr)
     print(f"[belgi pack verify] manifest_sha256: {manifest_sha256}", file=sys.stderr)
     print(f"[belgi pack verify] files: {file_count}", file=sys.stderr)
-    print(f"[belgi pack verify] PASS: manifest verified", file=sys.stderr)
+    print("[belgi pack verify] PASS: manifest verified", file=sys.stderr)
     return 0
 
 

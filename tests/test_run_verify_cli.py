@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -21,8 +20,8 @@ for _k in list(sys.modules.keys()):
 
 import belgi.cli as belgi_cli
 from belgi.cli import main as belgi_main
-from belgi.core.schema import validate_schema
 from belgi.core import run_orchestrator
+from belgi.core.schema import validate_schema
 from belgi.protocol.pack import get_builtin_protocol_context
 from belgi.trust_anchor import load_pinned_trust_anchor
 
@@ -455,7 +454,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     tier_id = tier_obj.get("tier_id")
     assert isinstance(tier_id, str) and tier_id
     c1 = importlib.import_module("chain.compiler_c1_intent")
-    selector = getattr(c1, "_prompt_block_ids_for_tier")
+    selector = c1._prompt_block_ids_for_tier
     expected_selected = set(selector(tier_id))
     assert set(prompt_hashes.keys()) == expected_selected
 

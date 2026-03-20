@@ -4,20 +4,19 @@ from typing import Callable
 
 from chain.logic.base import CheckResult
 
-from .context import RCheckContext
 from . import (
     r0_evidence_sufficiency,
     r1_intent_invariants,
     r2_scope_budgets,
     r3_policy_invariants,
-    r_doc_001_doc_impact,
     r4_schema_contract,
     r5_tests_policy,
     r6_attestation,
     r7_supplychain_scan,
     r8_adversarial_scan,
+    r_doc_001_doc_impact,
 )
-
+from .context import RCheckContext
 
 CheckFn = Callable[[RCheckContext], list[CheckResult]]
 

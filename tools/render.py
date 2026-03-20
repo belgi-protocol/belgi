@@ -34,7 +34,6 @@ if str(REPO_ROOT) not in sys.path:
 from belgi.core.jail import normalize_repo_rel as _normalize_repo_rel
 from belgi.core.jail import resolve_repo_rel_path as _resolve_repo_rel_path
 
-
 # ---------------------------------------------------------------------------
 # Generic utilities
 # ---------------------------------------------------------------------------

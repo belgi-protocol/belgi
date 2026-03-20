@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 from belgi.protocol.pack import get_builtin_protocol_context
 
 pytestmark = pytest.mark.repo_local

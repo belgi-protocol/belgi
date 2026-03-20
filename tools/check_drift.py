@@ -31,7 +31,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from belgi.protocol.pack import validate_manifest_bytes
 
-
 # Protocol pack v1 allowed content (whitelist).
 PACK_ALLOWED_FOLDERS = frozenset({"schemas", "gates", "tiers"})
 PACK_ALLOWED_FILES = frozenset({"ProtocolPackManifest.json"})

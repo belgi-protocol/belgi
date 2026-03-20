@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from belgi.core.schema import validate_schema
 from chain.logic.base import CheckResult
+
 from .context import QCheckContext
 
 

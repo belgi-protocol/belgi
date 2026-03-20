@@ -17,29 +17,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
-import os
 from pathlib import Path
 from typing import Any
 
-from belgi.core.jail import resolve_repo_rel_path
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
+from belgi.core.intent_yaml import (
+    YamlParseError,
+    extract_single_fenced_yaml,
+    parse_yaml_subset,
+)
+from belgi.core.jail import resolve_repo_rel_path, safe_relpath
 from belgi.core.schema import validate_schema
-from chain.logic.base import CheckResult, load_json, verify_protocol_identity
-from chain.logic.tier_packs import load_tier_params
-from chain.logic.q_checks.context import QCheckContext
-from chain.logic.q_checks.registry import get_checks
-from belgi.core.intent_yaml import YamlParseError, extract_single_fenced_yaml, parse_yaml_subset
-
 from belgi.protocol.pack import (
+    DevOverrideNotAllowedError,
     ProtocolContext,
     get_builtin_protocol_context,
     load_protocol_context_from_dir,
-    DevOverrideNotAllowedError,
 )
-
+from chain.logic.base import CheckResult, load_json, verify_protocol_identity
+from chain.logic.q_checks.context import QCheckContext
+from chain.logic.q_checks.registry import get_checks
+from chain.logic.tier_packs import load_tier_params
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 EVALUATOR = "chain/gate_q_verify.py"

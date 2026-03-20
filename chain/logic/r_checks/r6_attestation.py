@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
+from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
-from belgi.core.jail import resolve_storage_ref
 from chain.logic.base import CheckResult, command_satisfied, find_artifacts_by_kind_id
+
 from .context import RCheckContext
 
 
@@ -487,7 +487,7 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         try:
             pub = _load_ed25519_public_key(pk_bytes)
             pub.verify(sig_bytes, msg)
-        except Exception as e:
+        except Exception:
             return [
                 CheckResult(
                     check_id="R6",

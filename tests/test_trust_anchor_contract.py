@@ -7,14 +7,15 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import belgi.trust_anchor as trust_anchor
+import chain.logic.r_checks.r4_schema_contract as r4_schema_contract
+import tools.report as report_tool
 from belgi.core.hash import sha256_bytes
 from belgi.protocol.pack import get_builtin_protocol_context
-import belgi.trust_anchor as trust_anchor
 from belgi.trust_anchor import (
     TrustAnchorError,
     load_pinned_trust_anchor,
@@ -25,8 +26,6 @@ from belgi.trust_anchor import (
 )
 from chain.logic.r_checks.context import RCheckContext
 from chain.logic.r_checks.r4_schema_contract import _enforce_genesis_seal
-import chain.logic.r_checks.r4_schema_contract as r4_schema_contract
-import tools.report as report_tool
 
 
 def _fixture_anchor_material() -> tuple[dict[str, str], str, str]:

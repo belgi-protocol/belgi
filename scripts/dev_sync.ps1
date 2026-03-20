@@ -20,6 +20,20 @@ function Resolve-Python {
   throw "Neither 'py' nor 'python' found in PATH."
 }
 
+function Resolve-RuffPython([string]$repoRoot, [hashtable]$fallbackPyInfo) {
+  $venvWindows = Join-Path $repoRoot ".venv/Scripts/python.exe"
+  if (Test-Path $venvWindows -PathType Leaf) {
+    return @{ Exe = $venvWindows; PrefixArgs = @() }
+  }
+
+  $venvPosix = Join-Path $repoRoot ".venv/bin/python"
+  if (Test-Path $venvPosix -PathType Leaf) {
+    return @{ Exe = $venvPosix; PrefixArgs = @() }
+  }
+
+  return $fallbackPyInfo
+}
+
 function Run-Git([string]$label, [string[]]$gitArgs, [switch]$AllowFail) {
   Write-Host ""
   Write-Host "==> $label"
@@ -88,6 +102,7 @@ Assert-NotCI
 
 $pyInfo = Resolve-Python
 $repoRoot = Get-RepoRoot $Repo
+$ruffPyInfo = Resolve-RuffPython $repoRoot $pyInfo
 
 Push-Location $repoRoot
 try {
@@ -117,6 +132,7 @@ try {
   # --- Local deterministic fixer pipeline ---
   Run-Step "Byte Guard (normalize check)" $pyInfo @("-m","tools.normalize","--repo",".","--check","--tracked-only")
   Run-Step "Protocol Pack Drift Guard"    $pyInfo @("-m","tools.check_drift")
+  Run-Step "Ruff lint"                    $ruffPyInfo @("-m","ruff","check","belgi","chain","tools","wrapper","tests","scripts",".github/scripts")
 
   # Local calibration: keep builtin protocol pack manifest + fixture pins in sync.
   Run-Step "Protocol Pack Manifest (rehash)"              $pyInfo @("-m","tools.rehash","protocol-pack","--pack","belgi/_protocol_packs/v1")

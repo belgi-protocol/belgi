@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -76,8 +75,8 @@ def test_workflow_files_define_gate_jobs_and_current_topology() -> None:
     pinned_text = _read_text(".github/workflows/pinned-install-proof.yml")
 
     assert "install-ruff" not in repo_text
-    assert "\n      - name: Ruff lint (prepared, non-gating)\n" in repo_text
-    assert "if: ${{ vars.BELGI_ENABLE_RUFF == '1' }}" in repo_text
+    assert "\n      - name: Ruff lint\n" in repo_text
+    assert "vars.BELGI_ENABLE_RUFF" not in repo_text
     assert 'python -m pip install "ruff==0.4.8"' in repo_text
     assert "python -m ruff check belgi chain tools wrapper tests scripts .github/scripts" in repo_text
     assert "\n  wheel-build:\n" in repo_text
@@ -108,7 +107,7 @@ def test_readme_uses_current_workflow_references() -> None:
     assert "`Pinned Install Proof` remains manual/reusable and is not a PR-required context in `v1.4.17`." in text
 
 
-def test_repo_lint_authority_is_prepared_but_non_gating() -> None:
+def test_repo_lint_authority_is_active_for_chosen_surface() -> None:
     pyproject = _read_text("pyproject.toml")
     workflows = _read_text("docs/operations/workflows.md")
     readme = _read_text("README.md")
@@ -122,14 +121,12 @@ def test_repo_lint_authority_is_prepared_but_non_gating() -> None:
     assert '"B",   # bugbear' in pyproject
     assert 'fixable = ["ALL"]' in pyproject
     assert 'unfixable = ["B"]' in pyproject
-    assert "Tracked `ruff` configuration is prepared for this surface as the planned lint authority" in workflows
-    assert "it is not active as a required proof gate in this iteration" in workflows
-    assert "Tracked `ruff` configuration is prepared as the planned lint authority" in readme
-    assert "it is not part of the required local or hosted proof path in this iteration" in readme
-    assert 'Run-Step "Ruff lint"' not in dev_sync
-    assert 'function Ensure-Ruff([hashtable]$pyInfo)' not in dev_sync
-    assert '.venv/bin/python' not in dev_sync
-    assert '.venv/Scripts/python.exe' not in dev_sync
+    assert "Tracked `ruff` configuration is active on this surface" in workflows
+    assert "repo-maintenance enforcement only" in workflows
+    assert "Tracked `ruff` configuration is active as the repo-maintenance lint authority" in readme
+    assert 'Run-Step "Ruff lint"' in dev_sync
+    assert 'function Resolve-RuffPython([string]$repoRoot, [hashtable]$fallbackPyInfo)' in dev_sync
+    assert 'vars.BELGI_ENABLE_RUFF' not in _read_text(".github/workflows/repository-verification.yml")
 
     for text in (pyproject, workflows, readme):
         assert "flake8" not in text

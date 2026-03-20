@@ -10,7 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 BELGI_RESULT_PREFIX = "BELGI_RESULT"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 

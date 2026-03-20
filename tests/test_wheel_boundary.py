@@ -15,7 +15,6 @@ from tools.wheel_boundary import (
     wheel_listing_sha256,
 )
 
-
 pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

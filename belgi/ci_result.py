@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 BELGI_RESULT_PREFIX = "BELGI_RESULT"
 
 

@@ -4,7 +4,6 @@ import pytest
 
 from chain.logic.base import verify_protocol_identity
 
-
 pytestmark = pytest.mark.repo_local
 
 

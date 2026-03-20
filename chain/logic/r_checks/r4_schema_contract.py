@@ -4,14 +4,21 @@ import json
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
+from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
-from belgi.trust_anchor import TRUST_ANCHOR_RELPATH, TrustAnchorError, load_pinned_trust_anchor, validate_genesis_seal_payload
-from belgi.core.jail import resolve_storage_ref
+from belgi.trust_anchor import (
+    TRUST_ANCHOR_RELPATH,
+    TrustAnchorError,
+    load_pinned_trust_anchor,
+    validate_genesis_seal_payload,
+)
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id
 
 from .context import RCheckContext
-from .report_run_binding import required_report_run_binding_error, required_report_run_binding_remediation
+from .report_run_binding import (
+    required_report_run_binding_error,
+    required_report_run_binding_remediation,
+)
 
 _DEDICATED_POLICY_REPORT_OWNERS: set[str] = {
     "policy.supplychain",
@@ -255,7 +262,7 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
         locked_schema = _load_schema(ctx, "schemas/LockedSpec.schema.json")
         evidence_schema = _load_schema(ctx, "schemas/EvidenceManifest.schema.json")
         gate_verdict_schema = _load_schema(ctx, "schemas/GateVerdict.schema.json")
-        waiver_schema = _load_schema(ctx, "schemas/Waiver.schema.json")
+        _load_schema(ctx, "schemas/Waiver.schema.json")
         docs_compilation_schema = _load_schema(ctx, "schemas/DocsCompilationLogPayload.schema.json")
     except Exception as e:
         return [
