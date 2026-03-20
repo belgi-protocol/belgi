@@ -511,14 +511,31 @@ def test_run_tier2_shared_path_accepts_valid_inputs_and_verify_passes(
     assert "hotl_approval" in kinds
     assert "test_report" in kinds
     assert "env_attestation" in kinds
+    out_dir = attempt_dir / "repo" / "out"
+    persisted_secret_paths = sorted(
+        p.relative_to(out_dir).as_posix()
+        for p in out_dir.rglob("*")
+        if p.is_file()
+        and ("attestation_signing_key" in p.name or "seal_private_key" in p.name)
+    )
+    assert persisted_secret_paths == []
 
     hotl_artifacts = [artifact for artifact in artifacts if isinstance(artifact, dict) and artifact.get("kind") == "hotl_approval"]
     assert len(hotl_artifacts) == 1
     assert hotl_artifacts[0].get("storage_ref") == "out/inputs/tier2/hotl_approval.json"
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        storage_ref = str(artifact.get("storage_ref") or "")
+        assert "attestation_signing_key" not in storage_ref
+        assert "seal_private_key" not in storage_ref
 
     seal_manifest = json.loads((attempt_dir / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict"))
     assert seal_manifest.get("signature_alg") == "ed25519"
     assert isinstance(seal_manifest.get("signature"), str) and bool(str(seal_manifest["signature"]).strip())
+    seal_manifest_text = json.dumps(seal_manifest, sort_keys=True)
+    assert "attestation_signing_key" not in seal_manifest_text
+    assert "seal_private_key" not in seal_manifest_text
 
     rc_verify = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify == 0

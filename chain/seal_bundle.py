@@ -16,6 +16,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -438,6 +439,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional Ed25519 private key (PEM or 64-hex seed) used to produce Tier-2/3 cryptographic seal signature.",
     )
     ap.add_argument(
+        "--seal-private-key-env",
+        default=None,
+        help="Optional environment variable containing the Ed25519 private key material (PEM or 64-hex seed).",
+    )
+    ap.add_argument(
         "--fixture-mode",
         action="store_true",
         help=(
@@ -659,7 +665,20 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError(str(e)) from e
             sig_b64_override = sig_path.read_text(encoding="utf-8", errors="strict").strip()
 
+        if args.seal_private_key and args.seal_private_key_env:
+            raise ValueError("Provide at most one of --seal-private-key or --seal-private-key-env")
+
         priv_path: Path | None = None
+        priv_env_bytes: bytes | None = None
+        if args.seal_private_key_env:
+            env_name = str(args.seal_private_key_env).strip()
+            if not env_name:
+                raise ValueError("--seal-private-key-env must be non-empty")
+            env_value = os.environ.get(env_name)
+            if env_value is None or not str(env_value).strip():
+                raise ValueError(f"--seal-private-key-env variable missing/empty: {env_name}")
+            priv_env_bytes = str(env_value).encode("utf-8", errors="strict")
+
         if args.seal_private_key:
             try:
                 priv_path = resolve_repo_rel_path(
@@ -692,7 +711,7 @@ def main(argv: list[str] | None = None) -> int:
                     "FIXTURE-KEY NO-GO: --seal-private-key must be under policy/fixtures/ when --fixture-mode is set."
                 )
 
-        if sig_required or args.seal_private_key or sig_b64_override is not None:
+        if sig_required or args.seal_private_key or args.seal_private_key_env or sig_b64_override is not None:
             env = locked_spec.get("environment_envelope")
             if not isinstance(env, dict):
                 raise ValueError("LockedSpec.environment_envelope missing/invalid")
@@ -717,21 +736,26 @@ def main(argv: list[str] | None = None) -> int:
                 manifest["signature_alg"] = "ed25519"
                 manifest["signature"] = sig_b64_override
             else:
-                if not args.seal_private_key:
+                if not args.seal_private_key and not args.seal_private_key_env:
                     raise ValueError(
-                        "Tier-2/3 requires a cryptographic seal signature: provide --seal-private-key (to sign) or --seal-signature/--seal-signature-file (precomputed, verified)."
+                        "Tier-2/3 requires a cryptographic seal signature: provide --seal-private-key/--seal-private-key-env (to sign) or --seal-signature/--seal-signature-file (precomputed, verified)."
                     )
-                if priv_path is None:
-                    raise ValueError("--seal-private-key resolved to empty path")
+                if priv_path is None and priv_env_bytes is None:
+                    raise ValueError("--seal-private-key resolved to empty source")
 
-                priv_bytes = priv_path.read_bytes()
+                priv_bytes = priv_env_bytes if priv_env_bytes is not None else priv_path.read_bytes()
                 priv = _load_ed25519_private_key(priv_bytes)
 
                 sig_bytes = priv.sign(payload_bytes)
                 sig_b64 = base64.b64encode(sig_bytes).decode("ascii")
 
                 # Verify against the pinned public key (fail-closed if mismatch).
-                _verify_ed25519_signature(pub, sig_bytes, payload_bytes, context="--seal-private-key")
+                _verify_ed25519_signature(
+                    pub,
+                    sig_bytes,
+                    payload_bytes,
+                    context="--seal-private-key-env" if priv_env_bytes is not None else "--seal-private-key",
+                )
 
                 manifest["signature_alg"] = "ed25519"
                 manifest["signature"] = sig_b64

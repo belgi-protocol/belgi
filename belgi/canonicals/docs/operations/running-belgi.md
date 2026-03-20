@@ -58,6 +58,7 @@ Shared Tier-2 run behavior:
 - the operator-supplied `hotl_approval` artifact is indexed into the pre-Q `EvidenceManifest`
 - `test_report` and signed `env_attestation` are produced on the same run spine before Gate R
 - the Tier-2 seal signature is produced or verified on the same run spine before Gate S
+- raw attestation/seal secret material stays at the operator-supplied local refs and is not copied into persisted run outputs
 
 Tier-3 remains outside this shipped CLI expansion.
 

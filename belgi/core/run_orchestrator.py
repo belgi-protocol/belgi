@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import importlib
 import inspect
 import json
@@ -26,6 +27,8 @@ CHAIN_OUT_DIRNAME = "out"
 FIXED_GENERATED_AT = "1970-01-01T00:00:00Z"
 FIXED_SEALED_AT = "2000-01-01T00:30:00Z"
 FIXED_SIGNER = "human:belgi-run"
+_TIER2_ATTESTATION_SIGNING_KEY_ENV = "BELGI_TIER2_ATTESTATION_SIGNING_KEY"
+_TIER2_SEAL_PRIVATE_KEY_ENV = "BELGI_TIER2_SEAL_PRIVATE_KEY"
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -182,8 +185,6 @@ class StagedTier2Inputs:
     hotl_approval_ref: str
     hotl_approval_id: str
     hotl_approval_path: Path
-    attestation_signing_key_ref: str
-    seal_private_key_ref: str | None = None
     seal_signature_ref: str | None = None
 
 
@@ -582,6 +583,47 @@ def _hotl_approval_id_from_path(path: Path) -> str:
     return approval_id.strip()
 
 
+def _read_local_secret_text_ref(
+    *,
+    source_repo_root: Path,
+    source_ref: str,
+    label: str,
+) -> str:
+    try:
+        source_path = resolve_storage_ref(source_repo_root, source_ref)
+    except ValueError as e:
+        raise ValueError(f"invalid {label}: {source_ref}: {e}") from e
+    if not source_path.exists() or source_path.is_symlink() or not source_path.is_file():
+        raise ValueError(f"{label} missing/invalid: {source_ref}")
+    try:
+        secret_text = source_path.read_text(encoding="utf-8", errors="strict")
+    except Exception as e:
+        raise ValueError(f"{label} must be UTF-8 text: {source_ref}: {e}") from e
+    if not secret_text.strip():
+        raise ValueError(f"{label} missing/empty: {source_ref}")
+    return secret_text
+
+
+@contextlib.contextmanager
+def _temporary_env_values(overrides: dict[str, str] | None):
+    if not overrides:
+        yield
+        return
+
+    old_values: dict[str, str | None] = {}
+    try:
+        for key, value in overrides.items():
+            old_values[key] = os.environ.get(key)
+            os.environ[key] = value
+        yield
+    finally:
+        for key, old_value in old_values.items():
+            if old_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old_value
+
+
 def stage_tier2_inputs(
     *,
     source_repo_root: Path,
@@ -617,31 +659,6 @@ def stage_tier2_inputs(
         target_rel=f"{CHAIN_OUT_DIRNAME}/inputs/tier2/hotl_approval.json",
         label="HOTL approval ref",
     )
-    attestation_signing_key_ref, _ = _stage_local_input_ref(
-        source_repo_root=source_repo_root,
-        chain_repo_root=chain_repo_root,
-        source_ref=tier2_inputs.attestation_signing_key_source_ref,
-        target_rel=_stage_rel_for_source_ref(
-            leaf_name="attestation_signing_key",
-            source_ref=tier2_inputs.attestation_signing_key_source_ref,
-            default_suffix=".hex",
-        ),
-        label="attestation signing key ref",
-    )
-
-    seal_private_key_ref: str | None = None
-    if tier2_inputs.seal_private_key_source_ref is not None:
-        seal_private_key_ref, _ = _stage_local_input_ref(
-            source_repo_root=source_repo_root,
-            chain_repo_root=chain_repo_root,
-            source_ref=tier2_inputs.seal_private_key_source_ref,
-            target_rel=_stage_rel_for_source_ref(
-                leaf_name="seal_private_key",
-                source_ref=tier2_inputs.seal_private_key_source_ref,
-                default_suffix=".hex",
-            ),
-            label="seal private key ref",
-        )
 
     seal_signature_ref: str | None = None
     if tier2_inputs.seal_signature_source_ref is not None:
@@ -665,8 +682,6 @@ def stage_tier2_inputs(
         hotl_approval_ref=hotl_approval_ref,
         hotl_approval_id=_hotl_approval_id_from_path(hotl_approval_path),
         hotl_approval_path=hotl_approval_path,
-        attestation_signing_key_ref=attestation_signing_key_ref,
-        seal_private_key_ref=seal_private_key_ref,
         seal_signature_ref=seal_signature_ref,
     )
 
@@ -1068,27 +1083,35 @@ def orchestrate_chain_run(
             {"schema_version": "1.0.0", "run_id": run_key, "commands_executed": commands_with_att},
         )
 
-        rc_att = _run_tools_belgi(
-            chain_repo_dir,
-            [
-                "verify-attestation",
-                "--run-id",
-                run_key,
-                "--command-log",
-                rel_command_log,
-                "--locked-spec",
-                rel_locked,
-                "--out",
-                rel_env_att,
-                "--deterministic",
-                *(
-                    ["--signing-key", staged_tier2_inputs.attestation_signing_key_ref]
-                    if staged_tier2_inputs is not None
-                    else []
-                ),
-            ],
-            allowed=(0,),
-        )
+        attestation_argv = [
+            "verify-attestation",
+            "--run-id",
+            run_key,
+            "--command-log",
+            rel_command_log,
+            "--locked-spec",
+            rel_locked,
+            "--out",
+            rel_env_att,
+            "--deterministic",
+        ]
+        attestation_env_overrides: dict[str, str] | None = None
+        if staged_tier2_inputs is not None and tier2_inputs is not None:
+            attestation_argv.extend(["--signing-key-env", _TIER2_ATTESTATION_SIGNING_KEY_ENV])
+            attestation_env_overrides = {
+                _TIER2_ATTESTATION_SIGNING_KEY_ENV: _read_local_secret_text_ref(
+                    source_repo_root=source_repo_root,
+                    source_ref=tier2_inputs.attestation_signing_key_source_ref,
+                    label="attestation signing key ref",
+                )
+            }
+
+        with _temporary_env_values(attestation_env_overrides):
+            rc_att = _run_tools_belgi(
+                chain_repo_dir,
+                attestation_argv,
+                allowed=(0,),
+            )
         commands_executed = _append_command(
             commands_executed=commands_executed,
             command_log_mode=command_log_mode,
@@ -1371,15 +1394,24 @@ def orchestrate_chain_run(
     for waiver_ref in applied_waiver_refs:
         seal_argv.extend(["--waiver", waiver_ref])
     if staged_tier2_inputs is not None:
-        if staged_tier2_inputs.seal_private_key_ref is not None:
-            seal_argv.extend(["--seal-private-key", staged_tier2_inputs.seal_private_key_ref])
         if staged_tier2_inputs.seal_signature_ref is not None:
             seal_argv.extend(["--seal-signature-file", staged_tier2_inputs.seal_signature_ref])
+    seal_env_overrides: dict[str, str] | None = None
+    if tier2_inputs is not None and tier2_inputs.seal_private_key_source_ref is not None:
+        seal_argv.extend(["--seal-private-key-env", _TIER2_SEAL_PRIVATE_KEY_ENV])
+        seal_env_overrides = {
+            _TIER2_SEAL_PRIVATE_KEY_ENV: _read_local_secret_text_ref(
+                source_repo_root=source_repo_root,
+                source_ref=tier2_inputs.seal_private_key_source_ref,
+                label="seal private key ref",
+            )
+        }
 
-    _run_module_expect_rc(
-        "chain.seal_bundle",
-        seal_argv,
-    )
+    with _temporary_env_values(seal_env_overrides):
+        _run_module_expect_rc(
+            "chain.seal_bundle",
+            seal_argv,
+        )
 
     _run_module_expect_rc(
         "chain.gate_s_verify",

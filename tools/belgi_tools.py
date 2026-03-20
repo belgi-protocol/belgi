@@ -1365,9 +1365,25 @@ def cmd_verify_attestation(args: argparse.Namespace) -> int:
             )
             return 3
 
-    if signature_required and not getattr(args, "signing_key", None):
+    signing_key_raw = str(getattr(args, "signing_key", "") or "").strip()
+    signing_key_env_name = str(getattr(args, "signing_key_env", "") or "").strip()
+    if signing_key_raw and signing_key_env_name:
+        print("[belgi verify-attestation] ERROR: provide at most one of --signing-key or --signing-key-env", file=sys.stderr)
+        return 3
+
+    resolved_signing_key = signing_key_raw
+    if signing_key_env_name:
+        resolved_signing_key = str(os.environ.get(signing_key_env_name, "") or "")
+        if not resolved_signing_key.strip():
+            print(
+                f"[belgi verify-attestation] ERROR: --signing-key-env variable missing/empty: {signing_key_env_name}",
+                file=sys.stderr,
+            )
+            return 3
+
+    if signature_required and not resolved_signing_key.strip():
         print(
-            "[belgi verify-attestation] ERROR: tier requires attestation signature; provide --signing-key (32-byte hex seed).",
+            "[belgi verify-attestation] ERROR: tier requires attestation signature; provide --signing-key or --signing-key-env (32-byte hex seed).",
             file=sys.stderr,
         )
         return 3
@@ -1381,7 +1397,7 @@ def cmd_verify_attestation(args: argparse.Namespace) -> int:
         "command_log_sha256": command_log_sha256,
     }
 
-    if getattr(args, "signing_key", None):
+    if resolved_signing_key.strip():
         try:
             from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         except Exception as e:
@@ -1391,8 +1407,10 @@ def cmd_verify_attestation(args: argparse.Namespace) -> int:
             )
             return 3
 
-        seed_hex = str(args.signing_key).strip()
-        if ":" in seed_hex or "\\" in seed_hex or "/" in seed_hex:
+        seed_hex = resolved_signing_key.strip()
+        if signing_key_env_name:
+            seed_hex = seed_hex.strip()
+        elif ":" in seed_hex or "\\" in seed_hex or "/" in seed_hex:
             # Treat as repo-relative path (confined by jail).
             seed_path = _repo_path(repo_root, seed_hex, must_exist=True, must_be_file=True)
             seed_hex = seed_path.read_text(encoding="utf-8", errors="strict").strip()
@@ -1881,6 +1899,10 @@ def main() -> int:
     p_att.add_argument(
         "--signing-key",
         help="Ed25519 signing key seed (64 hex chars) OR repo-relative path to a file containing that seed.",
+    )
+    p_att.add_argument(
+        "--signing-key-env",
+        help="Environment variable containing the Ed25519 signing key seed (64 hex chars).",
     )
     p_att.add_argument("--out", help="Output path for env_attestation JSON")
     p_att.add_argument("--deterministic", action="store_true", help="Use fixed timestamp")

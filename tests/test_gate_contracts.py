@@ -3194,6 +3194,68 @@ def test_seal_bundle_tier2_rejects_invalid_precomputed_signature(tmp_path: Path)
     assert "Invalid Ed25519 signature (--seal-signature)" in cp.stderr
 
 
+def test_seal_bundle_tier2_accepts_private_key_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _write_json_rel(rel: str, obj: dict) -> None:
+        p = tmp_path / Path(*rel.split("/"))
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
+    seed_hex = "56" * 32
+    pub_rel = "temp/seal_pubkey.hex"
+    pub_hex = _ed25519_pubkey_hex_from_seed(seed_hex)
+    pub_bytes = (pub_hex + "\n").encode("utf-8", errors="strict")
+    (tmp_path / "temp").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "temp" / "seal_pubkey.hex").write_bytes(pub_bytes)
+    seal_pubkey_ref = {"id": "seal-pubkey", "hash": _sha256_hex(pub_bytes), "storage_ref": pub_rel}
+
+    _write_json_rel(
+        "LockedSpec.json",
+        {
+            "run_id": "test-run",
+            "belgi_version": "0.0.0",
+            "tier": {"tier_id": "tier-2"},
+            "waivers_applied": [],
+            "environment_envelope": {"seal_pubkey_ref": seal_pubkey_ref},
+        },
+    )
+    _write_json_rel("Q.json", {})
+    _write_json_rel("R.json", {})
+    _write_json_rel("Evidence.json", {})
+
+    monkeypatch.setenv("BELGI_TEST_SEAL_PRIVATE_KEY", seed_hex + "\n")
+    cp = _run_module(
+        "chain.seal_bundle",
+        [
+            "--repo",
+            str(tmp_path),
+            "--locked-spec",
+            "LockedSpec.json",
+            "--gate-q-verdict",
+            "Q.json",
+            "--gate-r-verdict",
+            "R.json",
+            "--evidence-manifest",
+            "Evidence.json",
+            "--final-commit-sha",
+            "0" * 40,
+            "--sealed-at",
+            "2020-01-01T00:00:00+00:00",
+            "--signer",
+            "test",
+            "--seal-private-key-env",
+            "BELGI_TEST_SEAL_PRIVATE_KEY",
+            "--out",
+            "out/SealManifest.json",
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+    manifest = _read_json(tmp_path / "out" / "SealManifest.json")
+    assert manifest.get("signature_alg") == "ed25519"
+    assert isinstance(manifest.get("signature"), str) and bool(str(manifest["signature"]).strip())
+
+
 def test_seal_bundle_fixture_mode_guard_contract(tmp_path: Path) -> None:
     def _write_json_rel(rel: str, obj: dict) -> None:
         p = tmp_path / Path(*rel.split("/"))

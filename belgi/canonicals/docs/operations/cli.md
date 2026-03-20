@@ -65,6 +65,7 @@ Required Tier-2 operator inputs on `belgi run`:
 Rules:
 - all Tier-2 inputs are local-only repo-relative refs
 - no remote fetches or ambient key discovery are used
+- raw attestation/seal secret material is consumed locally for signing only and is not copied into `.belgi/store/.../repo/out/`, manifests, bundle outputs, or replay surfaces
 - `belgi run` fails closed if the Tier-2 input set is incomplete or malformed
 
 Example:
