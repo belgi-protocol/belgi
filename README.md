@@ -171,6 +171,8 @@ python -m tools.sweep fixtures-s --repo .
 python -m tools.sweep fixtures-seal --repo .
 ```
 
+Tracked `ruff` configuration is prepared as the planned lint authority, but it is not part of the required local or hosted proof path in this iteration. Pyright remains non-gating.
+
 See [tools/README.md](tools/README.md) for dev tool documentation.
 
 ### Commit Metadata Privacy

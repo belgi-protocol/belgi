@@ -152,3 +152,50 @@ def test_tier_packs_markdown_fails_closed_when_findings_mode_is_missing() -> Non
     loaded = load_tier_params(mutated, "tier-0")
     assert loaded.params is None
     assert loaded.parse_error == "Missing mandatory adversarial_policy.findings_mode"
+
+
+def test_tier_packs_markdown_envelope_policy_parses_with_long_sibling_block() -> None:
+    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
+    filler_lines = "".join(f"  - filler_{i}: `note`\n" for i in range(200))
+    original = (
+        "- envelope_policy:\n"
+        "  - requires_attestation: `yes`\n"
+        "  - attestation_signature_required: `yes`\n"
+        "  - pinned_toolchain_refs_required: `yes`\n"
+    )
+    mutated = tiers_md.replace(
+        original,
+        "- envelope_policy:\n"
+        "  - requires_attestation: `yes`\n"
+        + filler_lines
+        + "  - attestation_signature_required: `yes`\n"
+        + "  - pinned_toolchain_refs_required: `yes`\n",
+        1,
+    )
+
+    loaded = load_tier_params(mutated, "tier-2")
+    assert loaded.params is not None, loaded.parse_error
+    assert loaded.params.envelope_policy_requires_attestation == "yes"
+    assert loaded.params.envelope_policy_attestation_signature_required == "yes"
+    assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"
+
+
+def test_tier_packs_markdown_envelope_policy_optional_defaults_are_preserved() -> None:
+    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
+    mutated = tiers_md.replace("  - attestation_signature_required: `no`\n", "", 1).replace(
+        "  - pinned_toolchain_refs_required: `yes`\n",
+        "",
+        1,
+    )
+
+    loaded = load_tier_params(mutated, "tier-1")
+    assert loaded.params is not None, loaded.parse_error
+    assert loaded.params.envelope_policy_requires_attestation == "yes"
+    assert loaded.params.envelope_policy_attestation_signature_required == "no"
+    assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"
+
+
+def test_tier_packs_markdown_parser_no_nested_envelope_policy_regex() -> None:
+    text = (REPO_ROOT / "chain" / "logic" / "tier_packs.py").read_text(encoding="utf-8", errors="strict")
+
+    assert r"(?:\s*-\s+[^\n]+\n)*?" not in text

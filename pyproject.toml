@@ -67,6 +67,19 @@ exclude = ["tests*", "temp*", "demo*"]
 [tool.setuptools.package-data]
 belgi = ["**/*.md", "**/*.json"]
 
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "F",   # Pyflakes family
+    "I",   # import sorting
+    "B",   # bugbear
+]
+fixable = ["ALL"]
+unfixable = ["B"]
+
 [tool.belgi]
 philosophy = "Hayatta en hakiki mürşit ilimdir. — M.K. Atatürk"
 dedication = "Bilge (8)"

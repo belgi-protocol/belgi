@@ -194,6 +194,18 @@ def _parse_tier_params_from_json(tier_packs_json: str, tier_id: str) -> dict[str
     return params
 
 
+def _extract_markdown_sublist_block(block: str, section_name: str) -> str | None:
+    marker = re.search(rf"^\s*-\s+{re.escape(section_name)}:\s*$", block, re.MULTILINE)
+    if not marker:
+        return None
+
+    sub = block[marker.end() :]
+    stop = re.search(r"^-\s+[a-zA-Z0-9_\-]+:\s*", sub, re.MULTILINE)
+    if stop:
+        sub = sub[: stop.start()]
+    return sub
+
+
 def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
     """Deterministic minimal parser aligned to tiers/tier-packs.md (legacy generated view).
 
@@ -303,12 +315,16 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
         params["_tier_parse_error"] = "Missing mandatory adversarial_policy.findings_mode"
         return params
 
+    envelope_policy_block = _extract_markdown_sublist_block(block, "envelope_policy")
+
     # envelope_policy.requires_attestation: mandatory.
-    ra = re.search(
-        r"-\s+envelope_policy:\s*\n\s*-\s+requires_attestation:\s+`?([a-z]+)`?",
-        block,
-        flags=re.IGNORECASE,
-    )
+    ra = None
+    if envelope_policy_block is not None:
+        ra = re.search(
+            r"^\s*-\s+requires_attestation:\s+`?([a-z]+)`?\s*$",
+            envelope_policy_block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
     if ra:
         raw = (ra.group(1) or "").strip().lower()
         if raw in ("yes", "no"):
@@ -319,11 +335,13 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
         params["_tier_parse_error"] = "Missing mandatory envelope_policy.requires_attestation"
 
     # envelope_policy.attestation_signature_required: optional; default fail-closed is NOT required.
-    asr = re.search(
-        r"-\s+envelope_policy:\s*\n(?:\s*-\s+[^\n]+\n)*?\s*-\s+attestation_signature_required:\s+`?([a-z]+)`?",
-        block,
-        flags=re.IGNORECASE,
-    )
+    asr = None
+    if envelope_policy_block is not None:
+        asr = re.search(
+            r"^\s*-\s+attestation_signature_required:\s+`?([a-z]+)`?\s*$",
+            envelope_policy_block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
     if asr:
         raw = (asr.group(1) or "").strip().lower()
         if raw in ("yes", "no"):
@@ -334,11 +352,13 @@ def _parse_tier_params_from_md(tiers_md: str, tier_id: str) -> dict[str, Any]:
         params["envelope_policy.attestation_signature_required"] = "no"
 
     # envelope_policy.pinned_toolchain_refs_required: optional; used by Gate Q Q5.
-    ptr = re.search(
-        r"-\s+envelope_policy:\s*\n(?:\s*-\s+[^\n]+\n)*?\s*-\s+pinned_toolchain_refs_required:\s+`?([a-z]+)`?",
-        block,
-        flags=re.IGNORECASE,
-    )
+    ptr = None
+    if envelope_policy_block is not None:
+        ptr = re.search(
+            r"^\s*-\s+pinned_toolchain_refs_required:\s+`?([a-z]+)`?\s*$",
+            envelope_policy_block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
     if ptr:
         raw = (ptr.group(1) or "").strip().lower()
         if raw in ("yes", "no"):
