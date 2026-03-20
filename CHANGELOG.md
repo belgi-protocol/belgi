@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.5.1 — 2026-03-20
+
+### Summary
+Patch release hardening tier-pack markdown parsing and landing tracked, dormant `ruff` preparation without switching lint enforcement on as a required proof gate.
+
+### Changed
+- Replaced the markdown tier-pack `envelope_policy` nested multi-line regex scan with deterministic sub-block parsing in `chain/logic/tier_packs.py`.
+- Added regression coverage for long sibling-line parsing, preserved optional envelope-policy defaults, and locked out the old regex shape.
+- Added tracked `ruff` configuration as the planned lint authority surface while keeping both local and hosted `ruff` execution dormant by default in this iteration.
+- Kept public docs and workflow descriptions aligned to shipped truth: `ruff` is prepared but not yet part of the required proof path, and Pyright remains non-gating.
+
+### Notes
+- This patch does not claim active lint-gate enforcement or typing-closure completion.
+
 ## 1.5.0 — 2026-03-20
 
 ### Summary
