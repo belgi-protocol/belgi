@@ -1,7 +1,5 @@
 # BELGI CLI Operator Guide
 
-Default verdict is `NO-GO` unless evidence proves otherwise.
-
 This is the operator SSOT for CLI usage. Keep this file focused on:
 - init
 - run workspace creation
@@ -35,6 +33,9 @@ belgi run new --repo . --run-id run-001
 # 3) Edit intent input
 # .belgi/runs/run-001/inputs/intent/IntentSpec.core.md
 
+# Optional Tier-2 operator anchors live under:
+# .belgi/runs/run-001/inputs/anchors/{approvals,keys,signing}/
+
 # 4) Resolve a stable base SHA
 BASE_SHA40=$(git rev-parse HEAD)
 
@@ -53,7 +54,12 @@ belgi verify --repo .
 
 Tier-2 uses the same shipped `belgi run` backbone as Tier-0/1.
 
-Required Tier-2 operator inputs on `belgi run`:
+Canonical noun:
+- `Operator Anchors` = operator-supplied control artifacts/refs on the shared run spine
+- canonical definition: `CANONICALS.md#operator-anchors`
+- operator prep guide: `docs/operations/operator-anchors.md`
+
+Required Tier-2 Operator Anchors on `belgi run`:
 - `--attestation-pubkey-ref <object_id>=<repo-relative-path>`
 - `--seal-pubkey-ref <object_id>=<repo-relative-path>`
 - `--hotl-approval-ref <repo-relative-path>`
@@ -67,6 +73,10 @@ Rules:
 - no remote fetches or ambient key discovery are used
 - raw attestation/seal secret material is consumed locally for signing only and is not copied into `.belgi/store/.../repo/out/`, manifests, bundle outputs, or replay surfaces
 - `belgi run` fails closed if the Tier-2 input set is incomplete or malformed
+- recommended workspace family is `.belgi/runs/<run_id>/inputs/anchors/`
+  - `approvals/` for HOTL approval artifacts
+  - `keys/` for pinned public-key materials
+  - `signing/` for local signing refs or precomputed signatures
 
 Example:
 
@@ -76,11 +86,26 @@ belgi run \
   --tier tier-2 \
   --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
   --base-revision "${BASE_SHA40}" \
-  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/tier2/attestation_pubkey.hex \
-  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/tier2/seal_pubkey.hex \
-  --hotl-approval-ref .belgi/runs/run-001/inputs/tier2/hotl_approval.json \
-  --attestation-signing-key-ref .belgi/runs/run-001/inputs/tier2/attestation_signing_key.hex \
-  --seal-private-key-ref .belgi/runs/run-001/inputs/tier2/seal_private_key.hex
+  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/anchors/keys/attestation_pubkey.hex \
+  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/anchors/keys/seal_pubkey.hex \
+  --hotl-approval-ref .belgi/runs/run-001/inputs/anchors/approvals/hotl_approval.json \
+  --attestation-signing-key-ref .belgi/runs/run-001/inputs/anchors/signing/attestation_signing_key.hex \
+  --seal-private-key-ref .belgi/runs/run-001/inputs/anchors/signing/seal_private_key.hex
+```
+
+Precomputed signature branch:
+
+```bash
+belgi run \
+  --repo . \
+  --tier tier-2 \
+  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
+  --base-revision "${BASE_SHA40}" \
+  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/anchors/keys/attestation_pubkey.hex \
+  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/anchors/keys/seal_pubkey.hex \
+  --hotl-approval-ref .belgi/runs/run-001/inputs/anchors/approvals/hotl_approval.json \
+  --attestation-signing-key-ref .belgi/runs/run-001/inputs/anchors/signing/attestation_signing_key.hex \
+  --seal-signature-ref .belgi/runs/run-001/inputs/anchors/signing/seal_signature.b64
 ```
 
 Shared-path outcome for Tier-2:

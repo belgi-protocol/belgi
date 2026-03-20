@@ -53,6 +53,14 @@ Tier-2 on the shipped CLI uses the same `belgi run` backbone with explicit local
 - `--attestation-signing-key-ref <repo-relative-path>`
 - exactly one of `--seal-private-key-ref <repo-relative-path>` or `--seal-signature-ref <repo-relative-path>`
 
+Operator Anchors guidance:
+- canonical term: `Operator Anchors` (`../../CANONICALS.md#operator-anchors`)
+- recommended workspace family: `.belgi/runs/<run_id>/inputs/anchors/`
+  - `approvals/`
+  - `keys/`
+  - `signing/`
+- dedicated operator guide: `docs/operations/operator-anchors.md`
+
 Shared Tier-2 run behavior:
 - the pubkey refs are locked through C1 into `LockedSpec.environment_envelope`
 - the operator-supplied `hotl_approval` artifact is indexed into the pre-Q `EvidenceManifest`
@@ -81,6 +89,23 @@ Tier-3 remains outside this shipped CLI expansion.
 ### 0.1 IntentSpec (required input artifact)
 For operator CLI mode, create run inputs via `belgi run new --run-id <id>` and edit:
 - `.belgi/runs/<run_id>/inputs/intent/IntentSpec.core.md`
+
+### 0.2 Operator Anchors (Tier-2 shared control surface)
+Recommended operator workspace family:
+- `.belgi/runs/<run_id>/inputs/anchors/approvals/`
+- `.belgi/runs/<run_id>/inputs/anchors/keys/`
+- `.belgi/runs/<run_id>/inputs/anchors/signing/`
+
+Recommended Tier-2 examples:
+- HOTL approval: `.belgi/runs/<run_id>/inputs/anchors/approvals/hotl_approval.json`
+- attestation pubkey: `.belgi/runs/<run_id>/inputs/anchors/keys/attestation_pubkey.hex`
+- seal pubkey: `.belgi/runs/<run_id>/inputs/anchors/keys/seal_pubkey.hex`
+- local attestation signing key: `.belgi/runs/<run_id>/inputs/anchors/signing/attestation_signing_key.hex`
+- exactly one seal-signing input:
+  - `.belgi/runs/<run_id>/inputs/anchors/signing/seal_private_key.hex`
+  - `.belgi/runs/<run_id>/inputs/anchors/signing/seal_signature.b64`
+
+These are recommended operator paths only. The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location.
 
 The stage-level examples below use `IntentSpec.core.md` as an artifact name shorthand; direct `chain.*` invocations may use any repo-relative path that resolves to the same bytes.
 

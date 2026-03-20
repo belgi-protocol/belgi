@@ -56,6 +56,7 @@ This section is a mechanical registry of stable anchor IDs for downstream refere
 - lockedspec
 - blast-radius
 - hotl
+- operator-anchors
 - protocol-pack
 - protocol-pack-identity
 - protocol-pack-symlink-policy
@@ -227,6 +228,12 @@ Blast Radius is the declared scope of impact a change is permitted to have (file
 <a id="hotl"></a>
 ### HOTL (Human-On-The-Loop) (Canonical)
 HOTL is a required human control point in which a human reviews and explicitly approves specified decisions or artifacts (e.g., P wording, waivers, or GO authorization), with the required moments determined by the selected Tier Pack.
+
+<a id="operator-anchors"></a>
+### Operator Anchors (Canonical)
+Operator Anchors are operator-supplied control artifacts or refs that influence locking, evidence sufficiency, attestation, or sealing on the shared BELGI run spine. They include HOTL approval artifacts, pinned public-key refs, local signing refs, and precomputed signatures supplied to `belgi run`.
+
+Operator Anchors MUST NOT redefine evidence artifacts themselves, and they MUST NOT be used as the category for Tier-3 authority artifacts. `genesis_seal` remains Tier-3 evidence, and `belgi/anchor/v1/TrustAnchor.json` remains the Tier-3 authority artifact; neither is an Operator Anchor.
 
 <a id="no-go"></a>
 ### NO-GO (Canonical)

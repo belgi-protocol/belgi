@@ -27,8 +27,12 @@ CHAIN_OUT_DIRNAME = "out"
 FIXED_GENERATED_AT = "1970-01-01T00:00:00Z"
 FIXED_SEALED_AT = "2000-01-01T00:30:00Z"
 FIXED_SIGNER = "human:belgi-run"
-_TIER2_ATTESTATION_SIGNING_KEY_ENV = "BELGI_TIER2_ATTESTATION_SIGNING_KEY"
-_TIER2_SEAL_PRIVATE_KEY_ENV = "BELGI_TIER2_SEAL_PRIVATE_KEY"
+_OPERATOR_ANCHOR_ATTESTATION_SIGNING_KEY_ENV = "BELGI_OPERATOR_ANCHOR_ATTESTATION_SIGNING_KEY"
+_OPERATOR_ANCHOR_SEAL_PRIVATE_KEY_ENV = "BELGI_OPERATOR_ANCHOR_SEAL_PRIVATE_KEY"
+_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/anchors"
+_OPERATOR_ANCHORS_APPROVALS_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/approvals"
+_OPERATOR_ANCHORS_KEYS_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/keys"
+_OPERATOR_ANCHORS_SIGNING_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/signing"
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -58,6 +62,10 @@ _C3_CANONICAL_PACKAGE_BINDINGS: tuple[tuple[str, str], ...] = (
     (
         "canonicals/docs/operations/evidence-ownership.md",
         f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-ownership.md",
+    ),
+    (
+        "canonicals/docs/operations/operator-anchors.md",
+        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/operator-anchors.md",
     ),
     (
         "canonicals/docs/operations/running-belgi.md",
@@ -165,7 +173,7 @@ class TierTestPlan:
 
 
 @dataclass(frozen=True)
-class Tier2RunInputs:
+class OperatorAnchorInputs:
     attestation_pubkey_id: str
     attestation_pubkey_source_ref: str
     seal_pubkey_id: str
@@ -177,7 +185,7 @@ class Tier2RunInputs:
 
 
 @dataclass(frozen=True)
-class StagedTier2Inputs:
+class StagedOperatorAnchors:
     attestation_pubkey_ref: str
     attestation_pubkey_id: str
     seal_pubkey_ref: str
@@ -570,9 +578,11 @@ def _stage_local_input_ref(
     return safe_relpath(chain_repo_root, target_path), target_path
 
 
-def _stage_rel_for_source_ref(*, leaf_name: str, source_ref: str, default_suffix: str) -> str:
+def _anchor_stage_rel_for_source_ref(*, leaf_name: str, source_ref: str, default_suffix: str, anchor_class: str) -> str:
     source_suffix = Path(str(source_ref)).suffix or default_suffix
-    return f"{CHAIN_OUT_DIRNAME}/inputs/tier2/{leaf_name}{source_suffix}"
+    if anchor_class not in {"approvals", "keys", "signing"}:
+        raise ValueError(f"invalid anchor class: {anchor_class}")
+    return f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/{anchor_class}/{leaf_name}{source_suffix}"
 
 
 def _hotl_approval_id_from_path(path: Path) -> str:
@@ -624,61 +634,64 @@ def _temporary_env_values(overrides: dict[str, str] | None):
                 os.environ[key] = old_value
 
 
-def stage_tier2_inputs(
+def stage_operator_anchors(
     *,
     source_repo_root: Path,
     chain_repo_root: Path,
-    tier2_inputs: Tier2RunInputs,
-) -> StagedTier2Inputs:
+    operator_anchors: OperatorAnchorInputs,
+) -> StagedOperatorAnchors:
     attestation_pubkey_ref, _ = _stage_local_input_ref(
         source_repo_root=source_repo_root,
         chain_repo_root=chain_repo_root,
-        source_ref=tier2_inputs.attestation_pubkey_source_ref,
-        target_rel=_stage_rel_for_source_ref(
+        source_ref=operator_anchors.attestation_pubkey_source_ref,
+        target_rel=_anchor_stage_rel_for_source_ref(
             leaf_name="attestation_pubkey",
-            source_ref=tier2_inputs.attestation_pubkey_source_ref,
+            source_ref=operator_anchors.attestation_pubkey_source_ref,
             default_suffix=".hex",
+            anchor_class="keys",
         ),
         label="attestation pubkey ref",
     )
     seal_pubkey_ref, _ = _stage_local_input_ref(
         source_repo_root=source_repo_root,
         chain_repo_root=chain_repo_root,
-        source_ref=tier2_inputs.seal_pubkey_source_ref,
-        target_rel=_stage_rel_for_source_ref(
+        source_ref=operator_anchors.seal_pubkey_source_ref,
+        target_rel=_anchor_stage_rel_for_source_ref(
             leaf_name="seal_pubkey",
-            source_ref=tier2_inputs.seal_pubkey_source_ref,
+            source_ref=operator_anchors.seal_pubkey_source_ref,
             default_suffix=".hex",
+            anchor_class="keys",
         ),
         label="seal pubkey ref",
     )
     hotl_approval_ref, hotl_approval_path = _stage_local_input_ref(
         source_repo_root=source_repo_root,
         chain_repo_root=chain_repo_root,
-        source_ref=tier2_inputs.hotl_approval_source_ref,
-        target_rel=f"{CHAIN_OUT_DIRNAME}/inputs/tier2/hotl_approval.json",
+        source_ref=operator_anchors.hotl_approval_source_ref,
+        target_rel=f"{_OPERATOR_ANCHORS_APPROVALS_STAGE_REPO_REL}/hotl_approval.json",
         label="HOTL approval ref",
     )
 
     seal_signature_ref: str | None = None
-    if tier2_inputs.seal_signature_source_ref is not None:
+    if operator_anchors.seal_signature_source_ref is not None:
         seal_signature_ref, _ = _stage_local_input_ref(
             source_repo_root=source_repo_root,
             chain_repo_root=chain_repo_root,
-            source_ref=tier2_inputs.seal_signature_source_ref,
-            target_rel=_stage_rel_for_source_ref(
+            source_ref=operator_anchors.seal_signature_source_ref,
+            target_rel=_anchor_stage_rel_for_source_ref(
                 leaf_name="seal_signature",
-                source_ref=tier2_inputs.seal_signature_source_ref,
+                source_ref=operator_anchors.seal_signature_source_ref,
                 default_suffix=".b64",
+                anchor_class="signing",
             ),
             label="seal signature ref",
         )
 
-    return StagedTier2Inputs(
+    return StagedOperatorAnchors(
         attestation_pubkey_ref=attestation_pubkey_ref,
-        attestation_pubkey_id=tier2_inputs.attestation_pubkey_id,
+        attestation_pubkey_id=operator_anchors.attestation_pubkey_id,
         seal_pubkey_ref=seal_pubkey_ref,
-        seal_pubkey_id=tier2_inputs.seal_pubkey_id,
+        seal_pubkey_id=operator_anchors.seal_pubkey_id,
         hotl_approval_ref=hotl_approval_ref,
         hotl_approval_id=_hotl_approval_id_from_path(hotl_approval_path),
         hotl_approval_path=hotl_approval_path,
@@ -821,7 +834,7 @@ def orchestrate_chain_run(
     intent_bytes: bytes,
     protocol: Any,
     applied_waiver_refs: list[str] | None = None,
-    tier2_inputs: Tier2RunInputs | None = None,
+    operator_anchors: OperatorAnchorInputs | None = None,
 ) -> RunOrchestrationResult:
     base_revision = _require_commit_sha40(base_revision, label="base_revision")
     evaluated_revision = _require_commit_sha40(evaluated_revision, label="evaluated_revision")
@@ -892,17 +905,17 @@ def orchestrate_chain_run(
         chain_repo_root=chain_repo_dir,
         explicit_waiver_refs=applied_waiver_refs,
     )
-    staged_tier2_inputs: StagedTier2Inputs | None = None
+    staged_operator_anchors: StagedOperatorAnchors | None = None
     if tier_id == "tier-2":
-        if tier2_inputs is None:
-            raise ValueError("tier-2 shared run requires Tier-2 operator inputs")
-        staged_tier2_inputs = stage_tier2_inputs(
+        if operator_anchors is None:
+            raise ValueError("tier-2 shared run requires operator anchors")
+        staged_operator_anchors = stage_operator_anchors(
             source_repo_root=source_repo_root,
             chain_repo_root=chain_repo_dir,
-            tier2_inputs=tier2_inputs,
+            operator_anchors=operator_anchors,
         )
-    elif tier2_inputs is not None:
-        raise ValueError("Tier-2 operator inputs are only supported for tier-2")
+    elif operator_anchors is not None:
+        raise ValueError("operator anchors are only supported for tier-2")
 
     intent_in_chain = chain_repo_dir / "IntentSpec.core.md"
     intent_in_chain.write_bytes(intent_bytes)
@@ -952,13 +965,13 @@ def orchestrate_chain_run(
         "--toolchain-ref",
         f"toolchain.main={safe_relpath(chain_repo_dir, toolchain_path)}",
     ]
-    if staged_tier2_inputs is not None:
+    if staged_operator_anchors is not None:
         c1_argv.extend(
             [
                 "--attestation-pubkey",
-                f"{staged_tier2_inputs.attestation_pubkey_id}={staged_tier2_inputs.attestation_pubkey_ref}",
+                f"{staged_operator_anchors.attestation_pubkey_id}={staged_operator_anchors.attestation_pubkey_ref}",
                 "--seal-pubkey",
-                f"{staged_tier2_inputs.seal_pubkey_id}={staged_tier2_inputs.seal_pubkey_ref}",
+                f"{staged_operator_anchors.seal_pubkey_id}={staged_operator_anchors.seal_pubkey_ref}",
             ]
         )
     for waiver_ref in applied_waiver_refs:
@@ -1096,12 +1109,12 @@ def orchestrate_chain_run(
             "--deterministic",
         ]
         attestation_env_overrides: dict[str, str] | None = None
-        if staged_tier2_inputs is not None and tier2_inputs is not None:
-            attestation_argv.extend(["--signing-key-env", _TIER2_ATTESTATION_SIGNING_KEY_ENV])
+        if staged_operator_anchors is not None and operator_anchors is not None:
+            attestation_argv.extend(["--signing-key-env", _OPERATOR_ANCHOR_ATTESTATION_SIGNING_KEY_ENV])
             attestation_env_overrides = {
-                _TIER2_ATTESTATION_SIGNING_KEY_ENV: _read_local_secret_text_ref(
+                _OPERATOR_ANCHOR_ATTESTATION_SIGNING_KEY_ENV: _read_local_secret_text_ref(
                     source_repo_root=source_repo_root,
-                    source_ref=tier2_inputs.attestation_signing_key_source_ref,
+                    source_ref=operator_anchors.attestation_signing_key_source_ref,
                     label="attestation signing key ref",
                 )
             }
@@ -1227,13 +1240,13 @@ def orchestrate_chain_run(
             produced_by="C1",
         ),
     ]
-    if staged_tier2_inputs is not None:
+    if staged_operator_anchors is not None:
         artifacts.append(
             _make_evidence_artifact(
                 chain_repo_root=chain_repo_dir,
-                path=staged_tier2_inputs.hotl_approval_path,
+                path=staged_operator_anchors.hotl_approval_path,
                 kind="hotl_approval",
-                artifact_id=staged_tier2_inputs.hotl_approval_id,
+                artifact_id=staged_operator_anchors.hotl_approval_id,
                 media_type="application/json",
                 produced_by="C1",
             )
@@ -1393,16 +1406,16 @@ def orchestrate_chain_run(
     ]
     for waiver_ref in applied_waiver_refs:
         seal_argv.extend(["--waiver", waiver_ref])
-    if staged_tier2_inputs is not None:
-        if staged_tier2_inputs.seal_signature_ref is not None:
-            seal_argv.extend(["--seal-signature-file", staged_tier2_inputs.seal_signature_ref])
+    if staged_operator_anchors is not None:
+        if staged_operator_anchors.seal_signature_ref is not None:
+            seal_argv.extend(["--seal-signature-file", staged_operator_anchors.seal_signature_ref])
     seal_env_overrides: dict[str, str] | None = None
-    if tier2_inputs is not None and tier2_inputs.seal_private_key_source_ref is not None:
-        seal_argv.extend(["--seal-private-key-env", _TIER2_SEAL_PRIVATE_KEY_ENV])
+    if operator_anchors is not None and operator_anchors.seal_private_key_source_ref is not None:
+        seal_argv.extend(["--seal-private-key-env", _OPERATOR_ANCHOR_SEAL_PRIVATE_KEY_ENV])
         seal_env_overrides = {
-            _TIER2_SEAL_PRIVATE_KEY_ENV: _read_local_secret_text_ref(
+            _OPERATOR_ANCHOR_SEAL_PRIVATE_KEY_ENV: _read_local_secret_text_ref(
                 source_repo_root=source_repo_root,
-                source_ref=tier2_inputs.seal_private_key_source_ref,
+                source_ref=operator_anchors.seal_private_key_source_ref,
                 label="seal private key ref",
             )
         }

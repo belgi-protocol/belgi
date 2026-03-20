@@ -79,6 +79,7 @@ Canonical trigger:
 - docs/operations/evidence-bundles.md
 - docs/operations/evidence-ownership.md
 - docs/operations/exit-codes.md
+- docs/operations/operator-anchors.md
 - docs/operations/waivers.md
 - docs/operations/security.md
 - docs/operations/workflows.md
@@ -91,6 +92,7 @@ Canonical trigger:
 - belgi/canonicals/docs/operations/cli.md
 - belgi/canonicals/docs/operations/evidence-bundles.md
 - belgi/canonicals/docs/operations/evidence-ownership.md
+- belgi/canonicals/docs/operations/operator-anchors.md
 - belgi/canonicals/docs/operations/running-belgi.md
 - belgi/canonicals/docs/operations/security.md
 - belgi/canonicals/docs/operations/waivers.md

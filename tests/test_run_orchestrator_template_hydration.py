@@ -70,13 +70,16 @@ def test_ensure_chain_c3_canonicals_hydrates_missing_files(tmp_path: Path) -> No
     canonical_path = root / "CANONICALS.md"
     terminology_path = root / "terminology.md"
     trust_model_path = root / "trust-model.md"
+    operator_anchors_path = root / "docs" / "operations" / "operator-anchors.md"
 
     assert canonical_path.is_file()
     assert terminology_path.is_file()
     assert trust_model_path.is_file()
+    assert operator_anchors_path.is_file()
     assert canonical_path.read_bytes() == _builtin_canonical_bytes("CANONICALS.md")
     assert terminology_path.read_bytes() == _builtin_canonical_bytes("terminology.md")
     assert trust_model_path.read_bytes() == _builtin_canonical_bytes("trust-model.md")
+    assert operator_anchors_path.read_bytes() == _builtin_canonical_bytes("docs", "operations", "operator-anchors.md")
 
     # Idempotency for deterministic re-entry.
     ensure_chain_c3_canonicals(chain_repo_root=tmp_path)

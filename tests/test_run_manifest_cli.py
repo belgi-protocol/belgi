@@ -49,6 +49,10 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     run_dir = tmp_path / ".belgi" / "runs" / run_id
     intent_path = run_dir / "inputs" / "intent" / "IntentSpec.core.md"
     waivers_dir = run_dir / "inputs" / "waivers"
+    anchors_dir = run_dir / "inputs" / "anchors"
+    approvals_dir = anchors_dir / "approvals"
+    keys_dir = anchors_dir / "keys"
+    signing_dir = anchors_dir / "signing"
     runbook_template_path = run_dir / "RUN.md"
     run_key_pointer_path = run_dir / "run_key.txt"
     last_attempt_pointer_path = run_dir / "last_attempt.txt"
@@ -64,6 +68,11 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert waivers_dir.exists()
     assert waivers_dir.is_dir()
     assert list(waivers_dir.iterdir()) == []
+    assert anchors_dir.is_dir()
+    assert approvals_dir.is_dir()
+    assert keys_dir.is_dir()
+    assert signing_dir.is_dir()
+    assert not (run_dir / "inputs" / "tier2").exists()
     assert runbook_template_path.exists()
     assert not deprecated_intent_template_path.exists()
     runbook_text = runbook_template_path.read_text(encoding="utf-8", errors="strict")
@@ -73,6 +82,10 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert "--base-revision" in runbook_text
     assert "inputs/intent/IntentSpec.core.md" in runbook_text
     assert "inputs/waivers/waiver-001.json" in runbook_text
+    assert "Operator Anchors" in runbook_text
+    assert "inputs/anchors/approvals/hotl_approval.json" in runbook_text
+    assert "inputs/anchors/keys/attestation_pubkey.hex" in runbook_text
+    assert "inputs/anchors/signing/seal_signature.b64" in runbook_text
     assert "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`." in runbook_text
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
     assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
@@ -182,6 +195,10 @@ def test_run_new_layout_no_intentspec_md(tmp_path: Path) -> None:
     assert not (run_dir / "IntentSpec.md").exists()
     assert (run_dir / "inputs" / "intent" / "IntentSpec.core.md").is_file()
     assert (run_dir / "inputs" / "waivers").is_dir()
+    assert (run_dir / "inputs" / "anchors" / "approvals").is_dir()
+    assert (run_dir / "inputs" / "anchors" / "keys").is_dir()
+    assert (run_dir / "inputs" / "anchors" / "signing").is_dir()
+    assert not (run_dir / "inputs" / "tier2").exists()
     assert (run_dir / "RUN.md").is_file()
     assert (run_dir / "run_key.txt").is_file()
     assert (run_dir / "last_attempt.txt").is_file()

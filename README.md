@@ -138,6 +138,8 @@ If CI fails on sweep/fixtures, run the local fixer and commit the resulting chan
 
 Operator CLI quickstart and NO-GO triage SSOT: [docs/operations/cli.md](docs/operations/cli.md)
 
+Operator Anchors prep and boundary guide: [docs/operations/operator-anchors.md](docs/operations/operator-anchors.md)
+
 Chain-module reference commands (`python -m chain.*`): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
 
 Local workflow checks with Docker + `act` are recommended before pushing workflow changes:
