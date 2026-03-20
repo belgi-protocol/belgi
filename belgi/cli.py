@@ -47,6 +47,8 @@ if TYPE_CHECKING:
 from belgi.core.run_orchestrator import (
     CHAIN_OUT_DIRNAME,
     CHAIN_REPO_DIRNAME,
+    OperatorAnchorInputs,
+    RunEvidenceInputs,
     orchestrate_chain_run,
     render_default_intent_spec,
 )
@@ -59,8 +61,13 @@ DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
 RUN_KEY_DIR_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-ALLOWED_RUN_TIERS = {"tier-0", "tier-1"}
+ALLOWED_RUN_TIERS = {"tier-0", "tier-1", "tier-2", "tier-3"}
 RUN_INPUTS_DIRNAME = "inputs"
+RUN_ANCHORS_DIRNAME = "anchors"
+RUN_ANCHORS_APPROVALS_DIRNAME = "approvals"
+RUN_ANCHORS_KEYS_DIRNAME = "keys"
+RUN_ANCHORS_SIGNING_DIRNAME = "signing"
+RUN_EVIDENCE_DIRNAME = "evidence"
 RUN_STORE_DIRNAME = "store"
 RUN_STORE_RUNS_REPO_REL = "store/runs"
 RUN_INTENT_REPO_REL = "inputs/intent/IntentSpec.core.md"
@@ -651,7 +658,7 @@ def _discover_base_revision(
 def _validate_tier_id(raw: str) -> str:
     tier_id = str(raw or "").strip()
     if tier_id not in ALLOWED_RUN_TIERS:
-        raise ValueError("--tier must be one of: tier-0, tier-1")
+        raise ValueError("--tier must be one of: tier-0, tier-1, tier-2, tier-3")
     return tier_id
 
 
@@ -1330,10 +1337,12 @@ def _infer_run_id_from_intent_source(*, workspace_rel: str, intent_source_rel: s
 
 
 def _render_runbook_template(*, run_id: str) -> str:
+    anchors_root = f".belgi/runs/{run_id}/inputs/anchors"
+    evidence_root = f".belgi/runs/{run_id}/inputs/evidence"
     return (
         "# RUN\n\n"
         f"Run ID: `{run_id}`\n\n"
-        "Minimal operator loop:\n\n"
+        "Contract-first operator loop:\n\n"
         "1. Edit `inputs/intent/IntentSpec.core.md`.\n"
         "2. (Optional) Create and apply waiver drafts:\n\n"
         "```bash\n"
@@ -1344,14 +1353,45 @@ def _render_runbook_template(*, run_id: str) -> str:
         "```bash\n"
         "BASE_SHA40=\"$(git rev-parse HEAD)\"\n"
         "```\n\n"
-        "4. Run BELGI:\n\n"
+        "4. Prepare Operator Anchors when tier policy requires them:\n\n"
+        f"- approvals: `{anchors_root}/approvals/hotl_approval.json`\n"
+        f"- keys: `{anchors_root}/keys/attestation_pubkey.hex`, `{anchors_root}/keys/seal_pubkey.hex`\n"
+        f"- signing: `{anchors_root}/signing/attestation_signing_key.hex` plus either `{anchors_root}/signing/seal_private_key.hex` or `{anchors_root}/signing/seal_signature.b64`\n\n"
+        "5. Prepare Tier-3 evidence only when Tier-3 is selected:\n\n"
+        f"- evidence: `{evidence_root}/genesis_seal.json`\n"
+        "- canonical Tier-3 authority remains `belgi/anchor/v1/TrustAnchor.json`; it is not an Operator Anchor.\n\n"
+        "6. Run BELGI:\n\n"
         "```bash\n"
         f"belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md --base-revision \"${{BASE_SHA40}}\"\n"
         "```\n\n"
-        "5. Verify and triage:\n\n"
+        "Tier requirements over the shared anchors family:\n\n"
+        "- Tier-0 / Tier-1: no Operator Anchors required.\n"
+        "- Tier-2: HOTL approval, pubkey refs, attestation signing ref, and exactly one seal-signing input.\n"
+        "- Tier-3: the same shared Operator Anchors plus `genesis_seal` as Tier-3 evidence input outside the anchors family.\n\n"
+        "Tier-2 uses the same `belgi run` backbone with explicit local-only refs:\n\n"
+        "```bash\n"
+        f"belgi run --repo . --tier tier-2 --intent-spec .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md --base-revision \"${{BASE_SHA40}}\" \\\n"
+        f"  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/{run_id}/inputs/anchors/keys/attestation_pubkey.hex \\\n"
+        f"  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/{run_id}/inputs/anchors/keys/seal_pubkey.hex \\\n"
+        f"  --hotl-approval-ref .belgi/runs/{run_id}/inputs/anchors/approvals/hotl_approval.json \\\n"
+        f"  --attestation-signing-key-ref .belgi/runs/{run_id}/inputs/anchors/signing/attestation_signing_key.hex \\\n"
+        f"  --seal-private-key-ref .belgi/runs/{run_id}/inputs/anchors/signing/seal_private_key.hex\n"
+        "```\n\n"
+        "Tier-3 stays on the same shared `belgi run` backbone:\n\n"
+        "```bash\n"
+        f"belgi run --repo . --tier tier-3 --intent-spec .belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md --base-revision \"${{BASE_SHA40}}\" \\\n"
+        f"  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/{run_id}/inputs/anchors/keys/attestation_pubkey.hex \\\n"
+        f"  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/{run_id}/inputs/anchors/keys/seal_pubkey.hex \\\n"
+        f"  --hotl-approval-ref .belgi/runs/{run_id}/inputs/anchors/approvals/hotl_approval.json \\\n"
+        f"  --attestation-signing-key-ref .belgi/runs/{run_id}/inputs/anchors/signing/attestation_signing_key.hex \\\n"
+        f"  --seal-private-key-ref .belgi/runs/{run_id}/inputs/anchors/signing/seal_private_key.hex \\\n"
+        f"  --genesis-seal-ref .belgi/runs/{run_id}/inputs/evidence/genesis_seal.json\n"
+        "```\n\n"
+        "7. Verify and triage:\n\n"
         "```bash\n"
         "belgi verify --repo .\n"
         "```\n\n"
+        "`belgi verify` replays stored run outputs and never regenerates missing Operator Anchors, Tier-3 evidence inputs, or signatures.\n\n"
         "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`.\n"
     )
 
@@ -1431,6 +1471,11 @@ def _seed_run_workspace(
     force: bool,
 ) -> tuple[list[Path], list[Path], list[Path]]:
     inputs_dir = run_dir / RUN_INPUTS_DIRNAME
+    anchors_dir = inputs_dir / RUN_ANCHORS_DIRNAME
+    approvals_dir = anchors_dir / RUN_ANCHORS_APPROVALS_DIRNAME
+    keys_dir = anchors_dir / RUN_ANCHORS_KEYS_DIRNAME
+    signing_dir = anchors_dir / RUN_ANCHORS_SIGNING_DIRNAME
+    evidence_dir = inputs_dir / RUN_EVIDENCE_DIRNAME
     intent_path = _run_intent_path(run_dir)
     waivers_dir = _run_waivers_dir(run_dir)
     runbook_template_path = run_dir / "RUN.md"
@@ -1452,6 +1497,13 @@ def _seed_run_workspace(
     else:
         inputs_dir.mkdir(parents=True, exist_ok=True)
         created.append(inputs_dir)
+    for anchor_dir in (anchors_dir, approvals_dir, keys_dir, signing_dir, evidence_dir):
+        if anchor_dir.exists():
+            if anchor_dir.is_symlink() or not anchor_dir.is_dir():
+                raise ValueError(f"invalid path in run workspace: {anchor_dir}")
+        else:
+            anchor_dir.mkdir(parents=True, exist_ok=True)
+            created.append(anchor_dir)
 
     if intent_path.exists():
         if intent_path.is_symlink() or not intent_path.is_file():
@@ -1500,6 +1552,7 @@ def _seed_run_workspace(
     seeded_paths = [
         intent_path,
         waivers_dir,
+        evidence_dir,
         runbook_template_path,
         *placeholders,
         run_key_pointer_path,
@@ -2426,6 +2479,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     findings_signal_emittable = False
     waivers_applied_count: int | None = None
     waivers_applied_refs: list[str] | None = None
+    operator_anchors: OperatorAnchorInputs | None = None
+    run_input_paths: list[Path] = []
+    run_evidence_inputs: RunEvidenceInputs | None = None
     run_ref: str | None = None
     intent_open_path: Path | None = None
     requested_waiver_refs: list[str] = []
@@ -2451,6 +2507,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 candidates.extend(chain_repo_dir / Path(*ref.split("/")) for ref in waivers_applied_refs)
         elif requested_waiver_refs:
             candidates.extend(repo_root / Path(*ref.split("/")) for ref in requested_waiver_refs)
+        candidates.extend(run_input_paths)
         out: list[Path] = []
         seen: set[str] = set()
         for path in candidates:
@@ -2540,6 +2597,21 @@ def cmd_run(args: argparse.Namespace) -> int:
             intent_source_rel = "(auto)"
 
         protocol = get_builtin_protocol_context()
+        if tier_id == "tier-3":
+            tier3_missing_reason = _tier3_missing_input_reason(args)
+            if tier3_missing_reason is not None:
+                raise _UserInputError(tier3_missing_reason)
+        operator_anchors, run_input_paths = _resolve_shared_operator_anchors(
+            repo_root=repo_root,
+            args=args,
+            tier_id=tier_id,
+        )
+        run_evidence_inputs, run_evidence_paths = _resolve_run_evidence_inputs(
+            repo_root=repo_root,
+            args=args,
+            tier_id=tier_id,
+        )
+        run_input_paths.extend(run_evidence_paths)
         try:
             evaluated_revision = _repo_head_sha(repo_root)
         except ValueError as e:
@@ -2589,6 +2661,8 @@ def cmd_run(args: argparse.Namespace) -> int:
                 intent_bytes=intent_bytes,
                 protocol=protocol,
                 applied_waiver_refs=requested_waiver_refs if requested_waiver_refs else None,
+                operator_anchors=operator_anchors,
+                run_evidence=run_evidence_inputs,
             )
         chain_repo_dir = chain_result.chain_repo_dir
         chain_out_dir = chain_result.chain_out_dir
@@ -2873,6 +2947,245 @@ def _load_json_object(path: Path, *, label: str) -> dict[str, object]:
     if not isinstance(obj, dict):
         raise ValueError(f"{label} must be a JSON object")
     return obj
+
+
+def _parse_object_ref_cli(raw: str, *, flag_name: str) -> tuple[str, str]:
+    spec = str(raw or "").strip()
+    if not spec:
+        raise _UserInputError(f"{flag_name} missing/invalid")
+    if "=" not in spec:
+        raise _UserInputError(f"{flag_name} must use <object_id>=<repo-relative-path>")
+    object_id, storage_ref = spec.split("=", 1)
+    object_id = object_id.strip()
+    storage_ref = storage_ref.strip()
+    if not object_id or not storage_ref:
+        raise _UserInputError(f"{flag_name} must use <object_id>=<repo-relative-path>")
+    return object_id, storage_ref
+
+
+def _resolve_local_input_file_ref(
+    repo_root: Path,
+    *,
+    raw: str,
+    flag_name: str,
+    required_suffix: str | None = None,
+) -> tuple[str, Path]:
+    from belgi.core.jail import resolve_repo_rel_path, safe_relpath
+
+    ref = str(raw or "").strip()
+    if not ref:
+        raise _UserInputError(f"{flag_name} missing/invalid")
+    try:
+        path = resolve_repo_rel_path(
+            repo_root,
+            ref,
+            must_exist=True,
+            must_be_file=True,
+            allow_backslashes=False,
+            forbid_symlinks=True,
+        )
+    except ValueError as e:
+        raise _UserInputError(str(e)) from e
+    if required_suffix is not None and path.suffix.lower() != required_suffix.lower():
+        raise _UserInputError(f"{flag_name} must point to a {required_suffix} file")
+    return safe_relpath(repo_root, path), path
+
+
+def _validate_hotl_approval_input(*, hotl_path: Path) -> None:
+    from belgi.core.schema import validate_schema
+    from belgi.protocol.pack import get_builtin_protocol_context
+
+    hotl_obj = _load_json_object(hotl_path, label="HOTL approval artifact")
+    protocol = get_builtin_protocol_context()
+    hotl_schema = protocol.read_json("schemas/HOTLApproval.schema.json")
+    if not isinstance(hotl_schema, dict):
+        raise _UserInputError("builtin HOTLApproval schema missing/invalid")
+    errs = validate_schema(hotl_obj, hotl_schema, root_schema=hotl_schema, path="HOTLApproval")
+    if errs:
+        first = errs[0]
+        raise _UserInputError(f"--hotl-approval-ref invalid at {first.path}: {first.message}")
+
+
+def _validate_genesis_seal_input(*, genesis_seal_path: Path) -> None:
+    from belgi.trust_anchor import TrustAnchorError, validate_genesis_seal_schema
+
+    genesis_obj = _load_json_object(genesis_seal_path, label="genesis_seal artifact")
+    try:
+        validate_genesis_seal_schema(genesis_obj, source="genesis_seal")
+    except TrustAnchorError as e:
+        raise _UserInputError(f"--genesis-seal-ref invalid: {e}") from e
+
+
+def _shared_operator_anchor_missing_flags(args: argparse.Namespace) -> list[str]:
+    raw_args = {
+        name: str(getattr(args, name, "") or "").strip()
+        for name in (
+            "attestation_pubkey_ref",
+            "seal_pubkey_ref",
+            "hotl_approval_ref",
+            "attestation_signing_key_ref",
+            "seal_private_key_ref",
+            "seal_signature_ref",
+        )
+    }
+    missing_required = [
+        flag_name
+        for flag_name in (
+            "--attestation-pubkey-ref",
+            "--seal-pubkey-ref",
+            "--hotl-approval-ref",
+            "--attestation-signing-key-ref",
+        )
+        if not raw_args[flag_name[2:].replace("-", "_")]
+    ]
+    if not raw_args["seal_private_key_ref"] and not raw_args["seal_signature_ref"]:
+        missing_required.append("--seal-private-key-ref or --seal-signature-ref")
+    return missing_required
+
+
+def _tier3_missing_input_reason(args: argparse.Namespace) -> str | None:
+    missing_anchor_flags = _shared_operator_anchor_missing_flags(args)
+    missing_genesis = not str(getattr(args, "genesis_seal_ref", "") or "").strip()
+    if not missing_anchor_flags and not missing_genesis:
+        return None
+    parts: list[str] = []
+    if missing_anchor_flags:
+        parts.append("tier-3 requires Operator Anchors: " + ", ".join(missing_anchor_flags))
+    if missing_genesis:
+        parts.append("tier-3 requires Tier-3 evidence input: --genesis-seal-ref")
+    return "; ".join(parts)
+
+
+def _resolve_shared_operator_anchors(
+    *,
+    repo_root: Path,
+    args: argparse.Namespace,
+    tier_id: str,
+) -> tuple[OperatorAnchorInputs | None, list[Path]]:
+    anchor_arg_names = (
+        "attestation_pubkey_ref",
+        "seal_pubkey_ref",
+        "hotl_approval_ref",
+        "attestation_signing_key_ref",
+        "seal_private_key_ref",
+        "seal_signature_ref",
+    )
+    raw_args = {name: str(getattr(args, name, "") or "").strip() for name in anchor_arg_names}
+    has_any_anchor = any(raw_args.values())
+
+    if tier_id not in {"tier-2", "tier-3"}:
+        if has_any_anchor:
+            raise _UserInputError("operator anchor refs are allowed only with --tier tier-2 or --tier tier-3")
+        return None, []
+
+    missing_required = _shared_operator_anchor_missing_flags(args)
+    if raw_args["seal_private_key_ref"] and raw_args["seal_signature_ref"]:
+        raise _UserInputError(
+            f"{tier_id} requires exactly one seal signing anchor: use --seal-private-key-ref or --seal-signature-ref"
+        )
+    if missing_required:
+        raise _UserInputError(f"{tier_id} requires Operator Anchors: " + ", ".join(missing_required))
+
+    attestation_pubkey_id, attestation_pubkey_ref = _parse_object_ref_cli(
+        raw_args["attestation_pubkey_ref"],
+        flag_name="--attestation-pubkey-ref",
+    )
+    seal_pubkey_id, seal_pubkey_ref = _parse_object_ref_cli(
+        raw_args["seal_pubkey_ref"],
+        flag_name="--seal-pubkey-ref",
+    )
+
+    _, attestation_pubkey_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=attestation_pubkey_ref,
+        flag_name="--attestation-pubkey-ref",
+    )
+    _, seal_pubkey_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=seal_pubkey_ref,
+        flag_name="--seal-pubkey-ref",
+    )
+    hotl_approval_ref, hotl_approval_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=raw_args["hotl_approval_ref"],
+        flag_name="--hotl-approval-ref",
+        required_suffix=".json",
+    )
+    _validate_hotl_approval_input(hotl_path=hotl_approval_path)
+    attestation_signing_key_ref, attestation_signing_key_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=raw_args["attestation_signing_key_ref"],
+        flag_name="--attestation-signing-key-ref",
+    )
+
+    seal_private_key_ref: str | None = None
+    seal_private_key_path: Path | None = None
+    if raw_args["seal_private_key_ref"]:
+        seal_private_key_ref, seal_private_key_path = _resolve_local_input_file_ref(
+            repo_root,
+            raw=raw_args["seal_private_key_ref"],
+            flag_name="--seal-private-key-ref",
+        )
+
+    seal_signature_ref: str | None = None
+    seal_signature_path: Path | None = None
+    if raw_args["seal_signature_ref"]:
+        seal_signature_ref, seal_signature_path = _resolve_local_input_file_ref(
+            repo_root,
+            raw=raw_args["seal_signature_ref"],
+            flag_name="--seal-signature-ref",
+        )
+
+    open_paths = [
+        attestation_pubkey_path,
+        seal_pubkey_path,
+        hotl_approval_path,
+        attestation_signing_key_path,
+    ]
+    if seal_private_key_path is not None:
+        open_paths.append(seal_private_key_path)
+    if seal_signature_path is not None:
+        open_paths.append(seal_signature_path)
+
+    return (
+        OperatorAnchorInputs(
+            attestation_pubkey_id=attestation_pubkey_id,
+            attestation_pubkey_source_ref=attestation_pubkey_ref,
+            seal_pubkey_id=seal_pubkey_id,
+            seal_pubkey_source_ref=seal_pubkey_ref,
+            hotl_approval_source_ref=hotl_approval_ref,
+            attestation_signing_key_source_ref=attestation_signing_key_ref,
+            seal_private_key_source_ref=seal_private_key_ref,
+            seal_signature_source_ref=seal_signature_ref,
+        ),
+        open_paths,
+    )
+
+
+def _resolve_run_evidence_inputs(
+    *,
+    repo_root: Path,
+    args: argparse.Namespace,
+    tier_id: str,
+) -> tuple[RunEvidenceInputs | None, list[Path]]:
+    raw = str(getattr(args, "genesis_seal_ref", "") or "").strip()
+
+    if tier_id != "tier-3":
+        if raw:
+            raise _UserInputError("Tier-3 evidence refs are allowed only with --tier tier-3")
+        return None, []
+
+    if not raw:
+        raise _UserInputError("tier-3 requires evidence inputs: --genesis-seal-ref")
+
+    genesis_seal_ref, genesis_seal_path = _resolve_local_input_file_ref(
+        repo_root,
+        raw=raw,
+        flag_name="--genesis-seal-ref",
+        required_suffix=".json",
+    )
+    _validate_genesis_seal_input(genesis_seal_path=genesis_seal_path)
+    return RunEvidenceInputs(genesis_seal_source_ref=genesis_seal_ref), [genesis_seal_path]
 
 
 def _list_dirs_sorted(root: Path) -> list[Path]:
@@ -4344,6 +4657,41 @@ def main(argv: list[str] | None = None) -> int:
             "Optional 40-hex base commit SHA used only when CI base env and upstream merge-base "
             "discovery are unavailable"
         ),
+    )
+    p_run.add_argument(
+        "--attestation-pubkey-ref",
+        default=None,
+        help="Tier-2/Tier-3 Operator Anchor: local-only <object_id>=<repo-relative-path> for the attestation public key.",
+    )
+    p_run.add_argument(
+        "--seal-pubkey-ref",
+        default=None,
+        help="Tier-2/Tier-3 Operator Anchor: local-only <object_id>=<repo-relative-path> for the seal public key.",
+    )
+    p_run.add_argument(
+        "--hotl-approval-ref",
+        default=None,
+        help="Tier-2/Tier-3 Operator Anchor: repo-relative HOTLApproval JSON to index into the pre-Q EvidenceManifest.",
+    )
+    p_run.add_argument(
+        "--attestation-signing-key-ref",
+        default=None,
+        help="Tier-2/Tier-3 Operator Anchor: repo-relative Ed25519 seed file used by belgi verify-attestation.",
+    )
+    p_run.add_argument(
+        "--seal-private-key-ref",
+        default=None,
+        help="Tier-2/Tier-3 Operator Anchor: repo-relative seal private key file used by chain.seal_bundle.",
+    )
+    p_run.add_argument(
+        "--seal-signature-ref",
+        default=None,
+        help="Tier-2/Tier-3 Operator Anchor: repo-relative file containing a base64 seal signature verified by chain.seal_bundle.",
+    )
+    p_run.add_argument(
+        "--genesis-seal-ref",
+        default=None,
+        help="Tier-3 evidence input: repo-relative GenesisSealPayload JSON staged outside Operator Anchors on the shared run spine.",
     )
     p_run.add_argument("--verbose", action="store_true", help="Verbose human output (deep paths and full open helpers)")
     run_subs = p_run.add_subparsers(dest="run_command", help="Run subcommand")

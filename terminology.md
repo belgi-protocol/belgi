@@ -24,6 +24,7 @@ This file MUST NOT define or redefine terms. The single source of truth is [CANO
 | Evidence Sufficiency | [CANONICALS.md#evidence-sufficiency](CANONICALS.md#evidence-sufficiency) |
 | LockedSpec | [CANONICALS.md#lockedspec](CANONICALS.md#lockedspec) |
 | Protocol Pack | [CANONICALS.md#protocol-pack](CANONICALS.md#protocol-pack) |
+| Operator Anchors | [CANONICALS.md#operator-anchors](CANONICALS.md#operator-anchors) |
 | Protocol Pack Identity | [CANONICALS.md#protocol-pack-identity](CANONICALS.md#protocol-pack-identity) |
 | pack_id | [CANONICALS.md#protocol-pack-identity](CANONICALS.md#protocol-pack-identity) |
 | manifest_sha256 | [CANONICALS.md#protocol-pack-identity](CANONICALS.md#protocol-pack-identity) |

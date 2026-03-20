@@ -112,10 +112,50 @@ def test_tier1_missing_test_report_fails(tmp_path: Path) -> None:
     assert "test_report" in evidence.message
 
 
+def test_tier2_missing_test_report_fails(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path=tmp_path / "tier2_missing_test_report",
+        tier_id="tier-2",
+        artifacts=[
+            _artifact("diff", "changes.diff"),
+            _artifact("command_log", "command.log"),
+            _artifact("schema_validation", "schema.lockedspec"),
+            _artifact("policy_report", "policy.invariant_eval"),
+            _artifact("env_attestation", "env.attestation"),
+        ],
+        commands_executed=[_structured_cmd("run-tests"), _structured_cmd("verify-attestation")],
+        envelope_attestation={"id": "env.attestation", "hash": "b" * 64, "storage_ref": "out/env.attestation.json"},
+    )
+    results = r0_evidence_sufficiency.run(ctx)
+    evidence = _find(results, "R0.evidence_sufficiency")
+    assert evidence.status == "FAIL"
+    assert "test_report" in evidence.message
+
+
 def test_tier1_missing_env_attestation_fails(tmp_path: Path) -> None:
     ctx = _ctx(
         tmp_path=tmp_path / "tier1_missing_env_att",
         tier_id="tier-1",
+        artifacts=[
+            _artifact("diff", "changes.diff"),
+            _artifact("command_log", "command.log"),
+            _artifact("schema_validation", "schema.lockedspec"),
+            _artifact("policy_report", "policy.invariant_eval"),
+            _artifact("test_report", "tests.report"),
+        ],
+        commands_executed=[_structured_cmd("run-tests"), _structured_cmd("verify-attestation")],
+        envelope_attestation={"id": "env.attestation", "hash": "b" * 64, "storage_ref": "out/env.attestation.json"},
+    )
+    results = r0_evidence_sufficiency.run(ctx)
+    evidence = _find(results, "R0.evidence_sufficiency")
+    assert evidence.status == "FAIL"
+    assert "env_attestation" in evidence.message
+
+
+def test_tier2_missing_env_attestation_fails(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path=tmp_path / "tier2_missing_env_att",
+        tier_id="tier-2",
         artifacts=[
             _artifact("diff", "changes.diff"),
             _artifact("command_log", "command.log"),

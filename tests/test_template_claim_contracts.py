@@ -120,6 +120,48 @@ def test_waiver_docs_split_mechanical_and_operational_controls() -> None:
         assert "approval workflow provenance showing how human review/approval happened" in section
 
 
+def test_operator_anchor_docs_and_canonicals_align() -> None:
+    canonicals = _read_text("CANONICALS.md")
+    canonicals_mirror = _read_text("belgi/canonicals/CANONICALS.md")
+    terminology = _read_text("terminology.md")
+    terminology_mirror = _read_text("belgi/canonicals/terminology.md")
+    cli_docs = _read_text("docs/operations/cli.md")
+    cli_docs_mirror = _read_text("belgi/canonicals/docs/operations/cli.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+    anchors_docs = _read_text("docs/operations/operator-anchors.md")
+    anchors_docs_mirror = _read_text("belgi/canonicals/docs/operations/operator-anchors.md")
+
+    required_definition = "Operator Anchors are operator-supplied control artifacts or refs"
+    required_boundary = "`genesis_seal` remains Tier-3 evidence"
+    term_pointer = "| Operator Anchors | [CANONICALS.md#operator-anchors](CANONICALS.md#operator-anchors) |"
+    running_boundary = "Tier-3 evidence remains separate from anchors:"
+    anchors_boundary = "Adjacent non-anchor Tier-3 evidence workspace:"
+
+    for text in (canonicals, canonicals_mirror):
+        assert required_definition in text
+        assert required_boundary in text
+
+    for text in (terminology, terminology_mirror):
+        assert term_pointer in text
+
+    for text in (cli_docs, cli_docs_mirror, running_docs, running_docs_mirror, anchors_docs, anchors_docs_mirror):
+        assert "inputs/anchors/" in text
+        assert "inputs/evidence/genesis_seal.json" in text
+        assert "inputs/tier2/" not in text
+        assert "inputs/tier3/" not in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert running_boundary in text
+
+    for text in (anchors_docs, anchors_docs_mirror):
+        assert anchors_boundary in text
+        assert "`genesis_seal` is not an Operator Anchor." in text
+        assert "`TrustAnchor.json` remains the canonical Tier-3 authority artifact." in text
+
+    assert anchors_docs == anchors_docs_mirror
+
+
 def test_prompt_hash_contract_explicitly_requires_c1_rendered_bytes_hashes() -> None:
     required_a = "Each hash MUST equal `sha256(C1_rendered_block_bytes)` for the selected prompt blocks."
     required_b = "C3 recomputes expected hashes by rendering the selected prompt blocks and rejects mismatches."

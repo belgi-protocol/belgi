@@ -42,7 +42,7 @@
         "max_active_waivers": "integer",
         "requires_HOTL": "yes/no"
       },
-      "v1_enforcement_note": "Gate Q/R treat `Waiver` as the sole waiver authorization artifact. For tiers where `requires_HOTL == yes`, Gate Q/R still enforce only waiver validity and a v1 human-authorship heuristic (see Gate Q Q6); no additional HOTL artifact is required by schemas."
+      "v1_enforcement_note": "`Waiver` remains the sole waiver authorization artifact. HOTL is a separate control artifact. For tiers where `requires_HOTL == yes`, Gate Q additionally requires a valid `hotl_approval` artifact in `EvidenceManifest.artifacts[]`."
     },
     "command_log_mode": {
       "description": "Controls the required shape of `EvidenceManifest.commands_executed`.",
