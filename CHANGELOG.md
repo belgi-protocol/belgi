@@ -2,6 +2,39 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.5.0 — 2026-03-20
+
+### Summary
+Release focused on shared operator-path closure across Tier-2/Tier-3, Operator Anchors convergence, and tier-pack truth reconciliation.
+
+### Added
+- Shipped Tier-2 and Tier-3 operator paths on the shared `belgi run` family:
+  - explicit local-only operator controls for HOTL, public-key pins, attestation signing, and seal entry
+  - explicit Tier-3 `--genesis-seal-ref` handling on the same run backbone
+  - shipped-path `belgi verify` coverage for Tier-2 and Tier-3 runs
+- Canonical `Operator Anchors` surface:
+  - normative `Operator Anchors` term in `CANONICALS.md` with pointer-only terminology entries
+  - recommended operator workspace family `inputs/anchors/{approvals,keys,signing}`
+  - dedicated operator guidance for shared control materials and their replay boundaries
+
+### Changed
+- Shared run-path architecture:
+  - Tier-2 and Tier-3 converge on one operator-control model without introducing a second orchestration family
+  - local signing material is consumed without persisting raw secret bytes on authoritative run outputs
+  - both local-signing and precomputed seal-signature entry paths are supported on the shipped run surface
+- Tier-3 boundary enforcement:
+  - `genesis_seal` remains Tier-3 evidence, not an Operator Anchor
+  - `TrustAnchor.json` remains the Tier-3 authority artifact, not an Operator Anchor
+  - Tier-3 remediation text now separates missing shared Operator Anchors from missing Tier-3 evidence input
+- Tier-pack and operator-truth propagation:
+  - HOTL remains a separate control artifact from waivers
+  - Tier-2 remains bounded to one active waiver and Tier-3 remains zero-waiver
+  - generated tier views, operator docs, and run scaffolding now teach the shared anchors workspace and preserve bounded verify/bundle-check guidance
+
+### Notes
+- Public entry records shipped operator surfaces and canonical boundaries only.
+- This release does not claim outer trust-chain completion, hosted-governance expansion, or release-provenance / trusted-builder closure.
+
 ## 1.4.18 — 2026-03-19
 
 ### Summary

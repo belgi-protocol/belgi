@@ -33,6 +33,7 @@ _OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/anchors"
 _OPERATOR_ANCHORS_APPROVALS_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/approvals"
 _OPERATOR_ANCHORS_KEYS_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/keys"
 _OPERATOR_ANCHORS_SIGNING_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/signing"
+_RUN_EVIDENCE_STAGE_ROOT_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/evidence"
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -194,6 +195,18 @@ class StagedOperatorAnchors:
     hotl_approval_id: str
     hotl_approval_path: Path
     seal_signature_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class RunEvidenceInputs:
+    genesis_seal_source_ref: str
+
+
+@dataclass(frozen=True)
+class StagedRunEvidence:
+    genesis_seal_ref: str
+    genesis_seal_id: str
+    genesis_seal_path: Path
 
 
 def render_default_intent_spec(*, tier_id: str) -> bytes:
@@ -593,6 +606,13 @@ def _hotl_approval_id_from_path(path: Path) -> str:
     return approval_id.strip()
 
 
+def _genesis_seal_id_from_path(path: Path) -> str:
+    payload = _load_json_object(path, label="genesis_seal artifact")
+    if not payload:
+        raise ValueError("genesis_seal artifact missing/invalid payload")
+    return "genesis.seal"
+
+
 def _read_local_secret_text_ref(
     *,
     source_repo_root: Path,
@@ -696,6 +716,26 @@ def stage_operator_anchors(
         hotl_approval_id=_hotl_approval_id_from_path(hotl_approval_path),
         hotl_approval_path=hotl_approval_path,
         seal_signature_ref=seal_signature_ref,
+    )
+
+
+def stage_run_evidence(
+    *,
+    source_repo_root: Path,
+    chain_repo_root: Path,
+    run_evidence: RunEvidenceInputs,
+) -> StagedRunEvidence:
+    genesis_seal_ref, genesis_seal_path = _stage_local_input_ref(
+        source_repo_root=source_repo_root,
+        chain_repo_root=chain_repo_root,
+        source_ref=run_evidence.genesis_seal_source_ref,
+        target_rel=f"{_RUN_EVIDENCE_STAGE_ROOT_REPO_REL}/genesis_seal.json",
+        label="Tier-3 genesis_seal ref",
+    )
+    return StagedRunEvidence(
+        genesis_seal_ref=genesis_seal_ref,
+        genesis_seal_id=_genesis_seal_id_from_path(genesis_seal_path),
+        genesis_seal_path=genesis_seal_path,
     )
 
 
@@ -835,6 +875,7 @@ def orchestrate_chain_run(
     protocol: Any,
     applied_waiver_refs: list[str] | None = None,
     operator_anchors: OperatorAnchorInputs | None = None,
+    run_evidence: RunEvidenceInputs | None = None,
 ) -> RunOrchestrationResult:
     base_revision = _require_commit_sha40(base_revision, label="base_revision")
     evaluated_revision = _require_commit_sha40(evaluated_revision, label="evaluated_revision")
@@ -846,7 +887,7 @@ def orchestrate_chain_run(
     command_log_mode = _command_log_mode_for_tier(protocol=protocol, tier_id=tier_id)
     tier_test_plan = (
         _tier_test_plan_for_tier(protocol=protocol, tier_id=tier_id)
-        if tier_id in ("tier-1", "tier-2")
+        if tier_id in ("tier-1", "tier-2", "tier-3")
         else None
     )
 
@@ -906,16 +947,28 @@ def orchestrate_chain_run(
         explicit_waiver_refs=applied_waiver_refs,
     )
     staged_operator_anchors: StagedOperatorAnchors | None = None
-    if tier_id == "tier-2":
+    if tier_id in ("tier-2", "tier-3"):
         if operator_anchors is None:
-            raise ValueError("tier-2 shared run requires operator anchors")
+            raise ValueError(f"{tier_id} shared run requires operator anchors")
         staged_operator_anchors = stage_operator_anchors(
             source_repo_root=source_repo_root,
             chain_repo_root=chain_repo_dir,
             operator_anchors=operator_anchors,
         )
     elif operator_anchors is not None:
-        raise ValueError("operator anchors are only supported for tier-2")
+        raise ValueError("operator anchors are only supported for tier-2 and tier-3")
+
+    staged_run_evidence: StagedRunEvidence | None = None
+    if tier_id == "tier-3":
+        if run_evidence is None:
+            raise ValueError("tier-3 shared run requires genesis_seal evidence input")
+        staged_run_evidence = stage_run_evidence(
+            source_repo_root=source_repo_root,
+            chain_repo_root=chain_repo_dir,
+            run_evidence=run_evidence,
+        )
+    elif run_evidence is not None:
+        raise ValueError("tier-3 evidence inputs are only supported for tier-3")
 
     intent_in_chain = chain_repo_dir / "IntentSpec.core.md"
     intent_in_chain.write_bytes(intent_bytes)
@@ -1055,7 +1108,7 @@ def orchestrate_chain_run(
     env_att_path = chain_repo_dir / rel_env_att
 
     envelope_attestation: dict[str, str] | None = None
-    if tier_id in ("tier-1", "tier-2"):
+    if tier_id in ("tier-1", "tier-2", "tier-3"):
         if tier_test_plan is None:
             raise ValueError(f"internal error: missing tier test plan for {tier_id}")
         if tier_test_plan.mode not in ("engine_smoke", "adopter_pytest"):
@@ -1252,7 +1305,19 @@ def orchestrate_chain_run(
             )
         )
 
-    if tier_id in ("tier-1", "tier-2"):
+    if staged_run_evidence is not None:
+        artifacts.append(
+            _make_evidence_artifact(
+                chain_repo_root=chain_repo_dir,
+                path=staged_run_evidence.genesis_seal_path,
+                kind="genesis_seal",
+                artifact_id=staged_run_evidence.genesis_seal_id,
+                media_type="application/json",
+                produced_by="C1",
+            )
+        )
+
+    if tier_id in ("tier-1", "tier-2", "tier-3"):
         artifacts.append(
             _make_evidence_artifact(
                 chain_repo_root=chain_repo_dir,

@@ -24,6 +24,7 @@ from belgi.cli import main as belgi_main
 from belgi.core.schema import validate_schema
 from belgi.core import run_orchestrator
 from belgi.protocol.pack import get_builtin_protocol_context
+from belgi.trust_anchor import load_pinned_trust_anchor
 
 _FIXED_TIER2_SHARED_PATH_ANCHOR_UTC = "2000-01-01T00:00:00Z"
 
@@ -238,12 +239,21 @@ def _ed25519_pubkey_hex(seed_hex: str) -> str:
     return public_key.hex()
 
 
-def _rewrite_tier2_intent_for_empty_doc_impact(repo: Path, *, run_id: str) -> Path:
+def _rewrite_shared_run_intent_for_empty_doc_impact(
+    repo: Path, *, run_id: str, note: str, tier_id: str = "tier-2"
+) -> Path:
     intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
     text = intent_path.read_text(encoding="utf-8", errors="strict")
-    updated = text.replace(
+    updated = re.sub(
+        r'tier:\n  tier_pack_id: "[^"]+"\n',
+        f'tier:\n  tier_pack_id: "{tier_id}"\n',
+        text,
+        count=1,
+    )
+    updated = updated.replace(
         'doc_impact:\n  required_paths:\n    - "README.md"\n  note_on_empty: "Docs updated to reflect behavior change."\n',
-        'doc_impact:\n  required_paths: []\n  note_on_empty: "No documentation updates are required for this deterministic tier-2 test run."\n',
+        'doc_impact:\n  required_paths: []\n'
+        f'  note_on_empty: "{note}"\n',
     )
     assert updated != text
     intent_path.write_text(updated, encoding="utf-8", errors="strict", newline="\n")
@@ -331,6 +341,24 @@ def _write_operator_anchors(repo: Path, *, run_id: str) -> dict[str, str]:
     }
 
 
+def _write_run_evidence_inputs(repo: Path, *, run_id: str) -> dict[str, str]:
+    evidence_dir = repo / ".belgi" / "runs" / run_id / "inputs" / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    genesis_seal_path = evidence_dir / "genesis_seal.json"
+
+    authority = load_pinned_trust_anchor(repo)
+    payload = authority.expected_genesis_seal_payload()
+    genesis_seal_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    return {
+        "genesis_seal_ref": f".belgi/runs/{run_id}/inputs/evidence/genesis_seal.json",
+    }
+
+
 def _pin_shared_path_anchor_time(monkeypatch: pytest.MonkeyPatch) -> None:
     # Precomputed seal signatures bind the exact unsigned seal anchor bytes for the target run.
     # Pin the run-time waiver anchor so the private-key and precomputed-signature entry paths
@@ -366,6 +394,21 @@ def _refresh_summary_artifact_hashes(repo: Path, attempt_dir: Path, artifact_pat
         encoding="utf-8",
         errors="strict",
     )
+
+
+def _assert_no_persisted_signing_material(out_dir: Path) -> None:
+    persisted_secret_paths = sorted(
+        p.relative_to(out_dir).as_posix()
+        for p in out_dir.rglob("*")
+        if p.is_file()
+        and ("attestation_signing_key" in p.name or "seal_private_key" in p.name)
+    )
+    assert persisted_secret_paths == []
+
+    for rel_name in ("EvidenceManifest.json", "SealManifest.json"):
+        text = (out_dir / rel_name).read_text(encoding="utf-8", errors="strict")
+        assert "attestation_signing_key" not in text
+        assert "seal_private_key" not in text
 
 
 def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> None:
@@ -472,7 +515,11 @@ def test_run_tier2_shared_path_accepts_valid_inputs_and_verify_passes(
     assert rc_new == 0
     _ = capsys.readouterr()
 
-    intent_path = _rewrite_tier2_intent_for_empty_doc_impact(repo, run_id=run_id)
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+    )
     operator_anchors = _write_operator_anchors(repo, run_id=run_id)
 
     _unset_upstream_if_present(repo)
@@ -531,13 +578,7 @@ def test_run_tier2_shared_path_accepts_valid_inputs_and_verify_passes(
     assert "test_report" in kinds
     assert "env_attestation" in kinds
     out_dir = attempt_dir / "repo" / "out"
-    persisted_secret_paths = sorted(
-        p.relative_to(out_dir).as_posix()
-        for p in out_dir.rglob("*")
-        if p.is_file()
-        and ("attestation_signing_key" in p.name or "seal_private_key" in p.name)
-    )
-    assert persisted_secret_paths == []
+    _assert_no_persisted_signing_material(out_dir)
 
     hotl_artifacts = [artifact for artifact in artifacts if isinstance(artifact, dict) and artifact.get("kind") == "hotl_approval"]
     assert len(hotl_artifacts) == 1
@@ -576,7 +617,11 @@ def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_pas
     assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
 
-    intent_path = _rewrite_tier2_intent_for_empty_doc_impact(repo, run_id=run_id)
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+    )
     operator_anchors = _write_operator_anchors(repo, run_id=run_id)
 
     _unset_upstream_if_present(repo)
@@ -649,17 +694,7 @@ def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_pas
     assert second_attempt_dir.is_dir()
 
     second_out_dir = second_attempt_dir / "repo" / "out"
-    persisted_secret_paths = sorted(
-        p.relative_to(second_out_dir).as_posix()
-        for p in second_out_dir.rglob("*")
-        if p.is_file()
-        and ("attestation_signing_key" in p.name or "seal_private_key" in p.name)
-    )
-    assert persisted_secret_paths == []
-    for rel_name in ("EvidenceManifest.json", "SealManifest.json"):
-        text = (second_out_dir / rel_name).read_text(encoding="utf-8", errors="strict")
-        assert "attestation_signing_key" not in text
-        assert "seal_private_key" not in text
+    _assert_no_persisted_signing_material(second_out_dir)
 
     second_seal_manifest = json.loads(
         (second_out_dir / "SealManifest.json").read_text(encoding="utf-8", errors="strict")
@@ -674,6 +709,487 @@ def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_pas
     assert machine_verify["verdict"] == "GO"
     assert machine_verify["run_key"] == second_run["run_key"]
     assert machine_verify["attempt_id"] == second_run["attempt_id"]
+
+
+def test_run_tier3_rejects_missing_required_operator_and_evidence_inputs(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    head_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(["run", "--repo", str(repo), "--tier", "tier-3", "--base-revision", head_sha])
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    reason = str(machine["primary_reason"])
+    anchor_reason, sep, evidence_reason = reason.partition("; ")
+    assert sep == "; "
+    assert anchor_reason.startswith("tier-3 requires Operator Anchors: ")
+    assert "--attestation-pubkey-ref" in anchor_reason
+    assert "--seal-pubkey-ref" in anchor_reason
+    assert "--hotl-approval-ref" in anchor_reason
+    assert "--attestation-signing-key-ref" in anchor_reason
+    assert "--seal-private-key-ref or --seal-signature-ref" in anchor_reason
+    assert "--genesis-seal-ref" not in anchor_reason
+    assert evidence_reason == "tier-3 requires Tier-3 evidence input: --genesis-seal-ref"
+    assert reason in captured.err
+
+
+def test_run_tier3_rejects_missing_required_operator_anchors_with_correct_boundary(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-missing-anchors"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    run_evidence = _write_run_evidence_inputs(repo, run_id=run_id)
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    reason = str(machine["primary_reason"])
+    assert reason.startswith("tier-3 requires Operator Anchors: ")
+    assert "Tier-3 evidence input" not in reason
+    assert "--genesis-seal-ref" not in reason
+    assert reason in captured.err
+
+
+def test_run_tier3_rejects_missing_genesis_evidence_input_with_correct_boundary(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-missing-genesis"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    operator_anchors = _write_operator_anchors(repo, run_id=run_id)
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            operator_anchors["seal_private_key_ref"],
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    reason = str(machine["primary_reason"])
+    assert reason == "tier-3 requires Tier-3 evidence input: --genesis-seal-ref"
+    assert "Operator Anchors" not in reason
+    assert reason in captured.err
+
+
+def test_run_tier3_rejects_schema_invalid_genesis_seal_input(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-invalid-genesis"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    operator_anchors = _write_operator_anchors(repo, run_id=run_id)
+    run_evidence = _write_run_evidence_inputs(repo, run_id=run_id)
+    genesis_path = repo / ".belgi" / "runs" / run_id / "inputs" / "evidence" / "genesis_seal.json"
+    genesis_path.write_text("{}\n", encoding="utf-8", errors="strict", newline="\n")
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            operator_anchors["seal_private_key_ref"],
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run == 20
+    machine = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert "--genesis-seal-ref invalid" in str(machine["primary_reason"])
+
+
+def test_run_tier3_rejects_invalid_hotl_input(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-invalid-hotl"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    operator_anchors = _write_operator_anchors(repo, run_id=run_id)
+    run_evidence = _write_run_evidence_inputs(repo, run_id=run_id)
+    hotl_path = repo / ".belgi" / "runs" / run_id / "inputs" / "anchors" / "approvals" / "hotl_approval.json"
+    hotl_path.write_text("{}\n", encoding="utf-8", errors="strict", newline="\n")
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            operator_anchors["seal_private_key_ref"],
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run == 20
+    machine = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert "--hotl-approval-ref invalid" in str(machine["primary_reason"])
+
+
+def test_run_tier3_shared_path_accepts_valid_inputs_and_verify_passes(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-shared"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    operator_anchors = _write_operator_anchors(repo, run_id=run_id)
+    run_evidence = _write_run_evidence_inputs(repo, run_id=run_id)
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            operator_anchors["seal_private_key_ref"],
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run == 0
+    captured_run = capsys.readouterr()
+    machine_run = json.loads(captured_run.out.splitlines()[0])
+    assert machine_run["ok"] is True
+    assert machine_run["verdict"] == "GO"
+    assert machine_run["tier_id"] == "tier-3"
+
+    run_key = str(machine_run["run_key"])
+    attempt_id = str(machine_run["attempt_id"])
+    attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
+    assert attempt_dir.is_dir()
+
+    locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    envelope = locked_spec.get("environment_envelope")
+    assert isinstance(envelope, dict)
+    assert str((envelope.get("attestation_pubkey_ref") or {}).get("storage_ref") or "").startswith("out/inputs/anchors/keys/")
+    assert str((envelope.get("seal_pubkey_ref") or {}).get("storage_ref") or "").startswith("out/inputs/anchors/keys/")
+
+    out_dir = attempt_dir / "repo" / "out"
+    evidence_manifest = json.loads((out_dir / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict"))
+    artifacts = evidence_manifest.get("artifacts")
+    assert isinstance(artifacts, list)
+    kinds = {artifact.get("kind") for artifact in artifacts if isinstance(artifact, dict)}
+    assert {"hotl_approval", "test_report", "env_attestation", "genesis_seal"}.issubset(kinds)
+    genesis_artifacts = [artifact for artifact in artifacts if isinstance(artifact, dict) and artifact.get("kind") == "genesis_seal"]
+    assert len(genesis_artifacts) == 1
+    assert genesis_artifacts[0].get("storage_ref") == "out/inputs/evidence/genesis_seal.json"
+    _assert_no_persisted_signing_material(out_dir)
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    machine_verify = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine_verify["ok"] is True
+    assert machine_verify["verdict"] == "GO"
+    assert machine_verify["run_key"] == machine_run["run_key"]
+    assert machine_verify["attempt_id"] == machine_run["attempt_id"]
+
+
+def test_run_tier3_shared_path_accepts_precomputed_seal_signature_and_verify_passes(
+    tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-signature"
+    _pin_shared_path_anchor_time(monkeypatch)
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    operator_anchors = _write_operator_anchors(repo, run_id=run_id)
+    run_evidence = _write_run_evidence_inputs(repo, run_id=run_id)
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run_private_key = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            operator_anchors["seal_private_key_ref"],
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run_private_key == 0
+    first_run = json.loads(capsys.readouterr().out.splitlines()[0])
+    first_attempt_dir = repo / ".belgi" / "store" / "runs" / str(first_run["run_key"]) / str(first_run["attempt_id"])
+    first_signature = str(
+        json.loads((first_attempt_dir / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict")).get("signature") or ""
+    ).strip()
+    assert first_signature
+
+    seal_signature_path = repo / Path(*operator_anchors["seal_signature_ref"].split("/"))
+    seal_signature_path.write_text(first_signature + "\n", encoding="utf-8", errors="strict", newline="\n")
+
+    rc_run_signature = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-signature-ref",
+            operator_anchors["seal_signature_ref"],
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run_signature == 0
+    second_run = json.loads(capsys.readouterr().out.splitlines()[0])
+    second_attempt_dir = repo / ".belgi" / "store" / "runs" / str(second_run["run_key"]) / str(second_run["attempt_id"])
+    second_out_dir = second_attempt_dir / "repo" / "out"
+    _assert_no_persisted_signing_material(second_out_dir)
+    second_seal_manifest = json.loads((second_out_dir / "SealManifest.json").read_text(encoding="utf-8", errors="strict"))
+    assert second_seal_manifest.get("signature_alg") == "ed25519"
+    assert second_seal_manifest.get("signature") == first_signature
+
+    rc_verify = belgi_main(["verify", "--repo", str(repo)])
+    assert rc_verify == 0
+    machine_verify = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine_verify["ok"] is True
+    assert machine_verify["verdict"] == "GO"
+    assert machine_verify["run_key"] == second_run["run_key"]
+    assert machine_verify["attempt_id"] == second_run["attempt_id"]
+
+
+def test_run_tier3_fails_closed_when_canonical_trust_anchor_drifts(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    run_id = "run-tier3-anchor-drift"
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic shared-path test run.",
+        tier_id="tier-3",
+    )
+    operator_anchors = _write_operator_anchors(repo, run_id=run_id)
+    run_evidence = _write_run_evidence_inputs(repo, run_id=run_id)
+
+    trust_anchor_path = repo / "belgi" / "anchor" / "v1" / "TrustAnchor.json"
+    anchor_text = trust_anchor_path.read_text(encoding="utf-8", errors="strict")
+    drifted_text = anchor_text.replace('"dedication": "Bilge (8)"', '"dedication": "Drifted dedication"')
+    assert drifted_text != anchor_text
+    trust_anchor_path.write_text(drifted_text, encoding="utf-8", errors="strict", newline="\n")
+    _run_git(repo, ["add", "belgi/anchor/v1/TrustAnchor.json"])
+    _run_git(repo, ["commit", "-m", "drift trust anchor"])
+
+    _unset_upstream_if_present(repo)
+    head_sha = _git_rev_parse(repo, "HEAD")
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-3",
+            "--intent-spec",
+            intent_path.relative_to(repo).as_posix(),
+            "--base-revision",
+            head_sha,
+            "--attestation-pubkey-ref",
+            operator_anchors["attestation_pubkey_ref"],
+            "--seal-pubkey-ref",
+            operator_anchors["seal_pubkey_ref"],
+            "--hotl-approval-ref",
+            operator_anchors["hotl_approval_ref"],
+            "--attestation-signing-key-ref",
+            operator_anchors["attestation_signing_key_ref"],
+            "--seal-private-key-ref",
+            operator_anchors["seal_private_key_ref"],
+            "--genesis-seal-ref",
+            run_evidence["genesis_seal_ref"],
+        ]
+    )
+    assert rc_run == 10
+    machine = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
 
 
 def test_init_custom_workspace_updates_gitignore_and_run_path(tmp_path: Path) -> None:

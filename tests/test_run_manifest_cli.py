@@ -53,6 +53,7 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     approvals_dir = anchors_dir / "approvals"
     keys_dir = anchors_dir / "keys"
     signing_dir = anchors_dir / "signing"
+    evidence_dir = run_dir / "inputs" / "evidence"
     runbook_template_path = run_dir / "RUN.md"
     run_key_pointer_path = run_dir / "run_key.txt"
     last_attempt_pointer_path = run_dir / "last_attempt.txt"
@@ -72,7 +73,9 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert approvals_dir.is_dir()
     assert keys_dir.is_dir()
     assert signing_dir.is_dir()
+    assert evidence_dir.is_dir()
     assert not (run_dir / "inputs" / "tier2").exists()
+    assert not (run_dir / "inputs" / "tier3").exists()
     assert runbook_template_path.exists()
     assert not deprecated_intent_template_path.exists()
     runbook_text = runbook_template_path.read_text(encoding="utf-8", errors="strict")
@@ -86,6 +89,7 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert "inputs/anchors/approvals/hotl_approval.json" in runbook_text
     assert "inputs/anchors/keys/attestation_pubkey.hex" in runbook_text
     assert "inputs/anchors/signing/seal_signature.b64" in runbook_text
+    assert "inputs/evidence/genesis_seal.json" in runbook_text
     assert "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`." in runbook_text
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
     assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
@@ -198,7 +202,9 @@ def test_run_new_layout_no_intentspec_md(tmp_path: Path) -> None:
     assert (run_dir / "inputs" / "anchors" / "approvals").is_dir()
     assert (run_dir / "inputs" / "anchors" / "keys").is_dir()
     assert (run_dir / "inputs" / "anchors" / "signing").is_dir()
+    assert (run_dir / "inputs" / "evidence").is_dir()
     assert not (run_dir / "inputs" / "tier2").exists()
+    assert not (run_dir / "inputs" / "tier3").exists()
     assert (run_dir / "RUN.md").is_file()
     assert (run_dir / "run_key.txt").is_file()
     assert (run_dir / "last_attempt.txt").is_file()

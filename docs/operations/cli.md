@@ -33,8 +33,10 @@ belgi run new --repo . --run-id run-001
 # 3) Edit intent input
 # .belgi/runs/run-001/inputs/intent/IntentSpec.core.md
 
-# Optional Tier-2 operator anchors live under:
+# Optional Tier-2/Tier-3 shared Operator Anchors live under:
 # .belgi/runs/run-001/inputs/anchors/{approvals,keys,signing}/
+# Optional Tier-3 evidence input lives under:
+# .belgi/runs/run-001/inputs/evidence/genesis_seal.json
 
 # 4) Resolve a stable base SHA
 BASE_SHA40=$(git rev-parse HEAD)
@@ -50,16 +52,16 @@ belgi run \
 belgi verify --repo .
 ```
 
-## Tier-2 Shared Path
+## Tier-2 / Tier-3 Shared Path
 
-Tier-2 uses the same shipped `belgi run` backbone as Tier-0/1.
+Tier-2 and Tier-3 use the same shipped `belgi run` backbone as Tier-0/1.
 
 Canonical noun:
 - `Operator Anchors` = operator-supplied control artifacts/refs on the shared run spine
 - canonical definition: `CANONICALS.md#operator-anchors`
 - operator prep guide: `docs/operations/operator-anchors.md`
 
-Required Tier-2 Operator Anchors on `belgi run`:
+Required shared Operator Anchors on `belgi run` for Tier-2/Tier-3:
 - `--attestation-pubkey-ref <object_id>=<repo-relative-path>`
 - `--seal-pubkey-ref <object_id>=<repo-relative-path>`
 - `--hotl-approval-ref <repo-relative-path>`
@@ -68,17 +70,24 @@ Required Tier-2 Operator Anchors on `belgi run`:
   - `--seal-private-key-ref <repo-relative-path>`
   - `--seal-signature-ref <repo-relative-path>`
 
+Additional Tier-3 evidence input on `belgi run`:
+- `--genesis-seal-ref <repo-relative-path>`
+
 Rules:
-- all Tier-2 inputs are local-only repo-relative refs
+- all shared Operator Anchors and Tier-3 evidence inputs are local-only repo-relative refs
 - no remote fetches or ambient key discovery are used
 - raw attestation/seal secret material is consumed locally for signing only and is not copied into `.belgi/store/.../repo/out/`, manifests, bundle outputs, or replay surfaces
-- `belgi run` fails closed if the Tier-2 input set is incomplete or malformed
+- `genesis_seal` is Tier-3 evidence, not an Operator Anchor
+- `belgi/anchor/v1/TrustAnchor.json` remains the canonical Tier-3 authority artifact and is not an Operator Anchor
+- `belgi run` fails closed if the selected tier's shared-control or evidence input set is incomplete or malformed
 - recommended workspace family is `.belgi/runs/<run_id>/inputs/anchors/`
   - `approvals/` for HOTL approval artifacts
   - `keys/` for pinned public-key materials
   - `signing/` for local signing refs or precomputed signatures
+- Tier-3 evidence is taught separately under `.belgi/runs/<run_id>/inputs/evidence/`
+  - `genesis_seal.json` for Tier-3 evidence input only
 
-Example:
+Tier-2 example:
 
 ```bash
 belgi run \
@@ -93,7 +102,7 @@ belgi run \
   --seal-private-key-ref .belgi/runs/run-001/inputs/anchors/signing/seal_private_key.hex
 ```
 
-Precomputed signature branch:
+Tier-2 precomputed signature branch:
 
 ```bash
 belgi run \
@@ -113,6 +122,29 @@ Shared-path outcome for Tier-2:
 - the operator-supplied `hotl_approval` artifact is indexed before Gate Q
 - `test_report` and signed `env_attestation` are produced on the same run spine before Gate R
 - the Tier-2 seal signature is produced or verified on the same run spine before Gate S
+
+Tier-3 example:
+
+```bash
+belgi run \
+  --repo . \
+  --tier tier-3 \
+  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
+  --base-revision "${BASE_SHA40}" \
+  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/anchors/keys/attestation_pubkey.hex \
+  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/anchors/keys/seal_pubkey.hex \
+  --hotl-approval-ref .belgi/runs/run-001/inputs/anchors/approvals/hotl_approval.json \
+  --attestation-signing-key-ref .belgi/runs/run-001/inputs/anchors/signing/attestation_signing_key.hex \
+  --seal-private-key-ref .belgi/runs/run-001/inputs/anchors/signing/seal_private_key.hex \
+  --genesis-seal-ref .belgi/runs/run-001/inputs/evidence/genesis_seal.json
+```
+
+Shared-path outcome for Tier-3:
+- C1 receives the required pubkey refs in `LockedSpec.environment_envelope`
+- the operator-supplied `hotl_approval` artifact is indexed before Gate Q
+- `test_report`, signed `env_attestation`, and `genesis_seal` are present on the same run spine before Gate R
+- `genesis_seal` is verified under canonical `belgi/anchor/v1/TrustAnchor.json` authority at Gate R
+- the Tier-3 seal signature is produced or verified on the same run spine before Gate S
 
 ## Verify Selection Priority
 
@@ -168,7 +200,7 @@ Authoritative store paths remain available under `--verbose` (`verdict_Q_path`, 
 ## Verify vs Bundle Check
 
 - `belgi verify` rechecks the selected attempt’s stored summary/artifact hash bindings, `EvidenceManifest` contract, and waiver-expiry anchor against the produced run outputs.
-- `belgi verify` does not create missing Tier-2 inputs, HOTL approvals, attestations, or seals, and it does not substitute for missing run-path wiring.
+- `belgi verify` does not create missing Tier-2/Tier-3 inputs, HOTL approvals, attestations, `genesis_seal`, or seals, and it does not substitute for missing run-path wiring.
 - `belgi bundle check --demo` is a bounded demo-grade bundle checker.
 - `belgi bundle check --demo` is not a full replay verifier and does not replace `belgi verify`.
 

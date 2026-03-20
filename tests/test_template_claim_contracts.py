@@ -135,6 +135,8 @@ def test_operator_anchor_docs_and_canonicals_align() -> None:
     required_definition = "Operator Anchors are operator-supplied control artifacts or refs"
     required_boundary = "`genesis_seal` remains Tier-3 evidence"
     term_pointer = "| Operator Anchors | [CANONICALS.md#operator-anchors](CANONICALS.md#operator-anchors) |"
+    running_boundary = "Tier-3 evidence remains separate from anchors:"
+    anchors_boundary = "Adjacent non-anchor Tier-3 evidence workspace:"
 
     for text in (canonicals, canonicals_mirror):
         assert required_definition in text
@@ -145,7 +147,17 @@ def test_operator_anchor_docs_and_canonicals_align() -> None:
 
     for text in (cli_docs, cli_docs_mirror, running_docs, running_docs_mirror, anchors_docs, anchors_docs_mirror):
         assert "inputs/anchors/" in text
+        assert "inputs/evidence/genesis_seal.json" in text
         assert "inputs/tier2/" not in text
+        assert "inputs/tier3/" not in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert running_boundary in text
+
+    for text in (anchors_docs, anchors_docs_mirror):
+        assert anchors_boundary in text
+        assert "`genesis_seal` is not an Operator Anchor." in text
+        assert "`TrustAnchor.json` remains the canonical Tier-3 authority artifact." in text
 
     assert anchors_docs == anchors_docs_mirror
 

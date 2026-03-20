@@ -3,7 +3,7 @@
 Canonical term:
 - `Operator Anchors` is defined in `../../CANONICALS.md#operator-anchors`
 
-This guide describes the shared operator-control surface used by shipped Tier-2 runs on the single `belgi run` backbone.
+This guide describes the shared operator-control surface used by shipped Tier-2/Tier-3 runs on the single `belgi run` backbone.
 
 ## 1) Classes
 
@@ -17,6 +17,9 @@ Class roles:
 - `keys/`: pinned public-key materials such as `attestation_pubkey.hex` and `seal_pubkey.hex`
 - `signing/`: local signing refs or precomputed signatures such as `attestation_signing_key.hex`, `seal_private_key.hex`, and `seal_signature.b64`
 
+Adjacent non-anchor Tier-3 evidence workspace:
+- `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`
+
 ## 2) Handling Model
 
 | Anchor class | Typical files | Producer | Public/local-only | Staged/bundled behavior |
@@ -29,6 +32,8 @@ Class roles:
 Boundary:
 - `genesis_seal` is not an Operator Anchor.
 - `belgi/anchor/v1/TrustAnchor.json` is not an Operator Anchor.
+- `genesis_seal` remains Tier-3 evidence.
+- `TrustAnchor.json` remains the canonical Tier-3 authority artifact.
 
 ## 3) Format Expectations
 
@@ -40,6 +45,11 @@ Boundary:
 - `seal_signature.b64`: UTF-8 text file containing the base64 Ed25519 seal signature verified by `chain.seal_bundle`
 
 All refs are explicit repo-relative paths supplied on `belgi run`. No remote fetches or ambient discovery are allowed.
+
+Tier-3 note:
+- `--genesis-seal-ref` is a Tier-3 evidence input on the same shipped `belgi run` family.
+- It is taught under `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`.
+- It is intentionally not part of the anchors family.
 
 ## 4) HOTL Example
 
@@ -92,9 +102,30 @@ Exactly one seal-signing input is allowed:
 - `--seal-private-key-ref`
 - `--seal-signature-ref`
 
-## 7) Verify And Replay Boundaries
+## 7) Tier-3 Evidence Boundary
+
+Recommended Tier-3 evidence path:
+- `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`
+
+Tier-3 example:
+
+```bash
+belgi run \
+  --repo . \
+  --tier tier-3 \
+  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
+  --base-revision "${BASE_SHA40}" \
+  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/anchors/keys/attestation_pubkey.hex \
+  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/anchors/keys/seal_pubkey.hex \
+  --hotl-approval-ref .belgi/runs/run-001/inputs/anchors/approvals/hotl_approval.json \
+  --attestation-signing-key-ref .belgi/runs/run-001/inputs/anchors/signing/attestation_signing_key.hex \
+  --seal-signature-ref .belgi/runs/run-001/inputs/anchors/signing/seal_signature.b64 \
+  --genesis-seal-ref .belgi/runs/run-001/inputs/evidence/genesis_seal.json
+```
+
+## 8) Verify And Replay Boundaries
 
 - `belgi verify` replays the stored run summaries, manifests, hashes, and gate outputs for the selected attempt.
-- `belgi verify` does not create missing HOTL approvals, public-key refs, signing refs, or signatures.
+- `belgi verify` does not create missing HOTL approvals, public-key refs, signing refs, Tier-3 evidence inputs, or signatures.
 - `belgi verify` does not regenerate secret material.
 - `belgi bundle check --demo` remains bounded and does not replace `belgi verify`.
