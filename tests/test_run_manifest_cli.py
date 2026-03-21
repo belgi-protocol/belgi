@@ -162,9 +162,12 @@ def test_init_creates_operator_readme_with_required_sections(tmp_path: Path) -> 
     assert "open_verdict.txt" in text
     assert "open_evidence.txt" in text
     assert "## On NO-GO" in text
+    assert "For public `NO-GO (10)` output, check `next` first." in text
+    assert "GateVerdict.<Q|R|S>.json remediation.next_instruction" in text
+    assert "C1IntentParseError.json next_instruction" in text
+    assert "Separate public `USER_ERROR (20)` failures use direct CLI guidance" in text
     assert "gate_verdict_path" in text
     assert "evidence_manifest_path" in text
-    assert "remediation.next_instruction" in text
     assert "## What this is" in text
     assert "## What this is not" in text
 

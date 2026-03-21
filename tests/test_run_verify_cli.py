@@ -1518,6 +1518,95 @@ def test_run_intentspec_yaml_parse_error_includes_line_and_column(tmp_path: Path
     assert "verdict: unavailable (no GateVerdict file produced)" in captured.err
 
 
+def test_run_no_go_next_instruction_prefers_authoritative_gate_verdict(tmp_path: Path) -> None:
+    chain_out_dir = tmp_path / "out"
+    chain_out_dir.mkdir()
+    (chain_out_dir / "GateVerdict.R.json").write_text(
+        json.dumps(
+            {
+                "gate_id": "R",
+                "verdict": "NO-GO",
+                "remediation": {"next_instruction": "Do fix Gate R evidence, then re-run R."},
+            },
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    (chain_out_dir / "C1IntentParseError.json").write_text(
+        json.dumps(
+            {"next_instruction": "Do fix IntentSpec YAML, then re-run Q."},
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    next_instruction = belgi_cli._run_no_go_next_instruction(
+        chain_out_dir=chain_out_dir,
+        primary_reason="chain.gate_r_verify returned rc=10",
+    )
+
+    assert next_instruction == "Do fix Gate R evidence, then re-run R."
+
+
+def test_run_no_go_next_instruction_ignores_non_no_go_gate_verdict(tmp_path: Path) -> None:
+    chain_out_dir = tmp_path / "out"
+    chain_out_dir.mkdir()
+    (chain_out_dir / "GateVerdict.R.json").write_text(
+        json.dumps(
+            {
+                "gate_id": "R",
+                "verdict": "GO",
+                "remediation": {"next_instruction": "Do not show this fake gate remediation."},
+            },
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    (chain_out_dir / "C1IntentParseError.json").write_text(
+        json.dumps(
+            {"next_instruction": "Do fix IntentSpec YAML, then re-run Q."},
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    next_instruction = belgi_cli._run_no_go_next_instruction(
+        chain_out_dir=chain_out_dir,
+        primary_reason="chain.compiler_c1_intent returned rc=3",
+    )
+
+    assert next_instruction == "Do fix IntentSpec YAML, then re-run Q."
+
+
+def test_run_no_go_next_instruction_uses_generic_fallback_without_authoritative_artifacts(tmp_path: Path) -> None:
+    next_instruction = belgi_cli._run_no_go_next_instruction(
+        chain_out_dir=tmp_path / "missing-out",
+        primary_reason="unexpected no-go",
+    )
+
+    assert next_instruction == "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
+
+
 def test_run_no_go_hyperlinks_opt_in(tmp_path: Path, capsys: object, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _fresh_repo_clone(tmp_path)
     _commit_file(repo, "main/forbidden_probe.md", "forbidden delta\n", "touch forbidden path")

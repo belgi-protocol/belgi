@@ -168,10 +168,16 @@ Boundary:
 
 ## NO-GO Pointers
 
-When `belgi run` returns `NO-GO`, inspect in this order:
-1. `next` (authoritative next step)
+When `belgi run` returns public `NO-GO (10)`, inspect in this order:
+1. `next`
+   - prefers `GateVerdict.<Q|R|S>.json remediation.next_instruction` from a produced `NO-GO` gate verdict
+   - otherwise uses current `C1IntentParseError.json next_instruction` when present
+   - otherwise falls back to generic CLI guidance
 2. `evidence.gate` + `evidence.gate_status` summary
 3. `open.verdict_<gate>` target
+
+Separate public `USER_ERROR (20)` path:
+- input, argument, or repo-state failures may print direct CLI guidance instead of the `NO-GO (10)` precedence above
 
 Human output mode:
 - default: compact segmented block (summary, cause/next, evidence, open)
