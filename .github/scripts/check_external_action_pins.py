@@ -6,7 +6,6 @@ import re
 import sys
 from pathlib import Path
 
-
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>\S+)\s*$")
 DEFAULT_PATHS: tuple[str, ...] = (

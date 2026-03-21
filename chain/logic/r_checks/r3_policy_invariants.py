@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import is_under_prefix, normalize_repo_rel_path, resolve_storage_ref, safe_relpath
+from belgi.core.jail import (
+    is_under_prefix,
+    normalize_repo_rel_path,
+    resolve_storage_ref,
+    safe_relpath,
+)
 from belgi.core.schema import validate_schema
 from chain.logic.base import (
     CheckResult,
@@ -13,7 +17,7 @@ from chain.logic.base import (
 )
 
 from .context import RCheckContext
-from .git_ops import git_changed_paths, is_fixture_context, parse_unified_diff_paths
+from .git_ops import git_changed_paths, parse_unified_diff_paths
 
 
 class UnsafeWaiverStorageRef(Exception):
@@ -79,21 +83,21 @@ def _waiver_allows_path(ctx: RCheckContext, offending_path: str) -> bool:
         # Use resolve_storage_ref for jail-safe path resolution (consistent with Q6).
         try:
             waiver_path = resolve_storage_ref(ctx.repo_root, w.strip())
-        except ValueError:
+        except ValueError as e:
             # Unsafe path (jail violation) — fail closed.
-            raise UnsafeWaiverStorageRef(idx, w.strip())
+            raise UnsafeWaiverStorageRef(idx, w.strip()) from e
 
         try:
             raw = waiver_path.read_text(encoding="utf-8", errors="strict")
-        except OSError:
-            raise InvalidWaiverDocument(idx, w.strip(), "read error")
-        except UnicodeDecodeError:
-            raise InvalidWaiverDocument(idx, w.strip(), "unicode decode")
+        except OSError as e:
+            raise InvalidWaiverDocument(idx, w.strip(), "read error") from e
+        except UnicodeDecodeError as e:
+            raise InvalidWaiverDocument(idx, w.strip(), "unicode decode") from e
 
         try:
             waiver_doc = json.loads(raw)
-        except json.JSONDecodeError:
-            raise InvalidWaiverDocument(idx, w.strip(), "json decode")
+        except json.JSONDecodeError as e:
+            raise InvalidWaiverDocument(idx, w.strip(), "json decode") from e
 
         if not isinstance(waiver_doc, dict):
             raise InvalidWaiverDocument(idx, w.strip(), "waiver json is not an object")

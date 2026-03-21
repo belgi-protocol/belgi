@@ -8,6 +8,7 @@ from belgi.core.hash import sha256_bytes
 from belgi.core.jail import normalize_repo_rel_path, resolve_storage_ref
 from belgi.core.schema import parse_rfc3339, validate_schema
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id, stable_unique
+
 from .context import RCheckContext
 
 _FINDINGS_MODE_VALUES = ("warn", "fail")

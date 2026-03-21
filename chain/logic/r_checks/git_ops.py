@@ -179,8 +179,8 @@ def git_loc_delta(repo_root: Path, base_commit: str, evaluated_commit: str) -> t
         try:
             a_i = int(a)
             d_i = int(d)
-        except Exception:
-            raise ValueError("non-integer numstat counts")
+        except ValueError as e:
+            raise ValueError("non-integer numstat counts") from e
         if a_i < 0 or d_i < 0:
             raise ValueError("negative numstat counts")
         added += a_i

@@ -20,32 +20,31 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import re
 import sys
-import os
 from pathlib import Path
 from typing import Any
 
-from chain.logic.tier_packs import load_tier_params
-from belgi.core.jail import resolve_repo_rel_path
+from belgi.adopter_overlay import (
+    DOMAIN_PACK_MANIFEST_FILENAME,
+    evaluate_overlay_requirements,
+)
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
-from belgi.core.jail import normalize_repo_rel_path
+from belgi.core.jail import normalize_repo_rel_path, resolve_repo_rel_path, safe_relpath
 from belgi.core.schema import validate_schema
-from belgi.adopter_overlay import DOMAIN_PACK_MANIFEST_FILENAME, evaluate_overlay_requirements
-from chain.logic.base import CheckResult, load_json, verify_protocol_identity
-from chain.logic.r_checks.context import RCheckContext
-from chain.logic.r_checks.git_ops import git_resolve_commit, is_fixture_context
-from chain.logic.r_checks.registry import get_checks
-from chain.logic.r_checks import r4_schema_contract
-
 from belgi.protocol.pack import (
+    DevOverrideNotAllowedError,
     ProtocolContext,
     get_builtin_protocol_context,
     load_protocol_context_from_dir,
-    DevOverrideNotAllowedError,
 )
-
+from chain.logic.base import CheckResult, load_json, verify_protocol_identity
+from chain.logic.r_checks import r4_schema_contract
+from chain.logic.r_checks.context import RCheckContext
+from chain.logic.r_checks.git_ops import git_resolve_commit, is_fixture_context
+from chain.logic.r_checks.registry import get_checks
+from chain.logic.tier_packs import load_tier_params
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 EVALUATOR = "chain/gate_r_verify.py"

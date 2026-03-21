@@ -27,7 +27,6 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-
 _REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT_FOR_IMPORTS))
@@ -144,7 +143,11 @@ def _cmd_protocol_pack(argv: list[str]) -> int:
     pack_rel = _validate_repo_rel(str(args.pack))
     pack_dir = _resolve_repo_dir(repo_root, pack_rel)
 
-    from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes, validate_manifest_bytes
+    from belgi.protocol.pack import (
+        MANIFEST_FILENAME,
+        build_manifest_bytes,
+        validate_manifest_bytes,
+    )
 
     manifest_path = pack_dir / MANIFEST_FILENAME
     pack_name = str(args.pack_name or "")

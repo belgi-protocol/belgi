@@ -6,7 +6,6 @@ from pathlib import Path
 from belgi.core.schema import parse_rfc3339, validate_schema
 from belgi.protocol.pack import get_builtin_protocol_context
 
-
 DEFAULT_GENERATED_AT = "1970-01-01T00:00:00Z"
 DEFAULT_SCHEMA_VERSION = "1.0.0"
 

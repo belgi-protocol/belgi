@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[1] / ".github" / "scripts" / "resolve_belgi_workflow_inputs.py"
 )

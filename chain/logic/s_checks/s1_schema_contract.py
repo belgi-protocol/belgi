@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from belgi.core.jail import safe_relpath
-from belgi.core.jail import resolve_storage_ref
+from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
 from chain.logic.base import CheckResult
 from chain.logic.s_checks.context import SCheckContext

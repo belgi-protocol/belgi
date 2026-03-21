@@ -21,7 +21,6 @@ from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
 from belgi.core.time import utc_timestamp_iso_z
 
-
 CHAIN_REPO_DIRNAME = "repo"
 CHAIN_OUT_DIRNAME = "out"
 FIXED_GENERATED_AT = "1970-01-01T00:00:00Z"

@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -15,12 +14,12 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.protocol.pack import (
+    _is_pack_content_file,
     build_manifest_bytes,
     canonical_json_bytes,
     compute_pack_id,
     scan_pack_dir,
     validate_manifest_bytes,
-    _is_pack_content_file,
 )
 
 

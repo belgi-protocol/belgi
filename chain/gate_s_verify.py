@@ -22,25 +22,21 @@ import argparse
 import json
 import re
 import sys
-import os
 from pathlib import Path
 from typing import Any
 
-from belgi.core.jail import resolve_repo_rel_path
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
+from belgi.core.jail import resolve_repo_rel_path, safe_relpath
 from belgi.core.schema import validate_schema
-from chain.logic.base import CheckResult, load_json, verify_protocol_identity
-from chain.logic.s_checks.context import SCheckContext
-from chain.logic.s_checks.registry import get_checks
-
 from belgi.protocol.pack import (
+    DevOverrideNotAllowedError,
     ProtocolContext,
     get_builtin_protocol_context,
     load_protocol_context_from_dir,
-    DevOverrideNotAllowedError,
 )
-
+from chain.logic.base import CheckResult, load_json, verify_protocol_identity
+from chain.logic.s_checks.context import SCheckContext
+from chain.logic.s_checks.registry import get_checks
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 EVALUATOR = "chain/gate_s_verify.py"

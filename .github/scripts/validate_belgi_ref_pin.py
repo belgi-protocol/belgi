@@ -5,7 +5,6 @@ import argparse
 import re
 import sys
 
-
 PIN_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 FLOATING_REFS = {"main", "master", "latest", "head"}
 PIN_EXAMPLE = "0123456789abcdef0123456789abcdef01234567"

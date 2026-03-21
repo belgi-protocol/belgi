@@ -4,7 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -14,8 +13,8 @@ for _k in list(sys.modules.keys()):
 
 from belgi.core.hash import sha256_bytes
 from belgi.protocol.pack import get_builtin_protocol_context
-from chain.logic.q_checks.context import QCheckContext
 from chain.logic.q_checks import q_hotl_001
+from chain.logic.q_checks.context import QCheckContext
 
 
 def _build_ctx(*, tmp_path: Path, tier_id: str, evidence_manifest: dict[str, object]) -> QCheckContext:

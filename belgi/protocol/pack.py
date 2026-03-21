@@ -12,7 +12,6 @@ from belgi.core.hash import is_hex_sha256, sha256_bytes
 from belgi.core.jail import normalize_repo_rel_path
 from belgi.core.json_canon import canonical_json_bytes
 
-
 MANIFEST_FILENAME = "ProtocolPackManifest.json"
 
 # Pack content prefixes: only files under these directories are included in pack_id.
@@ -342,7 +341,7 @@ def validate_manifest_bytes(*, pack_root: Path, manifest_bytes: bytes) -> None:
     try:
         parsed = json.loads(bytes(manifest_bytes).decode("utf-8", errors="strict"))
     except Exception as e:
-        raise ValueError(f"manifest is not valid UTF-8 JSON: {e}")
+        raise ValueError(f"manifest is not valid UTF-8 JSON: {e}") from e
 
     _require_type(parsed, dict, "manifest")
 
@@ -421,7 +420,7 @@ def validate_manifest_bytes_tree(*, pack_root: _Traversable, manifest_bytes: byt
     try:
         parsed = json.loads(bytes(manifest_bytes).decode("utf-8", errors="strict"))
     except Exception as e:
-        raise ValueError(f"manifest is not valid UTF-8 JSON: {e}")
+        raise ValueError(f"manifest is not valid UTF-8 JSON: {e}") from e
 
     _require_type(parsed, dict, "manifest")
 
@@ -522,7 +521,7 @@ class ProtocolContext:
         try:
             return node.read_bytes()
         except Exception as e:
-            raise ValueError(f"protocol pack missing/unreadable file: {rel} ({e})")
+            raise ValueError(f"protocol pack missing/unreadable file: {rel} ({e})") from e
 
     def read_text(self, relpath: str) -> str:
         return self.read_bytes(relpath).decode("utf-8", errors="strict")

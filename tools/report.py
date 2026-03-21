@@ -38,15 +38,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 _REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT_FOR_IMPORTS))
 
-from belgi.core.jail import resolve_repo_rel_path
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
-from belgi.core.jail import resolve_storage_ref
+from belgi.core.jail import resolve_repo_rel_path, resolve_storage_ref, safe_relpath
 from belgi.trust_anchor import (
     TrustAnchorError,
     load_pinned_trust_anchor,

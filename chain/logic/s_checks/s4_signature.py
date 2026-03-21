@@ -4,8 +4,7 @@ import base64
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
-from belgi.core.jail import safe_relpath
-from belgi.core.jail import resolve_storage_ref
+from belgi.core.jail import resolve_storage_ref, safe_relpath
 from chain.logic.base import CheckResult
 from chain.logic.s_checks.context import SCheckContext
 
@@ -111,7 +110,11 @@ def run(ctx: SCheckContext) -> list[CheckResult]:
 
     try:
         pub_bytes = _resolve_pubkey_bytes(repo_root, ctx.locked_spec)
-        from chain.seal_bundle import _load_ed25519_public_key, _seal_signature_payload, _verify_ed25519_signature  # type: ignore
+        from chain.seal_bundle import (  # type: ignore
+            _load_ed25519_public_key,
+            _seal_signature_payload,
+            _verify_ed25519_signature,
+        )
 
         pub = _load_ed25519_public_key(pub_bytes)
         payload_bytes = _seal_signature_payload(sm)

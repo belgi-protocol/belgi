@@ -3,8 +3,8 @@ from __future__ import annotations
 import ast
 import copy
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +19,10 @@ def _import_local_core() -> tuple[object, object]:
     # If an installed 'belgi' is already imported, nuke it so local wins.
     sys.modules.pop("belgi", None)
 
-    from belgi.core.jail import normalize_repo_rel, normalize_repo_rel_path  # type: ignore
+    from belgi.core.jail import (  # type: ignore
+        normalize_repo_rel,
+        normalize_repo_rel_path,
+    )
     from belgi.core.schema import parse_rfc3339, validate_schema  # type: ignore
 
     return (

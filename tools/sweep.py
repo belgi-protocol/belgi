@@ -20,7 +20,6 @@ import argparse
 import contextlib
 import hashlib
 import json
-from logging import root
 import os
 import re
 import shutil
@@ -30,8 +29,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Sequence
-
+from typing import Any, Callable, Iterable, List, Sequence
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 
@@ -2793,7 +2791,11 @@ def check_cs_render_001(root: Path) -> InvariantResult:
     """
     # Import render module (fail-closed if unavailable)
     try:
-        from tools.render import check_target_drift, get_all_target_names, get_target_evidence_files
+        from tools.render import (
+            check_target_drift,
+            get_all_target_names,
+            get_target_evidence_files,
+        )
     except ImportError as e:
         return InvariantResult(
             "CS-RENDER-001",

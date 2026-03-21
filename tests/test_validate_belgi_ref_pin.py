@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / ".github" / "scripts" / "validate_belgi_ref_pin.py"
 
 

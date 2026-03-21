@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import zipfile
 from pathlib import Path
 from typing import Iterable
-import zipfile
-
 
 REQUIRED_MODULE_PREFIXES: tuple[str, ...] = (
     "belgi/",

@@ -16,12 +16,11 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import tempfile
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -35,7 +34,6 @@ from belgi.core.json_canon import canonical_json_bytes
 from belgi.protocol.pack import (
     MANIFEST_FILENAME,
     DevOverrideNotAllowedError,
-    ProtocolPackFileEntry,
     build_manifest_bytes,
     build_manifest_obj,
     compute_pack_id,
@@ -108,7 +106,7 @@ class TestPackBuildDeterminism:
         assert len(entries1) == len(entries2)
         
         # Same order.
-        for e1, e2 in zip(entries1, entries2):
+        for e1, e2 in zip(entries1, entries2, strict=True):
             assert e1.relpath == e2.relpath
             assert e1.sha256 == e2.sha256
             assert e1.size_bytes == e2.size_bytes

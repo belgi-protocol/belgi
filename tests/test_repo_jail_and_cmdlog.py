@@ -10,15 +10,14 @@ These tests verify:
 from __future__ import annotations
 
 import json
+
 import pytest
 
 pytestmark = pytest.mark.repo_local
 
 import os
 import sys
-import tempfile
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -28,30 +27,22 @@ for _k in list(sys.modules.keys()):
         del sys.modules[_k]
 
 from belgi.core.command_log import (
-    CommandRecord,
     append_command_to_manifest,
     command_record_to_dict,
     detect_command_log_mode,
     format_command_string,
     make_command_record,
 )
-from belgi.core.diff_parse import extract_changed_paths_from_diff_bytes
 from belgi.core.jail import (
-    _is_symlink_or_has_symlink_parent,
     ensure_within_root,
     normalize_repo_rel,
     resolve_repo_rel_path,
     resolve_storage_ref,
 )
-
 from chain.logic.base import (
     command_satisfied,
-    find_artifacts_by_kind,
-    find_artifacts_by_kind_id,
     load_json,
-    stable_unique,
 )
-
 
 # ---------------------------------------------------------------------------
 # Path jail tests
@@ -392,6 +383,7 @@ class TestR3WaiverPathJail:
     def test_r3_waiver_allows_path_uses_resolve_storage_ref(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """R3 waiver resolution must go through resolve_storage_ref (regression guard)."""
         from types import SimpleNamespace
+
         from chain.logic.r_checks import r3_policy_invariants as r3
 
         (tmp_path / "waivers").mkdir()
@@ -441,6 +433,7 @@ class TestR3WaiverPathJail:
     def test_r3_waiver_allows_path_unsafe_ref_fails_closed(self, tmp_path: Path) -> None:
         """Unsafe waiver refs must fail-closed (no silent skip)."""
         from types import SimpleNamespace
+
         from chain.logic.r_checks import r3_policy_invariants as r3
 
         class _StubProtocol:
@@ -464,6 +457,7 @@ class TestR3WaiverPathJail:
     def test_r3_relaxed_mode_does_not_accept_substring_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Relaxed mode must require normalized prefix match; literal substring is not enough."""
         from types import SimpleNamespace
+
         from belgi.core.hash import sha256_bytes
         from chain.logic.r_checks import r3_policy_invariants as r3
 
@@ -533,6 +527,7 @@ class TestR3WaiverPathJail:
     def test_r3_waiver_invalid_json_fails_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Invalid waiver JSON must be a deterministic FAIL with index pointer."""
         from types import SimpleNamespace
+
         from belgi.core.hash import sha256_bytes
         from chain.logic.r_checks import r3_policy_invariants as r3
 

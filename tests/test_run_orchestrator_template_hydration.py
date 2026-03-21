@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from belgi.core import run_orchestrator
-from belgi.core.run_orchestrator import ensure_chain_c3_canonicals, ensure_chain_templates
+from belgi.core.run_orchestrator import (
+    ensure_chain_c3_canonicals,
+    ensure_chain_templates,
+)
 
 
 def _builtin_template_bytes(name: str) -> bytes:

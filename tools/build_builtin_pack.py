@@ -15,8 +15,11 @@ for _k in list(sys.modules.keys()):
     if _k == "belgi" or _k.startswith("belgi."):
         del sys.modules[_k]
 
-from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes, validate_manifest_bytes
-
+from belgi.protocol.pack import (
+    MANIFEST_FILENAME,
+    build_manifest_bytes,
+    validate_manifest_bytes,
+)
 
 # Protocol pack v1 allowed content (whitelist).
 # Pack MUST contain ONLY these folders + the manifest file.

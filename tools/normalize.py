@@ -30,8 +30,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
-
+from typing import Any, List, Optional, Sequence, Tuple
 
 _REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT_FOR_IMPORTS) not in sys.path:
@@ -39,7 +38,6 @@ if str(_REPO_ROOT_FOR_IMPORTS) not in sys.path:
 
 from belgi.core.jail import normalize_repo_rel as _normalize_repo_rel
 from belgi.core.jail import resolve_repo_rel_path as _resolve_repo_rel_path
-
 
 DEFAULT_EXCLUDE_ROOTS = [
     ".git",

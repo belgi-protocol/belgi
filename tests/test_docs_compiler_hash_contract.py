@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -17,8 +16,8 @@ for _k in list(sys.modules.keys()):
     if _k == "belgi" or _k.startswith("belgi."):
         del sys.modules[_k]
 
-from belgi.core.hash import sha256_bytes
 import chain.compiler_c3_docs as c3_docs
+from belgi.core.hash import sha256_bytes
 from chain.compiler_c3_docs import _compute_bundle_root_sha256, _compute_bundle_sha256
 
 
@@ -27,7 +26,7 @@ def _get_builtin_protocol_context_dynamic() -> object:
     # Re-import from module path each call to keep resource lookup stable.
     importlib.import_module("belgi")
     pack_mod = importlib.import_module("belgi.protocol.pack")
-    return getattr(pack_mod, "get_builtin_protocol_context")()
+    return pack_mod.get_builtin_protocol_context()
 
 
 def _fixture_bundled_files(*, manifest_entry_sha: str) -> list[dict[str, object]]:
@@ -62,9 +61,9 @@ def _fixture_bundled_files(*, manifest_entry_sha: str) -> list[dict[str, object]
 def _locked_protocol_identity(protocol: object) -> dict[str, object]:
     return {
         "protocol_pack": {
-            "pack_id": str(getattr(protocol, "pack_id")),
-            "manifest_sha256": str(getattr(protocol, "manifest_sha256")),
-            "pack_name": str(getattr(protocol, "pack_name")),
+            "pack_id": str(protocol.pack_id),
+            "manifest_sha256": str(protocol.manifest_sha256),
+            "pack_name": str(protocol.pack_name),
         }
     }
 
@@ -202,9 +201,9 @@ def test_c3_source_resolution_rebuilds_staged_cache_on_identity_mismatch(tmp_pat
     assert source_root == staged_root
 
     expected_meta = {
-        "protocol_pack_id": str(getattr(protocol, "pack_id")),
-        "protocol_pack_manifest_sha256": str(getattr(protocol, "manifest_sha256")),
-        "protocol_pack_name": str(getattr(protocol, "pack_name")),
+        "protocol_pack_id": str(protocol.pack_id),
+        "protocol_pack_manifest_sha256": str(protocol.manifest_sha256),
+        "protocol_pack_name": str(protocol.pack_name),
     }
     rebuilt_meta = json.loads((staged_root / ".cache_meta.json").read_text(encoding="utf-8", errors="strict"))
     assert rebuilt_meta == expected_meta

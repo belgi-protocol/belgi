@@ -63,7 +63,7 @@ Package proof topology:
 
 `repository-verification-gate` is the stable hosted required context for this surface.
 It depends on the proof-carrying jobs and fails closed if any required upstream job fails or is cancelled.
-Tracked `ruff` configuration is prepared for this surface as the planned lint authority, but it is not active as a required proof gate in this iteration. Pyright remains non-gating.
+Tracked `ruff` configuration is active on this surface for the chosen `F`, `I`, and `B` rule families. It is repo-maintenance enforcement only, not a separate protocol-proof surface. Pyright remains non-gating.
 
 ## Pull Request Proof
 

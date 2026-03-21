@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-from datetime import datetime, timezone
 import hashlib
 import importlib
 import json
@@ -36,6 +35,7 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, metadata, version
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -52,7 +52,6 @@ from belgi.core.run_orchestrator import (
     orchestrate_chain_run,
     render_default_intent_spec,
 )
-
 
 ABOUT_PHILOSOPHY = '"Hayatta en hakiki mürşit ilimdir." (M.K. Atatürk)'
 ABOUT_DEDICATION = "Bilge (8)"
@@ -389,7 +388,10 @@ def cmd_policy_stub(args: argparse.Namespace) -> int:
 
 
 def cmd_policy_check_overlay(args: argparse.Namespace) -> int:
-    from belgi.adopter_overlay import DOMAIN_PACK_MANIFEST_FILENAME, evaluate_overlay_requirements
+    from belgi.adopter_overlay import (
+        DOMAIN_PACK_MANIFEST_FILENAME,
+        evaluate_overlay_requirements,
+    )
     from belgi.core.jail import resolve_repo_rel_path, safe_relpath
     from belgi.protocol.pack import get_builtin_protocol_context
 
@@ -2133,7 +2135,7 @@ def _emit_run_failure_links(
 ) -> None:
     family = _platform_family()
     show_all_open = _show_all_open_helpers(verbose=verbose)
-    run_tokens = [f"verdict=NO-GO", f"tier={tier_id or 'UNKNOWN'}"]
+    run_tokens = ["verdict=NO-GO", f"tier={tier_id or 'UNKNOWN'}"]
     if run_ref:
         run_tokens.append(f"run={run_ref}")
     run_tokens.append(f"key={_short_run_key(run_key) or 'UNKNOWN'}")
@@ -2266,7 +2268,7 @@ def _emit_run_success_links(
 ) -> None:
     family = _platform_family()
     show_all_open = _show_all_open_helpers(verbose=verbose)
-    run_tokens = [f"verdict=GO", f"tier={tier_id or 'UNKNOWN'}"]
+    run_tokens = ["verdict=GO", f"tier={tier_id or 'UNKNOWN'}"]
     if run_ref:
         run_tokens.append(f"run={run_ref}")
     run_tokens.append(f"key={_short_run_key(run_key) or 'UNKNOWN'}")
@@ -4048,7 +4050,7 @@ def cmd_pack_build(args: argparse.Namespace) -> int:
     
     # If out_dir != in_dir, we need to copy content first (not implemented here; use build_builtin_pack.py for that).
     if out_dir != in_dir:
-        print(f"[belgi pack build] ERROR: --out must equal --in (use build_builtin_pack.py for copy workflows)", file=sys.stderr)
+        print("[belgi pack build] ERROR: --out must equal --in (use build_builtin_pack.py for copy workflows)", file=sys.stderr)
         return 3
     
     try:
@@ -4080,7 +4082,7 @@ def cmd_pack_build(args: argparse.Namespace) -> int:
     print(f"[belgi pack build] pack_id: {pack_id}", file=sys.stderr)
     print(f"[belgi pack build] manifest_sha256: {manifest_sha256}", file=sys.stderr)
     print(f"[belgi pack build] files: {file_count}", file=sys.stderr)
-    print(f"[belgi pack build] PASS: manifest built and validated", file=sys.stderr)
+    print("[belgi pack build] PASS: manifest built and validated", file=sys.stderr)
     return 0
 
 
@@ -4103,8 +4105,8 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
 
     def _emit_manifest_files_diff(*, pack_root: Path, manifest_bytes: bytes) -> None:
         try:
-            from belgi.protocol.pack import scan_pack_dir
             from belgi.core.jail import normalize_repo_rel_path
+            from belgi.protocol.pack import scan_pack_dir
         except Exception as e:  # pragma: no cover
             print(f"[belgi pack verify] NOTE: cannot import diff helpers: {e}", file=sys.stderr)
             return
@@ -4206,17 +4208,17 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
         manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
         
         if getattr(args, "verbose", False):
-            print(f"[belgi pack verify] source: builtin (installed package)", file=sys.stderr)
+            print("[belgi pack verify] source: builtin (installed package)", file=sys.stderr)
             print(f"[belgi pack verify] pack_name: {pack_name}", file=sys.stderr)
             print(f"[belgi pack verify] pack_id: {pack_id}", file=sys.stderr)
             print(f"[belgi pack verify] manifest_sha256: {manifest_sha256}", file=sys.stderr)
             print(f"[belgi pack verify] files: {file_count}", file=sys.stderr)
-            print(f"[belgi pack verify] PASS: builtin manifest verified", file=sys.stderr)
+            print("[belgi pack verify] PASS: builtin manifest verified", file=sys.stderr)
         return 0
     
     # Verify pack at --in directory.
     if not args.input:
-        print(f"[belgi pack verify] ERROR: --in or --builtin required", file=sys.stderr)
+        print("[belgi pack verify] ERROR: --in or --builtin required", file=sys.stderr)
         return 3
     
     in_dir = Path(args.input).resolve()
@@ -4263,7 +4265,7 @@ def cmd_pack_verify(args: argparse.Namespace) -> int:
         print(f"[belgi pack verify] pack_id: {pack_id}", file=sys.stderr)
         print(f"[belgi pack verify] manifest_sha256: {manifest_sha256}", file=sys.stderr)
         print(f"[belgi pack verify] files: {file_count}", file=sys.stderr)
-        print(f"[belgi pack verify] PASS: manifest verified", file=sys.stderr)
+        print("[belgi pack verify] PASS: manifest verified", file=sys.stderr)
     return 0
 
 
@@ -4289,8 +4291,8 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     
     --demo flag is REQUIRED to acknowledge this limitation.
     """
+    from belgi.core.hash import is_hex_sha256, sha256_bytes
     from belgi.protocol.pack import get_builtin_protocol_context
-    from belgi.core.hash import sha256_bytes, is_hex_sha256
     from chain.seal_bundle import _seal_hash as canonical_seal_hash
     
     if not args.demo:
@@ -4341,7 +4343,7 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
             checks_passed += 1
     
     if failures:
-        print(f"[belgi bundle check] FAIL: required files check", file=sys.stderr)
+        print("[belgi bundle check] FAIL: required files check", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
         return 1
@@ -4363,7 +4365,7 @@ def cmd_bundle_check(args: argparse.Namespace) -> int:
     verdict_s = load_json_file("GateVerdict_S.json")
     
     if failures:
-        print(f"[belgi bundle check] FAIL: JSON parse errors", file=sys.stderr)
+        print("[belgi bundle check] FAIL: JSON parse errors", file=sys.stderr)
         for f in failures:
             print(f"  - {f}", file=sys.stderr)
         return 1
@@ -4974,7 +4976,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "stage":
-        setattr(args, "forward_args", [str(x) for x in unknown_args])
+        args.forward_args = [str(x) for x in unknown_args]
     elif unknown_args:
         return _emit_cli_user_error_result(
             primary_reason=f"unrecognized arguments: {' '.join(str(x) for x in unknown_args)}",

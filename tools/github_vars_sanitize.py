@@ -4,7 +4,6 @@ import json
 import re
 from typing import Any
 
-
 ALLOWED_KEYS: tuple[str, ...] = ("BELGI_REF", "BELGI_REPO_URL")
 _SECRET_LIKE_KEY_RE = re.compile(r"(SECRET|TOKEN|PASSWORD|KEY)", re.IGNORECASE)
 SECRET_REMEDIATION = "Do not store secrets in repository variables; use GitHub Secrets."

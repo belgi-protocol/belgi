@@ -5,8 +5,8 @@ import hashlib
 import importlib
 import json
 import os
-import stat
 import shutil
+import stat
 import sys
 import time
 from importlib.resources import files as resource_files
@@ -16,14 +16,13 @@ from typing import Any
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import normalize_repo_rel, resolve_repo_rel_path
 from belgi.core.schema import SchemaError, parse_rfc3339, validate_schema
-from chain.logic.base import load_json, verify_protocol_identity
 from belgi.protocol.pack import (
+    DevOverrideNotAllowedError,
     ProtocolContext,
     get_builtin_protocol_context,
     load_protocol_context_from_dir,
-    DevOverrideNotAllowedError,
 )
-
+from chain.logic.base import load_json, verify_protocol_identity
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 COMPILER_ID = "chain/compiler_c3_docs.py"
@@ -595,8 +594,8 @@ def _parse_prompt_block_registry(repo_root: Path) -> tuple[list[dict[str, str]],
     """
     try:
         registry_path = _resolve_repo_path(repo_root, BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL, must_exist=True, must_be_file=True)
-    except _UserInputError:
-        raise _UserInputError(f"Prompt block registry missing: {BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL}")
+    except _UserInputError as e:
+        raise _UserInputError(f"Prompt block registry missing: {BUILTIN_PROMPT_BLOCK_REGISTRY_REPO_REL}") from e
     raw = registry_path.read_bytes()
     text = raw.decode("utf-8", errors="strict")
     lines = text.splitlines()
@@ -654,8 +653,8 @@ def _render_docs_markdown(
     lines: list[str] = [template_norm.rstrip("\n"), "", "---", "", "## Run Summary (Deterministic)"]
     lines.append(f"- run_id: `{run_id}`")
     lines.append(f"- profile: `{profile}`")
-    lines.append(f"- canonical: [CANONICALS.md#c3-docs-compiler](CANONICALS.md#c3-docs-compiler)")
-    lines.append(f"- evidence mutability rule: [docs/operations/evidence-bundles.md#evidence-mutability-r-snapshot-and-replay-integrity-normative](docs/operations/evidence-bundles.md#evidence-mutability-r-snapshot-and-replay-integrity-normative)")
+    lines.append("- canonical: [CANONICALS.md#c3-docs-compiler](CANONICALS.md#c3-docs-compiler)")
+    lines.append("- evidence mutability rule: [docs/operations/evidence-bundles.md#evidence-mutability-r-snapshot-and-replay-integrity-normative](docs/operations/evidence-bundles.md#evidence-mutability-r-snapshot-and-replay-integrity-normative)")
     lines.append("")
     lines.append("## Inputs (Verified Against R-Snapshot EvidenceManifest)")
     lines.append(f"- LockedSpec: [{locked_spec_ref}]({locked_spec_ref})")
@@ -814,8 +813,8 @@ def main() -> int:
         hashes_path = _resolve_repo_path(repo_root, hashes_rel, must_exist=True, must_be_file=True)
         try:
             template_path = _resolve_repo_path(repo_root, template_rel, must_exist=True, must_be_file=True)
-        except _UserInputError:
-            raise _UserInputError(f"Template missing: {template_rel}")
+        except _UserInputError as e:
+            raise _UserInputError(f"Template missing: {template_rel}") from e
 
         # Load protocol context (pack-truth for schemas)
         protocol = _load_protocol_context(repo_root=repo_root, args=args)

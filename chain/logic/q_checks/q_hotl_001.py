@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any
 
 from belgi.core.hash import sha256_bytes
-from belgi.core.schema import validate_schema
 from belgi.core.jail import resolve_storage_ref
-from chain.logic.base import CheckResult, load_json
+from belgi.core.schema import validate_schema
+from chain.logic.base import CheckResult
 
 from .context import QCheckContext
 
