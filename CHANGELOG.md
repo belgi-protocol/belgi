@@ -2,6 +2,23 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.5.3 — 2026-03-21
+
+### Summary
+Patch release hardening shipped `belgi run` remediation surfacing so the public `NO-GO (10)` path lifts authoritative next-step text from current structured artifacts without overclaiming across the separate public `USER_ERROR (20)` path.
+
+### Changed
+- For public `NO-GO (10)` run failures, `belgi run` renders human `next:` text in strict precedence order:
+  - `GateVerdict.<Q|R|S>.json remediation.next_instruction` from a produced `NO-GO` gate verdict
+  - current-run `C1IntentParseError.json next_instruction` when no gate verdict remediation is available
+  - generic CLI fallback only when neither authoritative source exists
+- Separate public `USER_ERROR (20)` failures continue to use direct CLI guidance for input, argument, or repo-state problems.
+- Kept the machine JSON first line, public CLI exit-code model `{0,10,20,30}`, run workspace/store boundary, and default open-helper ordering unchanged.
+- Updated shipped operator docs and generated init guidance to separate those public classes while keeping evidence/verdict pointers unchanged.
+
+### Notes
+- This patch hardens operator remediation surfacing only; it does not change gate schemas, gate ordering, or verification authority.
+
 ## 1.5.2 — 2026-03-20
 
 ### Summary

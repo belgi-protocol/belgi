@@ -80,6 +80,7 @@ RC_GO = 0
 RC_NO_GO = 10
 RC_USER_ERROR = 20
 RC_INTERNAL_ERROR = 30
+_RUN_NO_GO_GENERIC_NEXT = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _RFC3339_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
 _CI_BASE_SHA_ENV_ORDER: tuple[str, ...] = (
@@ -914,9 +915,12 @@ def _render_adopter_readme(*, workspace_rel: str) -> str:
         f"- `{store_root}/<run_key>/<attempt_id>/` = authoritative artifacts.\n"
         "- `open_verdict.txt` and `open_evidence.txt` point to the latest verdict/evidence paths.\n\n"
         "## On NO-GO\n"
-        "- Check `gate_verdict_path` first.\n"
-        "- Check `evidence_manifest_path` for indexed artifacts and command records.\n"
-        "- `remediation.next_instruction` is the authoritative next step.\n\n"
+        "- For public `NO-GO (10)` output, check `next` first.\n"
+        "- It prefers `GateVerdict.<Q|R|S>.json remediation.next_instruction` from a produced `NO-GO` gate verdict.\n"
+        "- Otherwise it uses current `C1IntentParseError.json next_instruction` when present.\n"
+        "- Otherwise it falls back to generic CLI guidance.\n"
+        "- Separate public `USER_ERROR (20)` failures use direct CLI guidance for input, argument, or repo-state problems.\n"
+        "- Then inspect `open_verdict.txt` / `gate_verdict_path` and `open_evidence.txt` / `evidence_manifest_path` for the `NO-GO (10)` path.\n\n"
         "## What this is\n"
         "- Deterministic verification workflow for LLM-assisted code changes.\n"
         "- Machine-readable evidence and replay-oriented artifact structure.\n"
@@ -1855,6 +1859,15 @@ def _load_next_instruction_from_gate_verdict(path: Path) -> str | None:
         return None
     if not isinstance(obj, dict):
         return None
+    expected_gate = _gate_letter_from_verdict_path(path)
+    if expected_gate is None:
+        return None
+    gate_id = obj.get("gate_id")
+    if not isinstance(gate_id, str) or gate_id.strip() != expected_gate:
+        return None
+    verdict = obj.get("verdict")
+    if not isinstance(verdict, str) or verdict.strip() != "NO-GO":
+        return None
     remediation = obj.get("remediation")
     if not isinstance(remediation, dict):
         return None
@@ -1953,6 +1966,18 @@ def _primary_gate_verdict_path(chain_out_dir: Path | None, *, primary_reason: st
         if p.exists() and not p.is_symlink() and p.is_file():
             return p
     return None
+
+
+def _run_no_go_next_instruction(*, chain_out_dir: Path | None, primary_reason: str) -> str:
+    if chain_out_dir is not None:
+        for gate_name in _preferred_gate_verdict_order(primary_reason):
+            next_instruction = _load_next_instruction_from_gate_verdict(chain_out_dir / gate_name) or ""
+            if next_instruction:
+                return next_instruction
+        parse_next_instruction = _load_next_instruction_from_c1_parse_diagnostic(chain_out_dir)
+        if parse_next_instruction:
+            return parse_next_instruction
+    return _RUN_NO_GO_GENERIC_NEXT
 
 
 def _evidence_manifest_path(chain_out_dir: Path | None) -> Path | None:
@@ -2147,7 +2172,7 @@ def _emit_run_failure_links(
     gate_status = _gate_status_map(gate_paths)
     next_instruction = str(remediation_next_instruction or "").strip()
     if not next_instruction:
-        next_instruction = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
+        next_instruction = _RUN_NO_GO_GENERIC_NEXT
     lines = [
         "summary: " + " ".join(run_tokens),
         "",
@@ -2818,16 +2843,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             findings_present=adversarial_findings_present if findings_signal_emittable else None,
             finding_count=adversarial_findings_count if findings_signal_emittable else None,
         )
-        next_instruction = ""
-        if chain_out_dir is not None:
-            for gate_name in _preferred_gate_verdict_order(reason):
-                next_instruction = _load_next_instruction_from_gate_verdict(chain_out_dir / gate_name) or ""
-                if next_instruction:
-                    break
-            if not next_instruction:
-                next_instruction = _load_next_instruction_from_c1_parse_diagnostic(chain_out_dir) or ""
-        if not next_instruction:
-            next_instruction = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
+        next_instruction = _run_no_go_next_instruction(chain_out_dir=chain_out_dir, primary_reason=reason)
         _write_run_workspace_pointers(
             repo_root=repo_root,
             run_workspace_dir=run_workspace_dir,

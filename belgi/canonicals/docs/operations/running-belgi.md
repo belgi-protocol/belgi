@@ -665,13 +665,17 @@ Guidelines:
 
 ### 5.3 CLI NO-GO pointer block (human output)
 - `belgi run` keeps the first output line as machine JSON.
-- Human lines include:
+- For public `NO-GO (10)` results, human lines include:
   - grouped summary and primary reason
-  - `remediation.next_instruction` text
+  - `next:` text chosen in this order:
+    - `GateVerdict.remediation.next_instruction` from a produced `NO-GO` gate verdict
+    - current-run `C1IntentParseError.json next_instruction` when no gate remediation is available
+    - generic CLI fallback only when neither authoritative source exists
   - `gate_verdict_path` / `gate_verdict_rel`
   - `evidence_manifest_path` / `evidence_manifest_rel`
   - copy/paste open commands for macOS, Linux, and Windows
   - `open_path_*` entries for operator-critical files (for example intent and waiver refs)
+- Separate public `USER_ERROR (20)` run failures may use direct CLI guidance for input, argument, or repo-state problems; the `NO-GO (10)` precedence above does not apply to that class.
 - Optional file hyperlinks are available with `BELGI_HYPERLINKS=1` (off by default).
 - Color output is TTY-only and disabled when `NO_COLOR` (or `BELGI_NO_COLOR`) is set.
 
