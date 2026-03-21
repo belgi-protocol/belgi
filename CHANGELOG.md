@@ -2,6 +2,23 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.5.4 — 2026-03-21
+
+### Summary
+Patch release refactoring the shipped BELGI CLI into a thin membrane layout while preserving the existing public run, verify, stage, bundle, exit-code, machine-JSON, and remediation-rendering behavior.
+
+### Changed
+- Repaired the shipped CLI into the locked `belgi/cli_app/` tree, with a thin `belgi/cli.py` compatibility shim over `main`, `registry`, `render`, root parser assembly, per-surface parser modules, and per-surface command modules.
+- Added `python -m belgi` support through a thin `belgi/__main__.py` entry that stays on the same shipped CLI spine as the console entrypoint.
+- Kept static command wiring explicit across `run`, `verify`, `stage`, `bundle`, `pack`, `policy`, `manifest`, `waiver`, `about`, `supplychain-scan`, and `adversarial-scan` without introducing dynamic handler resolution or a second orchestration family.
+- Preserved the public CLI exit-code model `{0,10,20,30}`, current machine first-line JSON contract, `belgi run` remediation precedence shipped in `1.5.3`, bounded `belgi verify` authority, and thin `belgi stage ...` forwarder behavior.
+- Kept the module entrypoint, compatibility shim, and legacy monkeypatch surfaces aligned with the repaired `cli_app` tree so existing public entry behavior and test touchpoints remain stable.
+- Restored the stage forwarder's centralized rc normalization so raw stage rc `1` continues to surface as public internal error `30`, while `2` and `3` still map to public `10` and `20`.
+- Added `pytest-xdist` to `requirements-dev.txt` for local development and test tooling.
+
+### Notes
+- This patch is an internal maintainability refactor only; it does not change protocol semantics, gate authority, or shipped CLI behavior.
+
 ## 1.5.3 — 2026-03-21
 
 ### Summary
