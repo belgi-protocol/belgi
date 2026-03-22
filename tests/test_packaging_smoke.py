@@ -223,6 +223,26 @@ def test_cli_module_importable() -> None:
     assert callable(cli.main), "belgi.cli.main must be callable"
 
 
+def test_cli_module_entry_uses_cli_app_main() -> None:
+    """Verify console and module entrypoints share the same shipped CLI spine."""
+    import belgi.__main__ as belgi_module_main
+    from belgi import cli
+    from belgi.cli_app.main import main as cli_app_main
+
+    assert cli.main is cli_app_main
+    assert belgi_module_main.main is cli_app_main
+
+
+def test_cli_shim_forwards_monkeypatches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify belgi.cli monkeypatches still reach the owning command module."""
+    import belgi.cli_app.commands.run as run_commands
+    from belgi import cli
+
+    monkeypatch.setattr(cli, "_platform_family", lambda: "linux")
+
+    assert run_commands._platform_family() == "linux"
+
+
 def test_packaged_trust_anchor_loads() -> None:
     """Verify packaged canonical Tier-3 trust-anchor resource loads and validates."""
     authority = load_pinned_trust_anchor()
@@ -233,7 +253,7 @@ def test_packaged_trust_anchor_loads() -> None:
     from importlib.resources import files
 
     trust_anchor = json.loads(
-        files("belgi").joinpath("anchor", "v1", "TrustAnchor.json").read_text(encoding="utf-8", errors="strict")
+        files("belgi").joinpath("anchor", "v1", "TrustAnchor.json").read_text(encoding="utf-8")
     )
     assert isinstance(trust_anchor, dict)
     assert trust_anchor.get("public_key_hex") == authority.public_key_hex

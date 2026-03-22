@@ -2,5 +2,6 @@
 # Install runtime deps first (currently none), then these.
 
 pytest
+pytest-xdist
 ruff
 build
