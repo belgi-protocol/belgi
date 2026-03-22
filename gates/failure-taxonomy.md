@@ -97,7 +97,7 @@ Unless a gate explicitly declares a deterministic substitution above, tokens are
 - gate_id: `Q`
 - severity: `blocker`
 - description: Environment Envelope is missing or incomplete for a lockable run contract.
-- remediation.next_instruction template: `Do declare a complete environment_envelope (including pinned_toolchain_refs) then re-run Q.`
+- remediation.next_instruction template: `Do declare a complete environment_envelope (including toolchain_set_ref and pinned_toolchain_refs) then re-run Q.`
 
 ### FQ-WAIVER-INVALID
 - category_id: `FQ-WAIVER-INVALID`
@@ -185,7 +185,7 @@ Unless a gate explicitly declares a deterministic substitution above, tokens are
 - gate_id: `R`
 - severity: `blocker`
 - description: Blast Radius / scope budgets exceeded (touched files and/or LOC delta).
-- remediation.next_instruction template: `Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.`
+- remediation.next_instruction template: `Do reduce scope to within the locked tolerances ceilings or change the locked Tolerances object / selected tier and re-run Q, then re-run R.`
 
 ### FR-POLICY-FORBIDDEN-PATH
 - category_id: `FR-POLICY-FORBIDDEN-PATH`
@@ -213,7 +213,7 @@ Unless a gate explicitly declares a deterministic substitution above, tokens are
 - gate_id: `R`
 - severity: `major`
 - description: Dependency/toolchain changes are detected but not accounted for in the run’s declared constraints/evidence.
-- remediation.next_instruction template: `Do account for supply chain changes with updated envelope refs or an approved waiver then re-run R.`
+- remediation.next_instruction template: `Do account for the changed dependency/toolchain surface in declared envelope refs or remove the change then re-run R.`
 
 ### FR-ADVERSARIAL-DIFF-SUSPECT
 - category_id: `FR-ADVERSARIAL-DIFF-SUSPECT`

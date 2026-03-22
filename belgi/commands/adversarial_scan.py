@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import ast
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from belgi.core.jail import ensure_within_root, safe_relpath
+from belgi.core.diff_parse import extract_changed_new_lines_by_path
+from belgi.core.jail import ensure_within_root
 from belgi.core.json_canon import canonical_json_bytes
 from belgi.core.time import utc_timestamp_iso_z
 
@@ -26,6 +28,21 @@ _RULE_ID_YAMLLOAD = "ADV-YAMLLOAD-001"
 _RULE_ID_PICKLE_LOAD = "ADV-PICKLE-001"
 _RULE_ID_PICKLE_LOADS = "ADV-PICKLE-002"
 _RULE_ID_SHELL_TRUE = "ADV-SHELL-001"
+
+
+def _run_git(repo: Path, args: list[str]) -> bytes:
+    p = subprocess.run(
+        ["git", "-C", str(repo)] + args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+        shell=False,
+    )
+    if p.returncode != 0:
+        raise RuntimeError(
+            f"git failed: {' '.join(args)} :: {p.stderr.decode('utf-8', errors='replace').strip()}"
+        )
+    return p.stdout
 
 
 def _snippet_at_line(txt: str, lineno: int) -> str:
@@ -75,9 +92,32 @@ def _scan_python_source(txt: str) -> list[tuple[int, str]]:
     return findings
 
 
+def _diff_changed_python_lines(repo: Path, *, base_revision: str, evaluated_revision: str) -> dict[str, set[int]]:
+    diff_bytes = _run_git(
+        repo,
+        [
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--unified=0",
+            base_revision,
+            evaluated_revision,
+            "--",
+            ".",
+        ],
+    )
+    return {
+        path: set(lines)
+        for path, lines in extract_changed_new_lines_by_path(diff_bytes).items()
+        if path.endswith(".py")
+    }
+
+
 def run_adversarial_scan(
     *,
     repo: Path,
+    base_revision: str,
+    evaluated_revision: str,
     out_path: Path,
     deterministic: bool,
     run_id: str = "unknown",
@@ -102,19 +142,38 @@ def run_adversarial_scan(
         "belgi.egg-info",
     }
 
-    for p in repo.rglob("*.py"):
-        if any(part in skip_dirs for part in p.parts):
+    changed_python_lines = _diff_changed_python_lines(
+        repo,
+        base_revision=base_revision,
+        evaluated_revision=evaluated_revision,
+    )
+
+    for rel, changed_lines in sorted(changed_python_lines.items()):
+        if not changed_lines:
+            continue
+        rel_parts = Path(rel).parts
+        if any(part in skip_dirs for part in rel_parts):
+            continue
+        p = (repo / Path(*rel.split("/"))).resolve()
+        ensure_within_root(repo, p)
+        if not p.exists() or not p.is_file():
             continue
         try:
             txt = p.read_text(encoding="utf-8", errors="strict")
         except Exception as e:
-            rel = safe_relpath(repo, p)
-            findings.append(Finding(path=rel, lineno=1, rule_id=_RULE_ID_PARSE, snippet=str(e)[:160]))
+            findings.append(
+                Finding(
+                    path=rel,
+                    lineno=min(changed_lines),
+                    rule_id=_RULE_ID_PARSE,
+                    snippet=str(e)[:160],
+                )
+            )
             continue
 
-        rel = safe_relpath(repo, p)
-
         for lineno, rule_id in _scan_python_source(txt):
+            if lineno not in changed_lines:
+                continue
             findings.append(
                 Finding(
                     path=rel,
@@ -147,6 +206,9 @@ def run_adversarial_scan(
         },
         "checks": checks,
         # Extension fields (allowed by PolicyReportPayload.additionalProperties).
+        "base_revision": base_revision,
+        "evaluated_revision": evaluated_revision,
+        "diff_python_paths": sorted(changed_python_lines),
         "findings_present": len(findings) > 0,
         "finding_count": len(findings),
         "findings": [
@@ -158,5 +220,4 @@ def run_adversarial_scan(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_bytes(canonical_json_bytes(payload))
 
-    # Findings are policy data; command success reflects execution success.
     return 0

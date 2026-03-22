@@ -70,9 +70,20 @@ def build_cli_registry() -> CliRegistry:
         help="Run ID to embed in the PolicyReportPayload (default: unknown)",
     )
     p_supplychain_scan.add_argument(
-        "--evaluated-revision",
+        "--base-revision",
         default="HEAD~1",
-        help="Git revision to diff against (e.g. HEAD~1 or commit sha). Default: HEAD~1",
+        help="Git base revision for declared change accounting (default: HEAD~1)",
+    )
+    p_supplychain_scan.add_argument(
+        "--evaluated-revision",
+        default="HEAD",
+        help="Git evaluated revision for declared change accounting (default: HEAD)",
+    )
+    p_supplychain_scan.add_argument(
+        "--pinned-toolchain-ref",
+        action="append",
+        default=[],
+        help="Declared pinned toolchain ref in ID=repo/relative/path form (repeatable)",
     )
     p_supplychain_scan.add_argument(
         "--out",
@@ -90,6 +101,16 @@ def build_cli_registry() -> CliRegistry:
         "--run-id",
         default="unknown",
         help="Run ID to embed in the PolicyReportPayload (default: unknown)",
+    )
+    p_adversarial_scan.add_argument(
+        "--base-revision",
+        default="HEAD~1",
+        help="Git base revision for diff-scoped scanning (default: HEAD~1)",
+    )
+    p_adversarial_scan.add_argument(
+        "--evaluated-revision",
+        default="HEAD",
+        help="Git evaluated revision for diff-scoped scanning (default: HEAD)",
     )
     p_adversarial_scan.add_argument(
         "--out",

@@ -17,8 +17,10 @@ Note: Some payload-style schemas intentionally allow extension fields (`addition
 - PolicyReportPayload: PolicyReportPayload.schema.json
 - ReplayInstructionsPayload: ReplayInstructionsPayload.schema.json
 - SealManifest: SealManifest.schema.json
+- Tolerances: Tolerances.schema.json
 - TestReportPayload: TestReportPayload.schema.json
 - TierPacks: TierPacks.schema.json
+- ToolchainSet: ToolchainSet.schema.json
 - Waiver: Waiver.schema.json
 
 ## Shared conventions
@@ -49,6 +51,15 @@ For Tier 2–3 (audit-grade) runs, `LockedSpec.environment_envelope` includes pi
 - `seal_pubkey_ref`: Ed25519 public key reserved for Seal verification at stage S (signature enforcement is performed at sealing/replay, not at Gate R).
 
 These are ObjectRef values and are intended to prevent attacker-controlled key substitution.
+
+### ToolchainSet and Tolerances (first-class locked objects)
+- `ToolchainSet.schema.json` defines the authoritative run-local declaration object for operator-supplied dependency/toolchain accounting refs.
+- `LockedSpec.environment_envelope.toolchain_set_ref` locks that ToolchainSet object explicitly.
+- `LockedSpec.environment_envelope.pinned_toolchain_refs[]` remains the normalized execution-time ref list derived from the locked ToolchainSet plus built-in `toolchain.main`.
+- `Tolerances.schema.json` defines the authoritative locked scope-budget object.
+- `LockedSpec.tier.tolerances_ref` points to that locked Tolerances object, and Gate R `R2` consumes it directly after lock.
+- Gate Q / Gate R locked-object loaders validate ToolchainSet and Tolerances against these published schemas after ObjectRef hash binding.
+- Numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy `IntentSpec.scope.max_*` fields.
 ### doc_impact
 `doc_impact` is a first-class declaration of documentation update requirements:
 - In IntentSpec: `doc_impact` is required by schema.
@@ -85,11 +96,21 @@ Deterministic rule (schema-enforced): if `doc_impact.required_paths` is empty `[
     "id": "env-001",
     "description": "Windows + pinned tooling",
     "expected_runner": "ci:windows-latest",
+    "toolchain_set_ref": {
+      "id": "env.toolchains",
+      "hash": "abababababababababababababababababababababababababababababababab",
+      "storage_ref": "bundle/environment/toolchain-set.json"
+    },
     "pinned_toolchain_refs": [
       {
-        "id": "toolchain-001",
+        "id": "toolchain.main",
         "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "storage_ref": "bundle/toolchains/toolchain-001.json"
+        "storage_ref": "bundle/environment/toolchain.json"
+      },
+      {
+        "id": "deps.requirements",
+        "hash": "1212121212121212121212121212121212121212121212121212121212121212",
+        "storage_ref": "requirements.txt"
       }
     ]
   },
@@ -103,8 +124,6 @@ Deterministic rule (schema-enforced): if `doc_impact.required_paths` is empty `[
   "constraints": {
     "allowed_paths": ["schemas/"],
     "forbidden_paths": ["CANONICALS.md"],
-    "max_touched_files": 6,
-    "max_loc_delta": 2000,
     "forbidden_primitives": ["bypass-oriented-heuristics"]
   },
   "compilation": {

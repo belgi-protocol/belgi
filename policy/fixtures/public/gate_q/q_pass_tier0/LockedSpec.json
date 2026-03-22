@@ -19,18 +19,23 @@
     "description": "fixture",
     "expected_runner": "fixture",
     "id": "fixture-envelope",
+    "toolchain_set_ref": {
+      "hash": "aaa3fbb9051b59db686a1376cc2adfb698fb9afe4ec306285991f8c46367ea12",
+      "id": "env.toolchains",
+      "storage_ref": "policy/fixtures/public/gate_q/q_pass_tier0/toolchain-set.json"
+    },
     "pinned_toolchain_refs": [
       {
         "hash": "0000000000000000000000000000000000000000000000000000000000000000",
-        "id": "fixture-toolchain",
-        "storage_ref": "toolchain.txt"
+        "id": "toolchain.main",
+        "storage_ref": "out/inputs/toolchain.json"
       }
     ]
   },
   "intent": {
     "intent_id": "intent-q-pass-tier0",
     "narrative": "Fixture goal",
-    "scope": "allowed_dirs: [policy/, tools/]; forbidden_dirs: []; max_touched_files: null; max_loc_delta: null",
+    "scope": "allowed_dirs: [policy/, tools/]; forbidden_dirs: []",
     "success_criteria": "- Criteria 1",
     "title": "Fixture intent"
   },
@@ -47,8 +52,8 @@
     "storage_ref": "prompt_bundle.txt"
   },
   "protocol_pack": {
-    "manifest_sha256": "4bf148cd082052eb3923c92b19b9519e8a240a14a8f4f516d177e8ca8c3f17f2",
-    "pack_id": "11c4bec2a55b17994cf6cd09065b4c293a1fa18f2ab397955963f854678756fb",
+    "manifest_sha256": "cc83831c6131a3c83cb3b59cf669010d2f25be963708dedcbedf58ced9c2cadf",
+    "pack_id": "cec4e70944b14be18198427a13f17368b248a0bd65f3a85642c6734a4020348c",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },
@@ -58,9 +63,9 @@
     "tier_id": "tier-0",
     "tier_name": "Tier 0",
     "tolerances_ref": {
-      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
-      "id": "fixture-tolerances",
-      "storage_ref": "tolerances.json"
+      "hash": "b13e9d4f56a2fc9c8acd1f23c3909ddb2a37b45656743212fa5646c120750f19",
+      "id": "tier.tolerances",
+      "storage_ref": "policy/fixtures/public/gate_q/q_pass_tier0/tolerances.json"
     }
   },
   "upstream_state": {

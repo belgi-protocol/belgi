@@ -138,7 +138,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                 category="FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED",
                 message=f"policy.supplychain indicates failures (summary.failed={failed}).",
                 pointers=[],
-                remediation_next_instruction="Do remediate supply chain policy failures in policy.supplychain then re-run R.",
+                remediation_next_instruction=(
+                    "Do account for the changed dependency/toolchain surface in declared envelope refs "
+                    "or remove the change then re-run R."
+                ),
             )
         ]
 

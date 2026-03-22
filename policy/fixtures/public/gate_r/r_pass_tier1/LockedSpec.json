@@ -12,26 +12,29 @@
     "allowed_paths": [
       "policy/"
     ],
-    "forbidden_paths": [],
-    "max_loc_delta": 2500,
-    "max_touched_files": 25
+    "forbidden_paths": []
   },
   "environment_envelope": {
     "description": "fixture",
     "expected_runner": "fixture",
     "id": "fixture-envelope",
+    "toolchain_set_ref": {
+      "hash": "aaa3fbb9051b59db686a1376cc2adfb698fb9afe4ec306285991f8c46367ea12",
+      "id": "env.toolchains",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/toolchain-set.json"
+    },
     "pinned_toolchain_refs": [
       {
         "hash": "0000000000000000000000000000000000000000000000000000000000000000",
-        "id": "fixture-toolchain",
-        "storage_ref": "toolchain.txt"
+        "id": "toolchain.main",
+        "storage_ref": "out/inputs/toolchain.json"
       }
     ]
   },
   "intent": {
     "intent_id": "intent-r-pass-tier1",
     "narrative": "Fixture goal",
-    "scope": "allowed_dirs: [policy/]; forbidden_dirs: []; max_touched_files: 25; max_loc_delta: 2500",
+    "scope": "allowed_dirs: [policy/]; forbidden_dirs: []",
     "success_criteria": "- Criteria 1",
     "title": "Fixture intent"
   },
@@ -48,8 +51,8 @@
     "storage_ref": "prompt_bundle.txt"
   },
   "protocol_pack": {
-    "manifest_sha256": "4bf148cd082052eb3923c92b19b9519e8a240a14a8f4f516d177e8ca8c3f17f2",
-    "pack_id": "11c4bec2a55b17994cf6cd09065b4c293a1fa18f2ab397955963f854678756fb",
+    "manifest_sha256": "cc83831c6131a3c83cb3b59cf669010d2f25be963708dedcbedf58ced9c2cadf",
+    "pack_id": "cec4e70944b14be18198427a13f17368b248a0bd65f3a85642c6734a4020348c",
     "pack_name": "belgi-protocol-pack-v1",
     "source": "builtin"
   },
@@ -59,9 +62,9 @@
     "tier_id": "tier-1",
     "tier_name": "Tier 1",
     "tolerances_ref": {
-      "hash": "0000000000000000000000000000000000000000000000000000000000000000",
-      "id": "fixture-tolerances",
-      "storage_ref": "tolerances.json"
+      "hash": "4c52a4c36ccc2ddb871978b9f3cf94db2966ca3b46bf34007a6e9efaa6c1ebc2",
+      "id": "tier.tolerances",
+      "storage_ref": "policy/fixtures/public/gate_r/r_pass_tier1/tolerances.json"
     }
   },
   "upstream_state": {

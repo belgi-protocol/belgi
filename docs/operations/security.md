@@ -68,12 +68,13 @@ If Gate R flags concerns (category-level):
 - Supply chain concerns (R7-related):
   - Stop progression to sealing/publishing.
   - Escalate to a human security/ops owner.
-  - Reconstruct the envelope and verify pinned toolchain refs; investigate dependency changes.
-  - Treat R7 as a repo-state / change-surface signal, not as standalone SBOM/provenance/vulnerability-scan proof.
+  - Reconstruct the actual `base_revision -> evaluated_revision` diff and inspect changed dependency/toolchain declaration paths against the declared pinned toolchain refs.
+  - Treat R7 as bounded declared change accounting, not as standalone SBOM/provenance/vulnerability-scan proof.
 
 - Adversarial concerns (R8-related):
   - Treat as potentially hostile change.
   - Require human review under HOTL policy.
+  - Review the actual changed Python lines first; R8 is diff-scoped and does not elevate historical repo-wide findings outside the change.
   - Consider narrowing blast radius or rejecting the proposal.
 
 - Evidence insufficiency (R0/R4-related):

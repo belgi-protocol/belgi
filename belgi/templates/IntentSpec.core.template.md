@@ -8,16 +8,18 @@ Deterministic compilation/mapping rule (v1):
 - `IntentSpec.goal` → `LockedSpec.intent.narrative`
 - `IntentSpec.acceptance.success_criteria[]` → `LockedSpec.intent.success_criteria` as a newline-joined list with `- ` prefix per item, preserving order.
 - `LockedSpec.intent.scope` MUST be a deterministic summary string derived from `IntentSpec.scope.*`:
-  - `allowed_dirs: [<allowed_dirs joined by ', '>]; forbidden_dirs: [<forbidden_dirs joined by ', '>]; max_touched_files: <value or null>; max_loc_delta: <value or null>`
+  - `allowed_dirs: [<allowed_dirs joined by ', '>]; forbidden_dirs: [<forbidden_dirs joined by ', '>]`
 
 Related deterministic mappings (v1):
 - `IntentSpec.scope.allowed_dirs[]` → `LockedSpec.constraints.allowed_paths[]` (exact array equality; preserve order)
 - `IntentSpec.scope.forbidden_dirs[]` → `LockedSpec.constraints.forbidden_paths[]` (exact array equality; preserve order)
-- `IntentSpec.scope.max_touched_files` → `LockedSpec.constraints.max_touched_files` (if present)
-- `IntentSpec.scope.max_loc_delta` → `LockedSpec.constraints.max_loc_delta` (if present)
 - `IntentSpec.tier.tier_pack_id` → `LockedSpec.tier.tier_id`
 - `IntentSpec.doc_impact` → `LockedSpec.doc_impact` (if present/required by tier)
 - `IntentSpec.publication_intent` → `LockedSpec.publication_intent` (required by tier for tier-2/3)
+
+Numeric scope budgets do not live in `IntentSpec` on the shipped run spine.
+- Quantitative scope ceilings live in the locked Tolerances object referenced by `LockedSpec.tier.tolerances_ref`.
+- If legacy `IntentSpec.scope.max_touched_files` or `IntentSpec.scope.max_loc_delta` fields are present, Gate Q fails closed and directs the operator to move them into Tolerances.
 
 Rules:
 - Do not add a second YAML block.
@@ -39,10 +41,6 @@ scope:
   # Directories/prefixes the change must not touch.
   forbidden_dirs:
     - "secrets/"
-
-  # Optional scope budgets (integers >= 0)
-  # max_touched_files: 10
-  # max_loc_delta: 500
 
 acceptance:
   # Optional commands/patterns for required tests (core gates do not interpret these unless mapped by policy).

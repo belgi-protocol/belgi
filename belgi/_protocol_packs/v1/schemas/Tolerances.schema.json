@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "Tolerances.schema.json",
+  "title": "Tolerances",
+  "description": "Locked run-local quantitative scope-budget object derived from tier ceilings or supplied explicitly on the run spine.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tier_id", "scope_budgets"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "tier_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope_budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_touched_files", "max_loc_delta"],
+      "properties": {
+        "max_touched_files": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "max_loc_delta": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

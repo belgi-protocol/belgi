@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ToolchainSet.schema.json",
+  "title": "ToolchainSet",
+  "description": "Authoritative operator-declared dependency/toolchain reference set for locking into the Environment Envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "toolchain_set_id", "refs"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "toolchain_set_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "refs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ToolchainRef" }
+    }
+  },
+  "$defs": {
+    "RepoRelPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!\\./)(?!\\.\\.?(/|$))(?!.*(^|/)\\.\\.(/|$))(?!.*\\*)(?!.*\\?)(?!.*\\\\)(?!.*//)(?!.*\\/\\.\\/).+$"
+    },
+    "ToolchainRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/RepoRelPath"
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manager": {
+          "type": "string",
+          "minLength": 1
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -29,6 +29,31 @@ def add_run_parsers(subparsers: Any) -> RunRegistry:
         ),
     )
     p_run.add_argument(
+        "--toolchain-set-ref",
+        default=None,
+        help=(
+            "Optional authoritative ToolchainSet object ref in "
+            "<object_id>=<repo-relative-path> form on the shared run spine."
+        ),
+    )
+    p_run.add_argument(
+        "--toolchain-ref",
+        action="append",
+        default=[],
+        help=(
+            "Optional repeatable shorthand toolchain/accounting ref in "
+            "<object_id>=<repo-relative-path> form on the shared run spine."
+        ),
+    )
+    p_run.add_argument(
+        "--tolerances-ref",
+        default=None,
+        help=(
+            "Optional locked tolerances object ref in "
+            "<object_id>=<repo-relative-path> form on the shared run spine."
+        ),
+    )
+    p_run.add_argument(
         "--attestation-pubkey-ref",
         default=None,
         help="Tier-2/Tier-3 Operator Anchor: local-only <object_id>=<repo-relative-path> for the attestation public key.",

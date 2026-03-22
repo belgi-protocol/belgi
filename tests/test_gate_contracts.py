@@ -371,6 +371,8 @@ def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output() -> None:
         "schemas/EvidenceManifest.schema.json",
         "schemas/Waiver.schema.json",
         "schemas/HOTLApproval.schema.json",
+        "schemas/ToolchainSet.schema.json",
+        "schemas/Tolerances.schema.json",
         "schemas/GateVerdict.schema.json",
     ]:
         _copy_into_pack(rel)

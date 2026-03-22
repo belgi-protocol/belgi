@@ -73,6 +73,12 @@ def _prepare_gate_q_repo(
         waivers.append(rel)
 
     locked["waivers_applied"] = waivers
+    for rel in (
+        "policy/fixtures/public/gate_q/q_pass_tier0/toolchain-set.json",
+        "policy/fixtures/public/gate_q/q_pass_tier0/tolerances.json",
+    ):
+        src = REPO_ROOT / rel
+        _write_json(repo / rel, json.loads(src.read_text(encoding="utf-8", errors="strict")))
     _write_json(repo / "LockedSpec.json", locked)
     return repo
 

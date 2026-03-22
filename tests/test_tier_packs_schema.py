@@ -88,19 +88,27 @@ def test_gate_parameter_map_keeps_pinned_toolchain_refs_owned_by_q5() -> None:
     gate_map = obj.get("gate_parameter_map", [])
     assert isinstance(gate_map, list)
 
+    q4_params = None
     q5_params = None
+    r2_params = None
     r7_params = None
     for idx, entry in enumerate(gate_map):
         assert isinstance(entry, dict), f"gate_parameter_map[{idx}] must be an object"
         gate_check_id = entry.get("gate_check_id")
         params = entry.get("tier_params_read", [])
         assert isinstance(params, list), f"gate_parameter_map[{idx}].tier_params_read must be a list"
+        if gate_check_id == "Q4":
+            q4_params = params
         if gate_check_id == "Q5":
             q5_params = params
+        if gate_check_id == "R2":
+            r2_params = params
         if gate_check_id == "R7":
             r7_params = params
 
+    assert q4_params == ["scope_budgets.max_touched_files", "scope_budgets.max_loc_delta"]
     assert q5_params == ["envelope_policy.pinned_toolchain_refs_required"]
+    assert r2_params == []
     assert r7_params == ["command_log_mode"]
 
 

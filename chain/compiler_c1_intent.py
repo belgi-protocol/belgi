@@ -230,12 +230,10 @@ def _format_schema_errors(errors: Iterable[SchemaError]) -> str:
 def _expect_scope_string(intent_obj: dict[str, Any]) -> str:
     scope = intent_obj.get("scope")
     if not isinstance(scope, dict):
-        return "allowed_dirs: []; forbidden_dirs: []; max_touched_files: null; max_loc_delta: null"
+        return "allowed_dirs: []; forbidden_dirs: []"
 
     allowed = scope.get("allowed_dirs")
     forbidden = scope.get("forbidden_dirs")
-    max_touched_files = scope.get("max_touched_files")
-    max_loc_delta = scope.get("max_loc_delta")
 
     def fmt_list(v: Any) -> str:
         if not isinstance(v, list):
@@ -244,16 +242,7 @@ def _expect_scope_string(intent_obj: dict[str, Any]) -> str:
             return "[INVALID]"
         return "[" + ", ".join([x for x in v]) + "]"
 
-    mtf = max_touched_files if isinstance(max_touched_files, int) and not isinstance(max_touched_files, bool) else None
-    mld = max_loc_delta if isinstance(max_loc_delta, int) and not isinstance(max_loc_delta, bool) else None
-
-    mtf_s = str(mtf) if mtf is not None else "null"
-    mld_s = str(mld) if mld is not None else "null"
-
-    return (
-        f"allowed_dirs: {fmt_list(allowed)}; forbidden_dirs: {fmt_list(forbidden)}; "
-        f"max_touched_files: {mtf_s}; max_loc_delta: {mld_s}"
-    )
+    return f"allowed_dirs: {fmt_list(allowed)}; forbidden_dirs: {fmt_list(forbidden)}"
 
 
 def _expect_success_criteria(intent_obj: dict[str, Any]) -> str:
@@ -327,6 +316,65 @@ def _object_ref(repo_root: Path, *, object_id: str, storage_ref: str) -> dict[st
     return {"id": object_id, "hash": _sha256_file(p), "storage_ref": rel}
 
 
+def _validate_json_object_against_schema(
+    *,
+    protocol: ProtocolContext,
+    payload: Any,
+    schema_rel: str,
+    label: str,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise _UserInputError(f"{label} must be a JSON object")
+    schema = protocol.read_json(schema_rel)
+    if not isinstance(schema, dict):
+        raise _UserInputError(f"{label} schema is not a JSON object")
+    errs = validate_schema(payload, schema, root_schema=schema, path=label)
+    if errs:
+        raise _UserInputError(f"{label} schema validation failed:\n" + _format_schema_errors(errs))
+    return payload
+
+
+def _load_validated_object_payload(
+    *,
+    repo_root: Path,
+    protocol: ProtocolContext,
+    storage_ref: str,
+    schema_rel: str,
+    label: str,
+) -> dict[str, Any]:
+    obj = _load_json(_resolve_repo_path(repo_root, storage_ref, must_exist=True, must_be_file=True))
+    return _validate_json_object_against_schema(protocol=protocol, payload=obj, schema_rel=schema_rel, label=label)
+
+
+def _normalize_toolchain_set_refs(
+    *,
+    repo_root: Path,
+    refs_obj: Any,
+    label: str,
+) -> list[dict[str, str]]:
+    if not isinstance(refs_obj, list):
+        raise _UserInputError(f"{label}.refs missing/invalid")
+    refs: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    for idx, entry in enumerate(refs_obj):
+        if not isinstance(entry, dict):
+            raise _UserInputError(f"{label}.refs[{idx}] missing/invalid")
+        raw_id = entry.get("id")
+        raw_path = entry.get("path")
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise _UserInputError(f"{label}.refs[{idx}].id missing/invalid")
+        ref_id = raw_id.strip()
+        if ref_id == "toolchain.main":
+            raise _UserInputError(f"{label}.refs must not declare reserved id toolchain.main")
+        if ref_id in seen_ids:
+            raise _UserInputError(f"duplicate toolchain id: {ref_id}")
+        seen_ids.add(ref_id)
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise _UserInputError(f"{label}.refs[{idx}].path missing/invalid")
+        refs.append(_object_ref(repo_root, object_id=ref_id, storage_ref=raw_path.strip()))
+    return refs
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="C1 compiler: compile IntentSpec.core.md into LockedSpec.json")
     ap.add_argument("--repo", required=True, help="Repo root")
@@ -385,17 +433,38 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument(
         "--tolerances",
         required=True,
-        help="Tier tolerances object ref in ID=repo/relative/path form (hash is computed)",
+        help="Locked Tolerances object ref in ID=repo/relative/path form (hash is computed)",
     )
 
     ap.add_argument("--envelope-id", required=True, help="Environment envelope identifier")
     ap.add_argument("--envelope-description", required=True, help="Environment envelope description")
     ap.add_argument("--expected-runner", required=True, help="Expected runner string")
     ap.add_argument(
+        "--toolchain-set",
+        default=None,
+        help="Authoritative ToolchainSet object ref in ID=repo/relative/path form (hash is computed)",
+    )
+    ap.add_argument(
+        "--toolchain-set-id",
+        default="env.toolchains",
+        help="ObjectRef id for generated ToolchainSet authority when compiling shorthand refs (default: env.toolchains)",
+    )
+    ap.add_argument(
+        "--toolchain-set-out",
+        default=None,
+        help=(
+            "(shorthand mode) Optional repo-relative output path for generated ToolchainSet JSON. "
+            "Default: sibling `inputs/toolchain-set.json` next to --out."
+        ),
+    )
+    ap.add_argument(
         "--toolchain-ref",
         action="append",
         default=[],
-        help="Pinned toolchain object ref in ID=repo/relative/path form (repeatable; at least one required)",
+        help=(
+            "Pinned toolchain execution ref in ID=repo/relative/path form. "
+            "Must include built-in `toolchain.main=...`; additional refs act as shorthand only when --toolchain-set is absent."
+        ),
     )
 
     ap.add_argument(
@@ -491,13 +560,12 @@ def _render_prompt_block(*, block_id: str, locked_spec_preimage: dict[str, Any])
         lines.append("Constraints (allowed/forbidden paths):")
         lines.append(json.dumps({"allowed_paths": ap, "forbidden_paths": fp}, indent=2, sort_keys=True, ensure_ascii=False))
     elif block_id == "PB-006":
-        lines.append("Constraints (scope budgets):")
+        tier_obj = locked_spec_preimage.get("tier")
+        tolerances_ref = tier_obj.get("tolerances_ref") if isinstance(tier_obj, dict) else None
+        lines.append("Tolerances (locked scope budgets object):")
         lines.append(
             json.dumps(
-                {
-                    "max_touched_files": constraints.get("max_touched_files"),
-                    "max_loc_delta": constraints.get("max_loc_delta"),
-                },
+                {"tolerances_ref": tolerances_ref},
                 indent=2,
                 sort_keys=True,
                 ensure_ascii=False,
@@ -612,6 +680,15 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(parsed, dict):
             raise _UserInputError("IntentSpec YAML must parse to an object/mapping")
 
+        scope_obj = parsed.get("scope")
+        if isinstance(scope_obj, dict) and (
+            "max_touched_files" in scope_obj or "max_loc_delta" in scope_obj
+        ):
+            raise _UserInputError(
+                "IntentSpec.scope numeric budgets are retired on the shipped run spine; "
+                "do remove IntentSpec.scope.max_* and move numeric budgets into a Tolerances object."
+            )
+
         intent_schema = protocol.read_json("schemas/IntentSpec.schema.json")
         if not isinstance(intent_schema, dict):
             raise _UserInputError("IntentSpec schema is not a JSON object")
@@ -674,19 +751,95 @@ def main(argv: list[str] | None = None) -> int:
 
             pb_ref = _validate_repo_rel(_safe_relpath(repo_root, pb_out_path))
         tol_id, tol_ref = _parse_kv_pair(str(args.tolerances), name="--tolerances")
+        tolerances_ref = _object_ref(repo_root, object_id=tol_id, storage_ref=tol_ref)
+        tolerances_obj = _load_validated_object_payload(
+            repo_root=repo_root,
+            protocol=protocol,
+            storage_ref=tol_ref,
+            schema_rel="schemas/Tolerances.schema.json",
+            label="Tolerances",
+        )
+        if str(tolerances_obj.get("tier_id") or "").strip() != tier_id:
+            raise _UserInputError("Tolerances.tier_id must match IntentSpec.tier.tier_pack_id")
 
         toolchain_pairs = [str(x) for x in (args.toolchain_ref or [])]
         if len(toolchain_pairs) == 0:
             raise _UserInputError("--toolchain-ref must be provided at least once")
 
-        toolchain_refs: list[dict[str, str]] = []
-        seen_toolchain_ids: set[str] = set()
+        built_in_toolchain_ref: dict[str, str] | None = None
+        shorthand_toolchain_refs: list[tuple[str, str]] = []
+        seen_shorthand_ids: set[str] = set()
         for raw in toolchain_pairs:
             tc_id, tc_ref = _parse_kv_pair(raw, name="--toolchain-ref")
-            if tc_id in seen_toolchain_ids:
+            if tc_id == "toolchain.main":
+                if built_in_toolchain_ref is not None:
+                    raise _UserInputError("duplicate toolchain id: toolchain.main")
+                built_in_toolchain_ref = _object_ref(repo_root, object_id=tc_id, storage_ref=tc_ref)
+                continue
+            if tc_id in seen_shorthand_ids:
                 raise _UserInputError(f"duplicate toolchain id: {tc_id}")
-            seen_toolchain_ids.add(tc_id)
-            toolchain_refs.append(_object_ref(repo_root, object_id=tc_id, storage_ref=tc_ref))
+            seen_shorthand_ids.add(tc_id)
+            shorthand_toolchain_refs.append((tc_id, tc_ref))
+
+        if built_in_toolchain_ref is None:
+            raise _UserInputError("--toolchain-ref must include built-in `toolchain.main=<repo-relative-path>`")
+
+        toolchain_set_mode = str(getattr(args, "toolchain_set", "") or "").strip()
+        if toolchain_set_mode and shorthand_toolchain_refs:
+            raise _UserInputError("do not mix --toolchain-set with operator shorthand --toolchain-ref values")
+
+        toolchain_set_ref_obj: dict[str, str]
+        toolchain_refs: list[dict[str, str]]
+        if toolchain_set_mode:
+            tc_set_id, tc_set_ref = _parse_kv_pair(toolchain_set_mode, name="--toolchain-set")
+            toolchain_set_ref_obj = _object_ref(repo_root, object_id=tc_set_id, storage_ref=tc_set_ref)
+            toolchain_set_obj = _load_validated_object_payload(
+                repo_root=repo_root,
+                protocol=protocol,
+                storage_ref=tc_set_ref,
+                schema_rel="schemas/ToolchainSet.schema.json",
+                label="ToolchainSet",
+            )
+            toolchain_refs = _normalize_toolchain_set_refs(
+                repo_root=repo_root,
+                refs_obj=toolchain_set_obj.get("refs"),
+                label="ToolchainSet",
+            )
+        else:
+            toolchain_set_id = str(args.toolchain_set_id or "").strip()
+            if not toolchain_set_id:
+                raise _UserInputError("--toolchain-set-id missing/empty")
+            if toolchain_set_id == "toolchain.main":
+                raise _UserInputError("--toolchain-set-id must not use reserved id toolchain.main")
+            toolchain_set_out_raw = str(getattr(args, "toolchain_set_out", "") or "").strip()
+            if toolchain_set_out_raw:
+                toolchain_set_out_path = _resolve_repo_path(repo_root, toolchain_set_out_raw, must_exist=False)
+            else:
+                toolchain_set_out_path = out_path.parent / "inputs" / "toolchain-set.json"
+            toolchain_set_out_rel = _validate_repo_rel(_safe_relpath(repo_root, toolchain_set_out_path))
+            generated_toolchain_set = {
+                "schema_version": "1.0.0",
+                "toolchain_set_id": toolchain_set_id,
+                "refs": [{"id": tc_id, "path": tc_ref} for tc_id, tc_ref in shorthand_toolchain_refs],
+            }
+            _validate_json_object_against_schema(
+                protocol=protocol,
+                payload=generated_toolchain_set,
+                schema_rel="schemas/ToolchainSet.schema.json",
+                label="ToolchainSet",
+            )
+            toolchain_set_out_path.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_json(toolchain_set_out_path, generated_toolchain_set)
+            toolchain_set_ref_obj = _object_ref(
+                repo_root,
+                object_id=toolchain_set_id,
+                storage_ref=toolchain_set_out_rel,
+            )
+            toolchain_refs = _normalize_toolchain_set_refs(
+                repo_root=repo_root,
+                refs_obj=generated_toolchain_set.get("refs"),
+                label="ToolchainSet",
+            )
 
         waiver_pairs = [str(x) for x in (args.waiver_applied or [])]
         waivers_applied: list[str] = []
@@ -704,7 +857,8 @@ def main(argv: list[str] | None = None) -> int:
             "id": str(args.envelope_id),
             "description": str(args.envelope_description),
             "expected_runner": str(args.expected_runner),
-            "pinned_toolchain_refs": toolchain_refs,
+            "toolchain_set_ref": toolchain_set_ref_obj,
+            "pinned_toolchain_refs": [built_in_toolchain_ref, *toolchain_refs],
         }
 
         if tier_id in ("tier-2", "tier-3"):
@@ -732,10 +886,6 @@ def main(argv: list[str] | None = None) -> int:
             "allowed_paths": scope.get("allowed_dirs"),
             "forbidden_paths": scope.get("forbidden_dirs"),
         }
-        if "max_touched_files" in scope:
-            locked_constraints["max_touched_files"] = scope.get("max_touched_files")
-        if "max_loc_delta" in scope:
-            locked_constraints["max_loc_delta"] = scope.get("max_loc_delta")
 
         try:
             belgi_version = pkg_version("belgi")
@@ -759,7 +909,7 @@ def main(argv: list[str] | None = None) -> int:
             "tier": {
                 "tier_id": tier_id,
                 "tier_name": _tier_name_for(tier_id),
-                "tolerances_ref": _object_ref(repo_root, object_id=tol_id, storage_ref=tol_ref),
+                "tolerances_ref": tolerances_ref,
             },
             "environment_envelope": env_envelope,
             "invariants": _compile_invariants(parsed),

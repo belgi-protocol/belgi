@@ -2,6 +2,28 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.0 — 2026-03-22
+
+### Summary
+Release closing the object-surface and runtime-truth gaps around ToolchainSet, Tolerances, R7, R8, and shipped `belgi run` budget authority on the primary run spine.
+
+### Changed
+- Promoted ToolchainSet into a real first-class locked object with schema-backed runtime validation, explicit `LockedSpec.environment_envelope.toolchain_set_ref`, shipped `belgi run --toolchain-set-ref <object_id>=<repo-relative-path>`, and repeatable `--toolchain-ref <object_id>=<repo-relative-path>` retained only as shorthand that normalizes into ToolchainSet authority before lock.
+- Promoted Tolerances into a real first-class locked object with schema-backed runtime validation, explicit `--tolerances-ref <object_id>=<repo-relative-path>`, generated default Tolerances objects from tier packs when omitted, and direct runtime consumption through `LockedSpec.tier.tolerances_ref`.
+- Retired numeric scope-budget authority from shipped `IntentSpec`; legacy `IntentSpec.scope.max_touched_files` and `IntentSpec.scope.max_loc_delta` are now rejected by both schema and runtime with migration guidance to move numeric budgets into Tolerances.
+- Reworked Gate Q and Gate R to enforce the new authority map: Q validates locked ToolchainSet and locked Tolerances objects, Q rejects legacy numeric intent budgets, R2 reads the locked Tolerances object as the sole runtime budget source after lock, and tier packs remain canonical templates and ceilings rather than post-lock runtime authority.
+- Reworked `belgi supplychain-scan` and shipped run/orchestrator wiring so R7 uses the actual `base_revision -> evaluated_revision` diff plus ToolchainSet-derived accounting refs on the existing run spine, without a second control family and with fail-closed evaluated-revision binding plus reserved `toolchain.main`.
+- Reworked `belgi adversarial-scan` so R8 gates only on findings on changed Python lines from the actual diff; historical repo findings outside the change no longer drive `FR-ADVERSARIAL-DIFF-SUSPECT`.
+- Moved the operator-facing run workspace truth to `.belgi/runs/<run_id>/inputs/environment/`, taught ToolchainSet and Tolerances as real shared run objects, and removed the old misleading root-level `toolchain.json` / `tolerances.json` placeholder affordances.
+- Repaired the manual `chain.compiler_c1_intent` example to the actual `1.6.0` object contract: explicit `--toolchain-set`, explicit `--tolerances`, and built-in `toolchain.main` binding without obsolete shorthand mixing.
+- Updated schemas, LockedSpec, operator docs, gate docs, tier-pack truth, canonical mirrors, and protocol-pack mirrors so the shipped authority map is consistent across runtime, docs, and locked pack surfaces.
+- Refreshed the public Gate Q / Gate R / Gate S fixtures to the locked ToolchainSet and Tolerances object shape so canonical pass fixtures remain valid under `1.6.0` and negative fixtures continue to fail at their intended checks instead of stale legacy schema drift.
+- Expanded consistency-sweep authority coverage to lock the shipped run object-ref CLI contract, `run new` environment-input guidance, legacy numeric-budget retirement parity, and ToolchainSet/Tolerances schema-catalog loader claims.
+- Added regression coverage for explicit/generated ToolchainSet binding, explicit/generated Tolerances locking, legacy intent-budget rejection, locked Tolerances consumption in R2, R7 unaccounted/accounted diff controls, R8 inside-diff/outside-diff controls, and the revised orchestrator run inputs.
+
+### Notes
+- This release sharpens shipped runtime truth and object authority; it does not widen R7 into SBOM/provenance/vulnerability claims or turn R8 into a repo-wide scan.
+
 ## 1.5.4 — 2026-03-21
 
 ### Summary

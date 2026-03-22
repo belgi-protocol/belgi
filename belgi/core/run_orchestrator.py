@@ -373,6 +373,28 @@ def _command_log_mode_for_tier(*, protocol: Any, tier_id: str) -> str:
     return str(mode)
 
 
+def _generated_tolerances_object_for_tier(*, protocol: Any, tier_id: str) -> dict[str, object]:
+    try:
+        from chain.logic.tier_packs import load_tier_params
+    except Exception as e:
+        raise ValueError(f"tier parser unavailable for tolerances generation: {e}") from e
+
+    tiers_text = protocol.read_text("tiers/tier-packs.json")
+    loaded = load_tier_params(tiers_text, tier_id)
+    if loaded.params is None:
+        parse_err = loaded.parse_error or "unknown parse failure"
+        raise ValueError(f"tier parameter parse failed: {parse_err}")
+
+    return {
+        "schema_version": "1.0.0",
+        "tier_id": tier_id,
+        "scope_budgets": {
+            "max_touched_files": loaded.params.scope_budgets_max_touched_files,
+            "max_loc_delta": loaded.params.scope_budgets_max_loc_delta,
+        },
+    }
+
+
 def _tier_test_plan_for_tier(*, protocol: Any, tier_id: str) -> TierTestPlan:
     """Resolve deterministic test evidence producer plan from tier policy."""
 
@@ -738,6 +760,167 @@ def stage_run_evidence(
     )
 
 
+def _bind_declared_toolchain_refs(
+    *,
+    chain_repo_root: Path,
+    declared_toolchain_refs: list[str] | None,
+) -> list[str]:
+    if not declared_toolchain_refs:
+        return []
+
+    bound_refs: list[str] = []
+    seen_toolchain_ids: set[str] = set()
+
+    for raw in declared_toolchain_refs:
+        spec = str(raw or "").strip()
+        if not spec or "=" not in spec:
+            raise ValueError("declared toolchain ref must use <object_id>=<repo-relative-path>")
+        toolchain_id, source_ref = spec.split("=", 1)
+        toolchain_id = toolchain_id.strip()
+        source_ref = source_ref.strip()
+        if not toolchain_id or not source_ref:
+            raise ValueError("declared toolchain ref must use <object_id>=<repo-relative-path>")
+        if toolchain_id == "toolchain.main":
+            raise ValueError("toolchain id `toolchain.main` is reserved for the built-in run toolchain input")
+        if toolchain_id in seen_toolchain_ids:
+            raise ValueError(f"duplicate toolchain id: {toolchain_id}")
+        seen_toolchain_ids.add(toolchain_id)
+
+        try:
+            chain_path = resolve_storage_ref(chain_repo_root, source_ref)
+        except ValueError as e:
+            raise ValueError(f"invalid declared toolchain ref: {source_ref}: {e}") from e
+
+        if chain_path.exists():
+            if chain_path.is_symlink() or not chain_path.is_file():
+                raise ValueError(f"declared toolchain ref missing/invalid in evaluated revision: {source_ref}")
+            bound_ref = safe_relpath(chain_repo_root, chain_path)
+        else:
+            raise ValueError(f"declared toolchain ref missing/invalid in evaluated revision: {source_ref}")
+
+        bound_refs.append(f"{toolchain_id}={bound_ref}")
+
+    return bound_refs
+
+
+def _load_toolchain_set_paths(
+    *,
+    chain_repo_root: Path,
+    toolchain_set_path: Path,
+) -> list[str]:
+    try:
+        toolchain_set_obj = json.loads(toolchain_set_path.read_text(encoding="utf-8", errors="strict"))
+    except Exception as e:
+        raise ValueError(f"declared ToolchainSet is not valid UTF-8 JSON: {e}") from e
+    if not isinstance(toolchain_set_obj, dict):
+        raise ValueError("declared ToolchainSet must be a JSON object")
+
+    refs_obj = toolchain_set_obj.get("refs")
+    if not isinstance(refs_obj, list):
+        raise ValueError("declared ToolchainSet.refs missing/invalid")
+
+    bound_refs: list[str] = []
+    seen_toolchain_ids: set[str] = set()
+    for idx, entry in enumerate(refs_obj):
+        if not isinstance(entry, dict):
+            raise ValueError(f"declared ToolchainSet.refs[{idx}] missing/invalid")
+        raw_id = entry.get("id")
+        raw_path = entry.get("path")
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise ValueError(f"declared ToolchainSet.refs[{idx}].id missing/invalid")
+        toolchain_id = raw_id.strip()
+        if toolchain_id == "toolchain.main":
+            raise ValueError("declared ToolchainSet must not declare reserved id toolchain.main")
+        if toolchain_id in seen_toolchain_ids:
+            raise ValueError(f"duplicate toolchain id: {toolchain_id}")
+        seen_toolchain_ids.add(toolchain_id)
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"declared ToolchainSet.refs[{idx}].path missing/invalid")
+        try:
+            chain_path = resolve_storage_ref(chain_repo_root, raw_path.strip())
+        except ValueError as e:
+            raise ValueError(f"invalid declared ToolchainSet ref path: {raw_path}: {e}") from e
+        if not chain_path.exists() or chain_path.is_symlink() or not chain_path.is_file():
+            raise ValueError(f"declared ToolchainSet ref missing/invalid in evaluated revision: {raw_path}")
+        bound_refs.append(f"{toolchain_id}={safe_relpath(chain_repo_root, chain_path)}")
+    return bound_refs
+
+
+def _bind_declared_toolchain_set_ref(
+    *,
+    chain_repo_root: Path,
+    declared_toolchain_set_ref: str | None,
+) -> tuple[str | None, list[str]]:
+    spec = str(declared_toolchain_set_ref or "").strip()
+    if not spec:
+        return None, []
+    if "=" not in spec:
+        raise ValueError("declared ToolchainSet ref must use <object_id>=<repo-relative-path>")
+    toolchain_set_id, source_ref = spec.split("=", 1)
+    toolchain_set_id = toolchain_set_id.strip()
+    source_ref = source_ref.strip()
+    if not toolchain_set_id or not source_ref:
+        raise ValueError("declared ToolchainSet ref must use <object_id>=<repo-relative-path>")
+    if toolchain_set_id == "toolchain.main":
+        raise ValueError("declared ToolchainSet id `toolchain.main` is reserved for the built-in run toolchain input")
+
+    try:
+        chain_path = resolve_storage_ref(chain_repo_root, source_ref)
+    except ValueError as e:
+        raise ValueError(f"invalid declared ToolchainSet ref: {source_ref}: {e}") from e
+
+    if not chain_path.exists() or chain_path.is_symlink() or not chain_path.is_file():
+        raise ValueError(f"declared ToolchainSet ref missing/invalid in evaluated revision: {source_ref}")
+
+    bound_ref = f"{toolchain_set_id}={safe_relpath(chain_repo_root, chain_path)}"
+    bound_toolchain_refs = _load_toolchain_set_paths(
+        chain_repo_root=chain_repo_root,
+        toolchain_set_path=chain_path,
+    )
+    return bound_ref, bound_toolchain_refs
+
+
+def _bind_declared_tolerances_ref(
+    *,
+    chain_repo_root: Path,
+    declared_tolerances_ref: str | None,
+) -> str | None:
+    spec = str(declared_tolerances_ref or "").strip()
+    if not spec:
+        return None
+    if "=" not in spec:
+        raise ValueError("declared tolerances ref must use <object_id>=<repo-relative-path>")
+    tolerances_id, source_ref = spec.split("=", 1)
+    tolerances_id = tolerances_id.strip()
+    source_ref = source_ref.strip()
+    if not tolerances_id or not source_ref:
+        raise ValueError("declared tolerances ref must use <object_id>=<repo-relative-path>")
+
+    try:
+        chain_path = resolve_storage_ref(chain_repo_root, source_ref)
+    except ValueError as e:
+        raise ValueError(f"invalid declared tolerances ref: {source_ref}: {e}") from e
+
+    if not chain_path.exists() or chain_path.is_symlink() or not chain_path.is_file():
+        raise ValueError(f"declared tolerances ref missing/invalid in evaluated revision: {source_ref}")
+    return f"{tolerances_id}={safe_relpath(chain_repo_root, chain_path)}"
+
+
+def _assert_unique_toolchain_ids(*, toolchain_refs: list[str]) -> None:
+    seen_toolchain_ids: set[str] = set()
+    for raw in toolchain_refs:
+        spec = str(raw or "").strip()
+        if not spec or "=" not in spec:
+            raise ValueError("toolchain ref must use <object_id>=<repo-relative-path>")
+        toolchain_id, _ = spec.split("=", 1)
+        toolchain_id = toolchain_id.strip()
+        if not toolchain_id:
+            raise ValueError("toolchain ref must use <object_id>=<repo-relative-path>")
+        if toolchain_id in seen_toolchain_ids:
+            raise ValueError(f"duplicate toolchain id after built-in binding: {toolchain_id}")
+        seen_toolchain_ids.add(toolchain_id)
+
+
 def _parse_registry_block_ids(registry_text: str) -> list[str]:
     ids = sorted(set(re.findall(r"\bPB-\d{3}\b", registry_text)))
     if not ids:
@@ -875,6 +1058,9 @@ def orchestrate_chain_run(
     applied_waiver_refs: list[str] | None = None,
     operator_anchors: OperatorAnchorInputs | None = None,
     run_evidence: RunEvidenceInputs | None = None,
+    declared_toolchain_set_ref: str | None = None,
+    declared_toolchain_refs: list[str] | None = None,
+    declared_tolerances_ref: str | None = None,
 ) -> RunOrchestrationResult:
     base_revision = _require_commit_sha40(base_revision, label="base_revision")
     evaluated_revision = _require_commit_sha40(evaluated_revision, label="evaluated_revision")
@@ -916,13 +1102,47 @@ def orchestrate_chain_run(
     rel_bundle_root_sha = f"{CHAIN_OUT_DIRNAME}/bundle_root.sha256"
     rel_seal = f"{CHAIN_OUT_DIRNAME}/SealManifest.json"
     rel_gate_s = f"{CHAIN_OUT_DIRNAME}/GateVerdict.S.json"
+    tolerances_path = chain_out_dir / "inputs" / "tolerances.json"
+    toolchain_path = chain_out_dir / "inputs" / "toolchain.json"
 
     _git_clone_at_commit(source_repo=source_repo_root, dest_repo=chain_repo_dir, commit_sha=evaluated_revision)
+    bound_declared_toolchain_set_ref, bound_toolchain_set_refs = _bind_declared_toolchain_set_ref(
+        chain_repo_root=chain_repo_dir,
+        declared_toolchain_set_ref=declared_toolchain_set_ref,
+    )
+    bound_declared_tolerances_ref = _bind_declared_tolerances_ref(
+        chain_repo_root=chain_repo_dir,
+        declared_tolerances_ref=declared_tolerances_ref,
+    )
+    if bound_declared_toolchain_set_ref is not None and declared_toolchain_refs:
+        raise ValueError("do not mix declared ToolchainSet authority with shorthand declared toolchain refs")
+    bound_declared_toolchain_refs = _bind_declared_toolchain_refs(
+        chain_repo_root=chain_repo_dir,
+        declared_toolchain_refs=declared_toolchain_refs,
+    )
+    if bound_declared_tolerances_ref is None:
+        _write_json(
+            tolerances_path,
+            _generated_tolerances_object_for_tier(protocol=protocol, tier_id=tier_id),
+        )
+        effective_tolerances_ref = f"tier.tolerances={safe_relpath(chain_repo_dir, tolerances_path)}"
+    else:
+        effective_tolerances_ref = bound_declared_tolerances_ref
+    effective_toolchain_refs = [
+        f"toolchain.main={safe_relpath(chain_repo_dir, toolchain_path)}",
+        *(bound_toolchain_set_refs if bound_declared_toolchain_set_ref is not None else bound_declared_toolchain_refs),
+    ]
+    _assert_unique_toolchain_ids(toolchain_refs=effective_toolchain_refs)
+    c1_toolchain_refs = (
+        [effective_toolchain_refs[0]] if bound_declared_toolchain_set_ref is not None else list(effective_toolchain_refs)
+    )
 
     commands_executed: list[Any] = []
     rc_supply = run_supplychain_scan(
         repo=chain_repo_dir,
+        base_revision=base_revision,
         evaluated_revision=evaluated_revision,
+        declared_toolchain_refs=effective_toolchain_refs,
         out_path=chain_repo_dir / rel_policy_supply,
         deterministic=True,
         run_id=run_key,
@@ -972,9 +1192,6 @@ def orchestrate_chain_run(
     intent_in_chain = chain_repo_dir / "IntentSpec.core.md"
     intent_in_chain.write_bytes(intent_bytes)
 
-    tolerances_path = chain_out_dir / "inputs" / "tolerances.json"
-    toolchain_path = chain_out_dir / "inputs" / "toolchain.json"
-    _write_json(tolerances_path, {"schema_version": "1.0.0", "tier_id": tier_id})
     _write_json(
         toolchain_path,
         {
@@ -1007,16 +1224,18 @@ def orchestrate_chain_run(
         "--prompt-bundle-policy-out",
         rel_prompt_policy,
         "--tolerances",
-        f"tier.tolerances={safe_relpath(chain_repo_dir, tolerances_path)}",
+        effective_tolerances_ref,
         "--envelope-id",
         "env.default",
         "--envelope-description",
         "Deterministic BELGI run envelope",
         "--expected-runner",
         "belgi.cli.run",
-        "--toolchain-ref",
-        f"toolchain.main={safe_relpath(chain_repo_dir, toolchain_path)}",
     ]
+    if bound_declared_toolchain_set_ref is not None:
+        c1_argv.extend(["--toolchain-set", bound_declared_toolchain_set_ref])
+    for toolchain_ref in c1_toolchain_refs:
+        c1_argv.extend(["--toolchain-ref", toolchain_ref])
     if staged_operator_anchors is not None:
         c1_argv.extend(
             [
@@ -1070,6 +1289,8 @@ def orchestrate_chain_run(
 
     rc_adv = run_adversarial_scan(
         repo=chain_repo_dir,
+        base_revision=base_revision,
+        evaluated_revision=evaluated_revision,
         out_path=chain_repo_dir / rel_policy_adv,
         deterministic=True,
         run_id=run_key,
