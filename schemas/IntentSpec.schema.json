@@ -45,16 +45,6 @@
           "type": "array",
           "items": { "$ref": "#/$defs/RepoRelPathPrefix" },
           "description": "Repo-relative directory/prefixes that the change must not touch. May be empty array."
-        },
-        "max_touched_files": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Optional budget for number of touched files."
-        },
-        "max_loc_delta": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Optional budget for LOC delta (insertions + deletions)."
         }
       }
     },

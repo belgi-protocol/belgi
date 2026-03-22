@@ -34,7 +34,7 @@ Deterministic semantics (v1):
   - `tier.tier_id`, `tier.tolerances_ref`
   - `environment_envelope.*`
   - `invariants[]`
-  - `constraints.allowed_paths`, `constraints.forbidden_paths`, optional `constraints.max_touched_files`, `constraints.max_loc_delta`
+  - `constraints.allowed_paths`, `constraints.forbidden_paths`
   - `prompt_bundle_ref`
   - `protocol_pack.*`
   - `upstream_state.repo_ref`, `upstream_state.commit_sha`, `upstream_state.dirty_flag`
@@ -196,17 +196,17 @@ Note (deterministic tokenization):
        - a newline-joined list with prefix "- " for each entry in `IntentSpec.acceptance.success_criteria`, preserving order.
        - Example: "- item1\n- item2".
      - `LockedSpec.intent.scope` MUST equal this deterministic summary string, preserving array order:
-       - `allowed_dirs: [<allowed_dirs joined by ', '>]; forbidden_dirs: [<forbidden_dirs joined by ', '>]; max_touched_files: <value or null>; max_loc_delta: <value or null>`
+       - `allowed_dirs: [<allowed_dirs joined by ', '>]; forbidden_dirs: [<forbidden_dirs joined by ', '>]`
 
   2) Scope/constraint mapping (LockedSpec.constraints.*):
      - `LockedSpec.constraints.allowed_paths` MUST equal `IntentSpec.scope.allowed_dirs` exactly (array equality; preserve order).
      - `LockedSpec.constraints.forbidden_paths` MUST equal `IntentSpec.scope.forbidden_dirs` exactly.
-     - If `IntentSpec.scope.max_touched_files` is present, `LockedSpec.constraints.max_touched_files` MUST equal it.
-     - If `IntentSpec.scope.max_loc_delta` is present, `LockedSpec.constraints.max_loc_delta` MUST equal it.
+     - Legacy `IntentSpec.scope.max_touched_files` and `IntentSpec.scope.max_loc_delta` are retired from shipped semantics and MUST fail closed with migration guidance to move numeric budgets into the Tolerances object.
 
   3) Tier mapping (LockedSpec.tier.*):
      - `LockedSpec.tier.tier_id` MUST equal `IntentSpec.tier.tier_pack_id`.
-     - The remaining tier fields (`tier_name`, `tolerances_ref`) are populated by C1 from tier packs and MUST remain schema-valid.
+     - `LockedSpec.tier.tier_name` MUST remain schema-valid.
+     - `LockedSpec.tier.tolerances_ref` MUST point to the locked tolerances object selected on the primary run spine, whether explicitly supplied or canonically generated from the selected tier.
 
   4) doc_impact semantics alignment:
      - From tier-packs, read `doc_impact_required` for the selected tier.
@@ -322,13 +322,21 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
 - check_id: `Q4`
 - required inputs:
   - `LockedSpec.constraints.allowed_paths` and `LockedSpec.constraints.forbidden_paths` (LockedSpec schema)
+  - `LockedSpec.tier.tolerances_ref`
+  - Tier ceilings (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
 - deterministic procedure:
   1) Verify `constraints.allowed_paths` is non-empty.
   2) Verify `constraints.forbidden_paths` is present (may be empty).
-  3) Record `constraints.max_touched_files` and `constraints.max_loc_delta` if present; these become the locked run constraints.
-- failure category: `FQ-CONSTRAINTS-MISSING`
+  3) Resolve `LockedSpec.tier.tolerances_ref` and verify the locked tolerances object is schema-valid, hash-bound, and aligned to the selected tier ceilings.
+  4) Require `Tolerances.tier_id == LockedSpec.tier.tier_id`.
+  5) Require `Tolerances.scope_budgets.max_touched_files` and `Tolerances.scope_budgets.max_loc_delta` to match the selected tier ceilings.
+- failure category:
+  - `FQ-CONSTRAINTS-MISSING` when required path constraints are absent.
+  - `FQ-SCHEMA-LOCKEDSPEC-INVALID` when the locked Tolerances object is invalid.
 - required evidence kinds: `policy_report`, `schema_validation`
-- remediation.next_instruction template: `Do add required constraints (missing_field) to LockedSpec then re-run Q.`
+- remediation.next_instruction template:
+  - `Do add required constraints (missing_field) to LockedSpec then re-run Q.`
+  - `Do lock a valid tier.tolerances_ref object for the selected tier ceilings, then re-run Q.`
 
 ### Q-CONSTRAINT-001 — Constraints path prefixes are normalized (repo-relative)
 - check_id: `Q-CONSTRAINT-001`
@@ -346,12 +354,15 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
 - check_id: `Q5`
 - required inputs:
   - `LockedSpec.environment_envelope.*` (LockedSpec schema)
+  - `LockedSpec.environment_envelope.toolchain_set_ref` (LockedSpec schema)
 - deterministic procedure:
   1) Verify `environment_envelope.id`, `description`, `expected_runner` are non-empty (schema-enforced).
-  2) Verify `pinned_toolchain_refs` is present and non-empty (schema-enforced).
+  2) Resolve and verify the locked ToolchainSet object referenced by `toolchain_set_ref`.
+  3) Verify `pinned_toolchain_refs` is present and non-empty (schema-enforced).
+  4) Verify `pinned_toolchain_refs` equals built-in `toolchain.main` followed by the operator refs declared in the locked ToolchainSet, preserving order.
 - failure category: `FQ-ENVELOPE-MISSING`
 - required evidence kinds: `schema_validation`, `policy_report`
-- remediation.next_instruction template: `Do declare a complete environment_envelope (including pinned_toolchain_refs) then re-run Q.`
+- remediation.next_instruction template: `Do declare a complete environment_envelope (including toolchain_set_ref and pinned_toolchain_refs) then re-run Q.`
 
 ### Q6 — Waivers validity (if present)
 - check_id: `Q6`

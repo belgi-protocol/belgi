@@ -323,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
             ("EvidenceManifest", "schemas/EvidenceManifest.schema.json"),
             ("Waiver", "schemas/Waiver.schema.json"),
             ("HOTLApproval", "schemas/HOTLApproval.schema.json"),
+            ("ToolchainSet", "schemas/ToolchainSet.schema.json"),
+            ("Tolerances", "schemas/Tolerances.schema.json"),
             ("GateVerdict", "schemas/GateVerdict.schema.json"),
         ):
             schemas[name] = _load_schema(protocol, rel)

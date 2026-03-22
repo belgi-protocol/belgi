@@ -34,10 +34,15 @@ Category-level rules (no bypass-friendly details):
 - `allowed_skips`: whether skips may be present without NO-GO.
 
 ### 2.3 scope_budgets
-Conservative defaults used by Gate R (R2) when `LockedSpec.constraints.max_*` are absent.
+Canonical ceiling values materialized into the locked tolerances object for the selected tier.
 - `max_touched_files`: integer or null
 - `max_loc_delta`: integer or null
 - `forbidden_paths_enforcement`: `strict` or `relaxed` (still enforced)
+
+Authority note:
+- Tier packs define canonical templates and ceilings.
+- The run-local Tolerances object locked at `LockedSpec.tier.tolerances_ref` is the runtime budget authority after lock.
+- Numeric scope budgets do not live in `IntentSpec` on the shipped run spine.
 
 Operational meaning (enforcement procedure only):
 - `strict`: forbidden-path violations are NOT waivable.
@@ -62,6 +67,10 @@ This parameter is enforced by Gate R as a deterministic evidence obligation.
 - `pinned_toolchain_refs_required`: yes/no
 
 Note: `LockedSpec.environment_envelope.pinned_toolchain_refs` is schema-required (array present) but may be empty at schema level; the **Q5 semantic check** enforces non-empty when `pinned_toolchain_refs_required: yes`. This parameter exists for completeness and for future schema evolution.
+
+Operator/object note:
+- ToolchainSet is the authoritative run-local declaration object locked at `LockedSpec.environment_envelope.toolchain_set_ref`.
+- `pinned_toolchain_refs` remains the normalized execution ref list derived from ToolchainSet plus built-in `toolchain.main`.
 
 ### 2.7 doc_impact_required
 Boolean controlling whether the LockedSpec MUST include the `doc_impact` object.

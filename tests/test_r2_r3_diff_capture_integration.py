@@ -6,6 +6,7 @@ and feed it into R2/R3 check functions.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -53,10 +54,40 @@ def _build_ctx(*, tmp_repo: Path, base_sha: str, head_sha: str, diff_storage_ref
 
     diff_path = tmp_repo / Path(*diff_storage_ref.split("/"))
     diff_bytes = diff_path.read_bytes()
+    tolerances_storage_ref = "out/tolerances.json"
+    tolerances_path = tmp_repo / "out" / "tolerances.json"
+    tolerances_path.parent.mkdir(parents=True, exist_ok=True)
+    tolerances_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "tier_id": "tier-1",
+                "scope_budgets": {
+                    "max_touched_files": 10,
+                    "max_loc_delta": 200,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    tolerances_bytes = tolerances_path.read_bytes()
 
     locked_spec = {
         "run_id": "run-test-001",
-        "tier": {"tier_id": "tier-1"},
+        "tier": {
+            "tier_id": "tier-1",
+            "tolerances_ref": {
+                "id": "tier.tolerances",
+                "hash": sha256_bytes(tolerances_bytes),
+                "storage_ref": tolerances_storage_ref,
+            },
+        },
         "constraints": {
             "allowed_paths": ["src/"],
             "forbidden_paths": ["secrets/"],
@@ -91,8 +122,6 @@ def _build_ctx(*, tmp_repo: Path, base_sha: str, head_sha: str, diff_storage_ref
         gate_verdict=None,
         tier_params={
             "command_log_mode": "strings",
-            "scope_budgets.max_touched_files": 10,
-            "scope_budgets.max_loc_delta": 200,
             "scope_budgets.forbidden_paths_enforcement": "strict",
             "waiver_policy.allowed": False,
         },

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
-
 from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_storage_ref, safe_relpath
 from chain.logic.base import CheckResult, find_artifacts_by_kind
+from chain.logic.tolerances import load_locked_tolerances
 
 from .context import RCheckContext
 from .git_ops import (
@@ -15,21 +14,6 @@ from .git_ops import (
 )
 
 
-def _effective_limit(locked_constraints: dict[str, Any], tier_params: dict[str, Any], key: str) -> int | None:
-    """Resolve an optional limit from LockedSpec first, then tier defaults."""
-
-    if isinstance(locked_constraints.get(key), int) and not isinstance(locked_constraints.get(key), bool):
-        return int(locked_constraints.get(key))
-
-    tier_key = f"scope_budgets.{key}"
-    v = tier_params.get(tier_key)
-    if v is None:
-        return None
-    if isinstance(v, int) and not isinstance(v, bool):
-        return int(v)
-    return None
-
-
 def run(ctx: RCheckContext) -> list[CheckResult]:
     """R2 — Scope / Blast Radius within tier budgets.
 
@@ -37,14 +21,9 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
     - touched_files = count of unique changed paths
     - loc_delta = insertions + deletions (best-effort from unified diff)
 
-    Enforces effective limits:
-    - LockedSpec.constraints.max_* overrides tier default when present
-    - Null means "no limit" for that dimension
+    Enforces effective limits from the locked Tolerances object only.
+    Null means "no limit" for that dimension.
     """
-
-    locked_constraints = ctx.locked_spec.get("constraints")
-    if not isinstance(locked_constraints, dict):
-        locked_constraints = {}
 
     # Resolve the single diff artifact (required evidence) and verify bytes->hash.
     diff_arts = find_artifacts_by_kind(ctx.evidence_manifest.get("artifacts"), kind="diff")
@@ -58,7 +37,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                 category="FR-SCOPE-BUDGET-EXCEEDED",
                 message=msg,
                 pointers=[em_ptr],
-                remediation_next_instruction="Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.",
+                remediation_next_instruction=(
+                    "Do reduce scope to within the locked tolerances ceilings or change the locked "
+                    "Tolerances object / selected tier and re-run Q, then re-run R."
+                ),
             )
         ]
 
@@ -144,7 +126,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                     category="FR-SCOPE-BUDGET-EXCEEDED",
                     message=f"Cannot compute deterministic scope metrics from diff artifact bytes (fixture fallback): {e2}",
                     pointers=[storage_ref],
-                    remediation_next_instruction="Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.",
+                    remediation_next_instruction=(
+                        "Do reduce scope to within the locked tolerances ceilings or change the locked "
+                        "Tolerances object / selected tier and re-run Q, then re-run R."
+                    ),
                 )
             ]
     else:
@@ -179,7 +164,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                             category="FR-SCOPE-BUDGET-EXCEEDED",
                             message=f"Cannot compute deterministic scope metrics from diff artifact bytes (fixture fallback): {e2}",
                             pointers=[storage_ref],
-                            remediation_next_instruction="Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.",
+                            remediation_next_instruction=(
+                                "Do reduce scope to within the locked tolerances ceilings or change the locked "
+                                "Tolerances object / selected tier and re-run Q, then re-run R."
+                            ),
                         )
                     ]
             else:
@@ -192,34 +180,37 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                             f"Cannot compute deterministic scope metrics from git diff {ctx.upstream_commit_sha}..{ctx.evaluated_revision}: {e}"
                         ),
                         pointers=[storage_ref],
-                        remediation_next_instruction="Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.",
+                        remediation_next_instruction=(
+                            "Do reduce scope to within the locked tolerances ceilings or change the locked "
+                            "Tolerances object / selected tier and re-run Q, then re-run R."
+                        ),
                     )
                 ]
 
     touched_files = len(sorted(set(changed_paths)))
     loc_delta = int(added + removed)
-
-    max_touched_files = _effective_limit(locked_constraints, ctx.tier_params, "max_touched_files")
-    max_loc_delta = _effective_limit(locked_constraints, ctx.tier_params, "max_loc_delta")
-
-    # Fail closed if tier params are missing for budgets and LockedSpec didn't override.
-    tier_missing: list[str] = []
-    if ("max_touched_files" not in locked_constraints) and (ctx.tier_params.get("scope_budgets.max_touched_files") is None):
-        tier_missing.append("scope_budgets.max_touched_files")
-    if ("max_loc_delta" not in locked_constraints) and (ctx.tier_params.get("scope_budgets.max_loc_delta") is None):
-        tier_missing.append("scope_budgets.max_loc_delta")
-
-    if tier_missing:
+    try:
+        locked_tolerances = load_locked_tolerances(
+            repo_root=ctx.repo_root,
+            locked_spec=ctx.locked_spec,
+            protocol=ctx.protocol,
+        )
+    except ValueError as e:
         return [
             CheckResult(
                 check_id="R2",
                 status="FAIL",
-                category="FR-SCOPE-BUDGET-EXCEEDED",
-                message=f"Tier scope_budgets missing; cannot enforce R2 deterministically: {tier_missing}",
-                pointers=[safe_relpath(ctx.repo_root, ctx.locked_spec_path) + "#/tier/tier_id"],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+                category="FR-SCHEMA-ARTIFACT-INVALID",
+                message=f"Locked tolerances object invalid for R2: {e}",
+                pointers=[safe_relpath(ctx.repo_root, ctx.locked_spec_path)],
+                remediation_next_instruction="Do fix the locked tolerances object so it matches the selected tier ceilings, then re-run R.",
             )
         ]
+
+    max_touched_files_ceiling = locked_tolerances.max_touched_files
+    max_loc_delta_ceiling = locked_tolerances.max_loc_delta
+    max_touched_files = max_touched_files_ceiling
+    max_loc_delta = max_loc_delta_ceiling
 
     # Deterministic primary cause: touched_files first, then loc_delta.
     if max_touched_files is not None and touched_files > max_touched_files:
@@ -230,7 +221,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                 category="FR-SCOPE-BUDGET-EXCEEDED",
                 message=f"Scope budget exceeded: touched_files={touched_files} > max_touched_files={max_touched_files}",
                 pointers=[storage_ref],
-                remediation_next_instruction="Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.",
+                remediation_next_instruction=(
+                    "Do reduce scope to within the locked tolerances ceilings or change the locked "
+                    "Tolerances object / selected tier and re-run Q, then re-run R."
+                ),
             )
         ]
 
@@ -242,7 +236,10 @@ def run(ctx: RCheckContext) -> list[CheckResult]:
                 category="FR-SCOPE-BUDGET-EXCEEDED",
                 message=f"Scope budget exceeded: loc_delta={loc_delta} > max_loc_delta={max_loc_delta}",
                 pointers=[storage_ref],
-                remediation_next_instruction="Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.",
+                remediation_next_instruction=(
+                    "Do reduce scope to within the locked tolerances ceilings or change the locked "
+                    "Tolerances object / selected tier and re-run Q, then re-run R."
+                ),
             )
         ]
 

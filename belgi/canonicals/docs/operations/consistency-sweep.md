@@ -56,11 +56,20 @@ Canonical trigger:
 - wrapper/comp_C1.py
 - wrapper/comp_C3.py
 - wrapper/seal_S.py
+- belgi/cli_app/parser/run.py
+- belgi/cli_app/commands/run.py
 - chain/gate_q_verify.py
 - chain/gate_r_verify.py
 - chain/gate_s_verify.py
+- chain/compiler_c1_intent.py
 - chain/seal_bundle.py
 - chain/compiler_c3_docs.py
+- chain/logic/locked_object_schema.py
+- chain/logic/q_checks/q_intent_003.py
+- chain/logic/toolchain_set.py
+- chain/logic/tolerances.py
+- chain/logic/q_checks/q4_constraints_present.py
+- chain/logic/q_checks/q5_environment_envelope.py
 - tools/normalize.py
 - tools/rehash.py
 - tools/render.py
@@ -112,11 +121,13 @@ Canonical trigger:
 - templates/ci/github/belgi-tier1.yml
 - schemas/*.schema.json
 - schemas/README.md
+- belgi/_protocol_packs/v1/schemas/README.md
 - tools/README.md
 - tools/report.py
 - chain/logic/r_checks/context.py
 - chain/logic/r_checks/registry.py
 - chain/logic/r_checks/r0_evidence_sufficiency.py
+- chain/logic/r_checks/r2_scope_budgets.py
 - chain/logic/r_checks/r_doc_001_doc_impact.py
 - chain/logic/r_checks/r4_schema_contract.py
 
@@ -424,6 +435,91 @@ Canonical trigger:
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if steps 1–4 hold.
+  - FAIL otherwise.
+
+#### CS-IS-005 — Legacy numeric budget retirement is consistent across schema, compiler, Gate Q, and docs
+- invariant_id: CS-IS-005
+- statement: Legacy numeric scope budgets MUST remain retired consistently across `IntentSpec` schema, compiler rejection, Gate Q guidance, and shipped operator docs.
+- source-of-truth (file/section):
+  - schemas/IntentSpec.schema.json
+  - chain/compiler_c1_intent.py
+  - chain/logic/q_checks/q_intent_003.py
+  - docs/operations/cli.md
+- check procedure (deterministic):
+  1) Confirm `schemas/IntentSpec.schema.json` does not define `scope.max_touched_files` or `scope.max_loc_delta`.
+  2) Confirm `chain/compiler_c1_intent.py` states that `IntentSpec.scope` numeric budgets are retired and instructs operators to move them into a Tolerances object.
+  3) Confirm `chain/logic/q_checks/q_intent_003.py` carries the same retirement semantics and migration direction.
+  4) Confirm `docs/operations/cli.md` teaches that numeric scope budgets no longer live in `IntentSpec` and must move into Tolerances.
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if schema, compiler, Gate Q, and operator docs tell the same retirement story.
+  - FAIL otherwise.
+
+#### CS-RUN-001 — Shipped run object-ref CLI contract matches parser and command semantics
+- invariant_id: CS-RUN-001
+- statement: The shipped `belgi run` object-ref contract taught in `cli.md` MUST match the real parser flags and command guardrails.
+- source-of-truth (file/section):
+  - docs/operations/cli.md
+  - belgi/cli_app/parser/run.py
+  - belgi/cli_app/commands/run.py
+- check procedure (deterministic):
+  1) Confirm `docs/operations/cli.md` teaches:
+     - `--toolchain-set-ref <object_id>=<repo-relative-path>`
+     - repeatable shorthand `--toolchain-ref <object_id>=<repo-relative-path>`
+     - `--tolerances-ref <object_id>=<repo-relative-path>`
+     - mixing prohibition for `--toolchain-set-ref` + shorthand `--toolchain-ref`
+     - reserved built-in `toolchain.main`
+  2) Confirm `belgi/cli_app/parser/run.py` exposes exactly those three run flags.
+  3) Confirm `belgi/cli_app/commands/run.py` enforces:
+     - no mixing of `--toolchain-set-ref` with shorthand `--toolchain-ref`
+     - reserved `toolchain.main` rejection on explicit toolchain refs
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if docs, parser, and command enforcement agree.
+  - FAIL otherwise.
+
+#### CS-RUN-002 — `run new` guidance promotes authoritative environment inputs
+- invariant_id: CS-RUN-002
+- statement: Operator-visible `belgi run new` guidance MUST advertise authoritative environment inputs under `.belgi/runs/<run_id>/inputs/environment/`, not stale placeholders.
+- source-of-truth (file/section):
+  - belgi/cli_app/commands/run.py
+  - docs/operations/running-belgi.md
+- check procedure (deterministic):
+  1) Render the operator-visible guidance emitted from `belgi/cli_app/commands/run.py` for the canonical examples (`workspace_rel=".belgi"`, `run_id="run-001"`), then confirm the rendered `README.md` / `RUN.md` guidance advertises:
+     - `.belgi/runs/run-001/inputs/environment/toolchain-set.json`
+     - `.belgi/runs/run-001/inputs/environment/tolerances.json`
+     - matching `--toolchain-set-ref` / `--tolerances-ref` examples
+  2) Confirm `docs/operations/running-belgi.md` teaches:
+     - `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json`
+     - `.belgi/runs/<run_id>/inputs/environment/tolerances.json`
+     - `belgi run new` as the path that seeds those operator-visible inputs
+  3) Confirm neither the rendered guidance nor `docs/operations/running-belgi.md` advertise stale root-level `.belgi/runs/<run_id>/toolchain.json` or `.belgi/runs/<run_id>/tolerances.json` placeholders.
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if generated guidance and docs both teach authoritative environment inputs only.
+  - FAIL otherwise.
+
+#### CS-SCHEMA-001 — Schema catalog claims match ToolchainSet/Tolerances loader truth
+- invariant_id: CS-SCHEMA-001
+- statement: Public schema catalog text about ToolchainSet/Tolerances MUST match the real runtime loader authority and the protocol-pack schema mirror.
+- source-of-truth (file/section):
+  - schemas/README.md
+  - belgi/_protocol_packs/v1/schemas/README.md
+  - chain/logic/locked_object_schema.py
+  - chain/logic/toolchain_set.py
+  - chain/logic/tolerances.py
+- check procedure (deterministic):
+  1) Confirm `schemas/README.md` and `belgi/_protocol_packs/v1/schemas/README.md` are byte-identical.
+  2) Confirm both README surfaces state:
+     - locked-object loaders validate ToolchainSet/Tolerances against the published schemas after ObjectRef hash binding
+     - schema and runtime both reject legacy `IntentSpec.scope.max_*`
+  3) Confirm runtime loader code matches those claims:
+     - `chain/logic/locked_object_schema.py` performs shared schema validation
+     - `chain/logic/toolchain_set.py` consumes `schemas/ToolchainSet.schema.json`
+     - `chain/logic/tolerances.py` consumes `schemas/Tolerances.schema.json`
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if schema catalog text, mirror text, and runtime loader implementation agree.
   - FAIL otherwise.
 
 ### 3) Evidence bundle invariants
@@ -991,6 +1087,41 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
   - PASS if the schema patterns enforce the safety constraints.
   - FAIL otherwise.
 
+### CS-LS-002 — ToolchainSet/Tolerances locked-object authority is explicit and wired
+- invariant_id: CS-LS-002
+- statement: LockedSpec MUST expose first-class ToolchainSet and Tolerances ObjectRefs, and shipped runtime/docs MUST consume that same authority model explicitly.
+- source-of-truth (file/section):
+  - schemas/LockedSpec.schema.json
+  - schemas/ToolchainSet.schema.json
+  - schemas/Tolerances.schema.json
+  - chain/compiler_c1_intent.py
+  - chain/logic/locked_object_schema.py
+  - chain/logic/toolchain_set.py
+  - chain/logic/tolerances.py
+  - chain/logic/q_checks/q4_constraints_present.py
+  - chain/logic/q_checks/q5_environment_envelope.py
+  - chain/logic/r_checks/r2_scope_budgets.py
+  - docs/operations/running-belgi.md
+- check procedure (deterministic):
+  1) Confirm `schemas/LockedSpec.schema.json` defines:
+     - `environment_envelope.toolchain_set_ref` as `#/$defs/ObjectRef`
+     - `environment_envelope.pinned_toolchain_refs[].items` as `#/$defs/ObjectRef`
+     - `tier.tolerances_ref` as `#/$defs/ObjectRef`
+  2) Confirm `schemas/ToolchainSet.schema.json` and `schemas/Tolerances.schema.json` both exist.
+  3) Confirm `chain/compiler_c1_intent.py` binds `toolchain_set_ref` and `tolerances_ref` and references the published ToolchainSet/Tolerances schemas.
+  4) Confirm `chain/logic/locked_object_schema.py` performs shared post-hash schema validation, and:
+     - `chain/logic/toolchain_set.py` consumes `schemas/ToolchainSet.schema.json`
+     - `chain/logic/tolerances.py` consumes `schemas/Tolerances.schema.json`
+  5) Confirm shipped runtime authority uses the dedicated locked-object loaders:
+     - `chain/logic/q_checks/q5_environment_envelope.py` uses `load_locked_toolchain_set`
+     - `chain/logic/q_checks/q4_constraints_present.py` uses `load_locked_tolerances`
+     - `chain/logic/r_checks/r2_scope_budgets.py` uses `load_locked_tolerances`
+  6) Confirm `docs/operations/running-belgi.md` teaches first-class shipped object inputs via `--toolchain-set-ref` and `--tolerances-ref`, while keeping manual C1 compiler inputs on `--toolchain-set` and `--tolerances`.
+- required evidence/artifacts (schema kinds): none (repo-doc sweep)
+- pass/fail criteria:
+  - PASS if the schema refs, runtime wiring, and operator docs all align on the same object-authority model.
+  - FAIL otherwise.
+
 ### CS-REF-001 — ObjectRef storage_ref is constrained in schemas
 - invariant_id: CS-REF-001
 - statement: Every schema definition of an ObjectRef-like `storage_ref` MUST be constrained to repo-relative local paths (no absolute paths, no schemes, no drive, no traversal).
@@ -1049,6 +1180,10 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-GS-003: all gate failure categories exist in failure-taxonomy.
 - [ ] CS-GS-004: doc_impact schema and gate semantics align (tier requirement + note-on-empty + check IDs).
 - [ ] CS-GS-005: no spec fiction — doc_impact claimed implies schema field exists.
+- [ ] CS-IS-005: legacy numeric budget retirement stays aligned across schema, compiler, Gate Q, and operator docs.
+- [ ] CS-RUN-001: shipped run object-ref flags in cli.md match parser exposure and command guardrails.
+- [ ] CS-RUN-002: `run new` guidance advertises authoritative inputs/environment objects, not stale placeholders.
+- [ ] CS-SCHEMA-001: schema catalog claims for ToolchainSet/Tolerances match runtime loader truth and the protocol-pack mirror.
 - [ ] CS-EV-001: every evidence kind referenced exists in EvidenceManifest enum.
 - [ ] CS-EV-002: Gate Q minimum evidence kinds are consistent + schema-supported.
 - [ ] CS-EV-003: Gate R evidence sufficiency is tier-driven (no hardcoded extras).
@@ -1078,6 +1213,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-SWEEP-002: managed ops/workflow/script surfaces are explicitly covered in sweep inputs.
 - [ ] CS-GV-001: GateVerdict schema requires run_id.
 - [ ] CS-LS-001: LockedSpec path prefix patterns are normalized + traversal-safe.
+- [ ] CS-LS-002: ToolchainSet/Tolerances locked-object authority is explicit in schema, runtime, and run docs.
 - [ ] CS-REF-001: ObjectRef storage_ref is constrained in all schemas.
 - [ ] CS-R0-ENFORCEMENT-WIRED-001: Gate R R0 evidence sufficiency is wired.
 - [ ] CS-RENDER-001: Render targets (JSON→MD) have no drift.

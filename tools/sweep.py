@@ -1148,6 +1148,290 @@ def check_cs_is_004(root: Path) -> InvariantResult:
     )
 
 
+def check_cs_is_005(root: Path) -> InvariantResult:
+    """CS-IS-005 — Legacy numeric-budget retirement is consistent across schema/runtime/docs."""
+
+    schema_path = repo_path(root, "schemas/IntentSpec.schema.json")
+    if not schema_path.exists():
+        return InvariantResult("CS-IS-005", "FAIL", ["schemas/IntentSpec.schema.json"], "Add schemas/IntentSpec.schema.json.")
+    schema = load_json(schema_path)
+    violations: list[str] = []
+    try:
+        scope_props = json_pointer(schema, "#/properties/scope/properties")
+    except Exception:
+        scope_props = {}
+    if isinstance(scope_props, dict):
+        for retired in ("max_touched_files", "max_loc_delta"):
+            if retired in scope_props:
+                violations.append(f"schemas/IntentSpec.schema.json still defines scope.{retired}")
+
+    targets = {
+        "chain/compiler_c1_intent.py": [
+            "IntentSpec.scope numeric budgets are retired on the shipped run spine;",
+            "move numeric budgets into a Tolerances object.",
+        ],
+        "chain/logic/q_checks/q_intent_003.py": [
+            "IntentSpec.scope numeric budgets are retired on the shipped run spine;",
+            "Do remove IntentSpec.scope.max_* and move numeric budgets into a Tolerances object ",
+        ],
+        "docs/operations/cli.md": [
+            "numeric scope budgets no longer live in `IntentSpec`; move any legacy `IntentSpec.scope.max_*` values into the Tolerances object",
+        ],
+    }
+    for rel, needles in targets.items():
+        path = repo_path(root, rel)
+        if not path.exists():
+            violations.append(f"missing file: {rel}")
+            continue
+        text = read_text(path)
+        for needle in needles:
+            if needle not in text:
+                violations.append(f"{rel} missing {needle!r}")
+
+    if violations:
+        return InvariantResult(
+            "CS-IS-005",
+            "FAIL",
+            [
+                "schemas/IntentSpec.schema.json",
+                "chain/compiler_c1_intent.py",
+                "chain/logic/q_checks/q_intent_003.py",
+                "docs/operations/cli.md",
+            ],
+            "Keep legacy IntentSpec numeric-budget retirement aligned across schema, compiler, Gate Q, and operator docs.",
+            {"violations_sample": violations[:12], "violations_total": len(violations)},
+        )
+
+    return InvariantResult(
+        "CS-IS-005",
+        "PASS",
+        [
+            "schemas/IntentSpec.schema.json",
+            "chain/compiler_c1_intent.py",
+            "chain/logic/q_checks/q_intent_003.py",
+            "docs/operations/cli.md",
+        ],
+        "",
+    )
+
+
+def check_cs_run_001(root: Path) -> InvariantResult:
+    """CS-RUN-001 — Shipped run object-ref CLI contract matches parser and command semantics."""
+
+    targets = {
+        "docs/operations/cli.md": [
+            "--toolchain-set-ref <object_id>=<repo-relative-path>",
+            "--toolchain-ref <object_id>=<repo-relative-path>",
+            "--tolerances-ref <object_id>=<repo-relative-path>",
+            "do not mix `--toolchain-set-ref` with shorthand `--toolchain-ref` values",
+            "`toolchain.main` is reserved for the built-in generated run toolchain input",
+        ],
+        "belgi/cli_app/parser/run.py": ['"--toolchain-set-ref"', '"--toolchain-ref"', '"--tolerances-ref"'],
+        "belgi/cli_app/commands/run.py": [
+            "do not mix --toolchain-set-ref with shorthand --toolchain-ref values",
+            "--toolchain-ref id `toolchain.main` is reserved for the built-in run toolchain input",
+            "--toolchain-set-ref id `toolchain.main` is reserved for the built-in run toolchain input",
+        ],
+    }
+    violations: list[str] = []
+    for rel, needles in targets.items():
+        path = repo_path(root, rel)
+        if not path.exists():
+            violations.append(f"missing file: {rel}")
+            continue
+        text = read_text(path)
+        for needle in needles:
+            if needle not in text:
+                violations.append(f"{rel} missing {needle!r}")
+
+    if violations:
+        return InvariantResult(
+            "CS-RUN-001",
+            "FAIL",
+            ["docs/operations/cli.md", "belgi/cli_app/parser/run.py", "belgi/cli_app/commands/run.py"],
+            "Keep shipped run object-ref flags and guardrails aligned across CLI docs, parser wiring, and command enforcement.",
+            {"violations_sample": violations[:12], "violations_total": len(violations)},
+        )
+
+    return InvariantResult(
+        "CS-RUN-001",
+        "PASS",
+        ["docs/operations/cli.md", "belgi/cli_app/parser/run.py", "belgi/cli_app/commands/run.py"],
+        "",
+    )
+
+
+def check_cs_run_002(root: Path) -> InvariantResult:
+    """CS-RUN-002 — run new guidance promotes authoritative environment inputs, not placeholders."""
+
+    violations: list[str] = []
+    command_path = repo_path(root, "belgi/cli_app/commands/run.py")
+    if not command_path.exists():
+        violations.append("missing file: belgi/cli_app/commands/run.py")
+    else:
+        from belgi.cli_app.commands.run import (
+            _render_adopter_readme,
+            _render_runbook_template,
+        )
+
+        rendered_targets = {
+            "belgi/cli_app/commands/run.py::README.md(.belgi)": (
+                _render_adopter_readme(workspace_rel=".belgi"),
+                [
+                    ".belgi/runs/run-001/inputs/environment/toolchain-set.json",
+                    ".belgi/runs/run-001/inputs/environment/tolerances.json",
+                    "--toolchain-set-ref env.toolchains=.belgi/runs/run-001/inputs/environment/toolchain-set.json",
+                    "--tolerances-ref tier.tolerances=.belgi/runs/run-001/inputs/environment/tolerances.json",
+                    "Optional shared run object inputs:",
+                ],
+            ),
+            "belgi/cli_app/commands/run.py::RUN.md(run-001)": (
+                _render_runbook_template(run_id="run-001"),
+                [
+                    ".belgi/runs/run-001/inputs/environment/toolchain-set.json",
+                    ".belgi/runs/run-001/inputs/environment/tolerances.json",
+                    "Optional shared environment objects:",
+                ],
+            ),
+        }
+        forbidden_rendered = {
+            "belgi/cli_app/commands/run.py::README.md(.belgi)": [
+                ".belgi/runs/run-001/toolchain.json",
+                ".belgi/runs/run-001/tolerances.json",
+            ],
+            "belgi/cli_app/commands/run.py::RUN.md(run-001)": [
+                ".belgi/runs/run-001/toolchain.json",
+                ".belgi/runs/run-001/tolerances.json",
+            ],
+        }
+        for rel, (text, needles) in rendered_targets.items():
+            for needle in needles:
+                if needle not in text:
+                    violations.append(f"{rel} missing {needle!r}")
+        for rel, forbidden in forbidden_rendered.items():
+            text = rendered_targets[rel][0]
+            for needle in forbidden:
+                if needle in text:
+                    violations.append(f"{rel} still advertises stale placeholder {needle!r}")
+
+    doc_targets = {
+        "docs/operations/running-belgi.md": [
+            ".belgi/runs/<run_id>/inputs/environment/toolchain-set.json",
+            ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
+            "`belgi run new`",
+        ],
+    }
+    forbidden_docs = {
+        "docs/operations/running-belgi.md": [
+            ".belgi/runs/<run_id>/toolchain.json",
+            ".belgi/runs/<run_id>/tolerances.json",
+        ]
+    }
+    for rel, needles in doc_targets.items():
+        path = repo_path(root, rel)
+        if not path.exists():
+            violations.append(f"missing file: {rel}")
+            continue
+        text = read_text(path)
+        for needle in needles:
+            if needle not in text:
+                violations.append(f"{rel} missing {needle!r}")
+    for rel, forbidden in forbidden_docs.items():
+        path = repo_path(root, rel)
+        if not path.exists():
+            continue
+        text = read_text(path)
+        for needle in forbidden:
+            if needle in text:
+                violations.append(f"{rel} still advertises stale placeholder {needle!r}")
+
+    if violations:
+        return InvariantResult(
+            "CS-RUN-002",
+            "FAIL",
+            ["belgi/cli_app/commands/run.py", "docs/operations/running-belgi.md"],
+            "Keep run new guidance and operator docs anchored on authoritative inputs/environment ToolchainSet and Tolerances objects.",
+            {"violations_sample": violations[:12], "violations_total": len(violations)},
+        )
+
+    return InvariantResult(
+        "CS-RUN-002",
+        "PASS",
+        ["belgi/cli_app/commands/run.py", "docs/operations/running-belgi.md"],
+        "",
+    )
+
+
+def check_cs_schema_001(root: Path) -> InvariantResult:
+    """CS-SCHEMA-001 — Schema catalog claims for ToolchainSet/Tolerances match runtime loaders."""
+
+    root_readme_path = repo_path(root, "schemas/README.md")
+    pack_readme_path = repo_path(root, "belgi/_protocol_packs/v1/schemas/README.md")
+    required_files = [
+        "schemas/README.md",
+        "belgi/_protocol_packs/v1/schemas/README.md",
+        "chain/logic/locked_object_schema.py",
+        "chain/logic/toolchain_set.py",
+        "chain/logic/tolerances.py",
+    ]
+    violations: list[str] = []
+    for rel in required_files:
+        if not repo_path(root, rel).exists():
+            violations.append(f"{rel} missing")
+    if not violations:
+        if root_readme_path.read_bytes() != pack_readme_path.read_bytes():
+            violations.append("schema README mirror drift: root vs protocol-pack")
+
+        required_claims = [
+            "Gate Q / Gate R locked-object loaders validate ToolchainSet and Tolerances against these published schemas after ObjectRef hash binding.",
+            "schema and runtime both reject legacy `IntentSpec.scope.max_*` fields.",
+        ]
+        for rel in ("schemas/README.md", "belgi/_protocol_packs/v1/schemas/README.md"):
+            text = read_text(repo_path(root, rel))
+            for needle in required_claims:
+                if needle not in text:
+                    violations.append(f"{rel} missing {needle!r}")
+
+        loader_targets = {
+            "chain/logic/locked_object_schema.py": ["validate_schema(", "resolve_storage_ref"],
+            "chain/logic/toolchain_set.py": ["schemas/ToolchainSet.schema.json", "load_locked_schema_object"],
+            "chain/logic/tolerances.py": ["schemas/Tolerances.schema.json", "load_locked_schema_object"],
+        }
+        for rel, needles in loader_targets.items():
+            text = read_text(repo_path(root, rel))
+            for needle in needles:
+                if needle not in text:
+                    violations.append(f"{rel} missing {needle!r}")
+
+    if violations:
+        return InvariantResult(
+            "CS-SCHEMA-001",
+            "FAIL",
+            [
+                "schemas/README.md",
+                "belgi/_protocol_packs/v1/schemas/README.md",
+                "chain/logic/locked_object_schema.py",
+                "chain/logic/toolchain_set.py",
+                "chain/logic/tolerances.py",
+            ],
+            "Keep schema catalog claims, protocol-pack mirror, and ToolchainSet/Tolerances runtime loaders aligned.",
+            {"violations_sample": violations[:12], "violations_total": len(violations)},
+        )
+
+    return InvariantResult(
+        "CS-SCHEMA-001",
+        "PASS",
+        [
+            "schemas/README.md",
+            "belgi/_protocol_packs/v1/schemas/README.md",
+            "chain/logic/locked_object_schema.py",
+            "chain/logic/toolchain_set.py",
+            "chain/logic/tolerances.py",
+        ],
+        "",
+    )
+
+
 def check_cs_gs_001(root: Path) -> InvariantResult:
     """CS-GS-001 — GateVerdict GO/NO-GO semantics match schema and gate specs."""
 
@@ -2660,6 +2944,120 @@ def check_cs_ls_001(root: Path) -> InvariantResult:
     )
 
 
+def check_cs_ls_002(root: Path) -> InvariantResult:
+    """CS-LS-002 — ToolchainSet/Tolerances locked-object authority is explicit and wired."""
+
+    locked_schema_path = repo_path(root, "schemas/LockedSpec.schema.json")
+    if not locked_schema_path.exists():
+        return InvariantResult(
+            "CS-LS-002",
+            "FAIL",
+            ["schemas/LockedSpec.schema.json"],
+            "Add explicit ToolchainSet/Tolerances ObjectRef fields to LockedSpec schema, then rerun sweep.",
+        )
+
+    locked_schema = load_json(locked_schema_path)
+    pointer_expectations = [
+        ("#/properties/environment_envelope/properties/toolchain_set_ref/$ref", "#/$defs/ObjectRef"),
+        ("#/properties/environment_envelope/properties/pinned_toolchain_refs/items/$ref", "#/$defs/ObjectRef"),
+        ("#/properties/tier/properties/tolerances_ref/$ref", "#/$defs/ObjectRef"),
+    ]
+    violations: list[str] = []
+    for ptr, expected in pointer_expectations:
+        try:
+            actual = json_pointer(locked_schema, ptr)
+        except Exception:
+            violations.append(f"schemas/LockedSpec.schema.json{ptr} missing")
+            continue
+        if actual != expected:
+            violations.append(f"schemas/LockedSpec.schema.json{ptr} expected {expected!r}, got {actual!r}")
+
+    required_files = [
+        "schemas/ToolchainSet.schema.json",
+        "schemas/Tolerances.schema.json",
+        "chain/compiler_c1_intent.py",
+        "chain/logic/locked_object_schema.py",
+        "chain/logic/toolchain_set.py",
+        "chain/logic/tolerances.py",
+        "chain/logic/q_checks/q4_constraints_present.py",
+        "chain/logic/q_checks/q5_environment_envelope.py",
+        "chain/logic/r_checks/r2_scope_budgets.py",
+        "docs/operations/running-belgi.md",
+    ]
+    for rel in required_files:
+        if not repo_path(root, rel).exists():
+            violations.append(f"{rel} missing")
+
+    string_expectations: list[tuple[str, list[str]]] = [
+        (
+            "chain/compiler_c1_intent.py",
+            [
+                "schemas/ToolchainSet.schema.json",
+                "schemas/Tolerances.schema.json",
+                '"toolchain_set_ref": toolchain_set_ref_obj',
+                '"tolerances_ref": tolerances_ref',
+            ],
+        ),
+        ("chain/logic/locked_object_schema.py", ["def load_locked_schema_object(", "resolve_storage_ref", "validate_schema("]),
+        ("chain/logic/toolchain_set.py", ["load_locked_schema_object", "schemas/ToolchainSet.schema.json"]),
+        ("chain/logic/tolerances.py", ["load_locked_schema_object", "schemas/Tolerances.schema.json"]),
+        ("chain/logic/q_checks/q4_constraints_present.py", ["load_locked_tolerances"]),
+        ("chain/logic/q_checks/q5_environment_envelope.py", ["load_locked_toolchain_set"]),
+        ("chain/logic/r_checks/r2_scope_budgets.py", ["load_locked_tolerances", "locked Tolerances object only"]),
+        ("docs/operations/running-belgi.md", ["--toolchain-set-ref", "--tolerances-ref"]),
+    ]
+    for rel, needles in string_expectations:
+        path = repo_path(root, rel)
+        if not path.exists():
+            continue
+        text = read_text(path)
+        for needle in needles:
+            if needle not in text:
+                violations.append(f"{rel} missing {needle!r}")
+
+    if violations:
+        return InvariantResult(
+            "CS-LS-002",
+            "FAIL",
+            [
+                "schemas/LockedSpec.schema.json",
+                "schemas/ToolchainSet.schema.json",
+                "schemas/Tolerances.schema.json",
+                "chain/compiler_c1_intent.py",
+                "chain/logic/locked_object_schema.py",
+                "chain/logic/toolchain_set.py",
+                "chain/logic/tolerances.py",
+                "chain/logic/q_checks/q4_constraints_present.py",
+                "chain/logic/q_checks/q5_environment_envelope.py",
+                "chain/logic/r_checks/r2_scope_budgets.py",
+                "docs/operations/running-belgi.md",
+            ],
+            "Keep ToolchainSet/Tolerances as first-class LockedSpec object authority in schema, C1, loaders, Gate Q/R consumers, and run docs, then rerun sweep.",
+            {"violations_sample": violations[:12], "violations_total": len(violations)},
+        )
+
+    return InvariantResult(
+        "CS-LS-002",
+        "PASS",
+        [
+            "schemas/LockedSpec.schema.json#/properties/environment_envelope/properties/toolchain_set_ref",
+            "schemas/LockedSpec.schema.json#/properties/environment_envelope/properties/pinned_toolchain_refs/items",
+            "schemas/LockedSpec.schema.json#/properties/tier/properties/tolerances_ref",
+            "schemas/ToolchainSet.schema.json",
+            "schemas/Tolerances.schema.json",
+            "chain/compiler_c1_intent.py",
+            "chain/logic/locked_object_schema.py",
+            "chain/logic/toolchain_set.py",
+            "chain/logic/tolerances.py",
+            "chain/logic/q_checks/q4_constraints_present.py",
+            "chain/logic/q_checks/q5_environment_envelope.py",
+            "chain/logic/r_checks/r2_scope_budgets.py",
+            "docs/operations/running-belgi.md",
+        ],
+        "",
+    )
+
+
 def check_cs_ref_001(root: Path) -> InvariantResult:
     """CS-REF-001 — ObjectRef storage_ref is constrained in every schema definition."""
 
@@ -2973,6 +3371,7 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "docs/research/README.md",
         "docs/research/experiment-design.md",
         "docs/research/metrics.md",
+        "belgi/_protocol_packs/v1/schemas/README.md",
         # Package canonical mirror (must stay byte-identical to source docs)
         "belgi/canonicals/CANONICALS.md",
         "belgi/canonicals/terminology.md",
@@ -3001,11 +3400,21 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         # CI template surface
         "templates/ci/github/belgi-tier1.yml",
         # Canonical deterministic verifier entrypoints
+        "belgi/cli_app/parser/run.py",
+        "belgi/cli_app/commands/run.py",
         "chain/gate_q_verify.py",
         "chain/gate_r_verify.py",
         "chain/gate_s_verify.py",
+        "chain/compiler_c1_intent.py",
         "chain/seal_bundle.py",
         "chain/compiler_c3_docs.py",
+        "chain/logic/locked_object_schema.py",
+        "chain/logic/q_checks/q_intent_003.py",
+        "chain/logic/toolchain_set.py",
+        "chain/logic/tolerances.py",
+        "chain/logic/q_checks/q4_constraints_present.py",
+        "chain/logic/q_checks/q5_environment_envelope.py",
+        "chain/logic/r_checks/r2_scope_budgets.py",
         # Canonical tools
         "tools/README.md",
         "tools/render.py",
@@ -3784,6 +4193,21 @@ def _sweep_managed_surface_files(root: Path) -> list[str]:
             continue
         if rel == "tools/README.md":
             out.add(rel)
+            continue
+        if rel in {
+            "belgi/_protocol_packs/v1/schemas/README.md",
+            "belgi/cli_app/parser/run.py",
+            "belgi/cli_app/commands/run.py",
+            "chain/compiler_c1_intent.py",
+            "chain/logic/locked_object_schema.py",
+            "chain/logic/q_checks/q_intent_003.py",
+            "chain/logic/toolchain_set.py",
+            "chain/logic/tolerances.py",
+            "chain/logic/q_checks/q4_constraints_present.py",
+            "chain/logic/q_checks/q5_environment_envelope.py",
+            "chain/logic/r_checks/r2_scope_budgets.py",
+        }:
+            out.add(rel)
     return sorted(out)
 
 
@@ -4243,6 +4667,12 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-IS-002": check_cs_is_002,
         "CS-IS-003": check_cs_is_003,
         "CS-IS-004": check_cs_is_004,
+        "CS-IS-005": check_cs_is_005,
+        # Shipped run object inputs
+        "CS-RUN-001": check_cs_run_001,
+        "CS-RUN-002": check_cs_run_002,
+        # Schema catalog truth
+        "CS-SCHEMA-001": check_cs_schema_001,
         # Evidence bundles
         "CS-EV-001": check_cs_ev_001,
         "CS-EV-002": check_cs_ev_002,
@@ -4281,6 +4711,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-SWEEP-002": check_cs_sweep_002,
         "CS-GV-001": check_cs_gv_001,
         "CS-LS-001": check_cs_ls_001,
+        "CS-LS-002": check_cs_ls_002,
         "CS-REF-001": check_cs_ref_001,
         "CS-R0-ENFORCEMENT-WIRED-001": check_cs_r0_enforcement_wired_001,
         # Render targets

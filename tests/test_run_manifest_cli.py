@@ -59,6 +59,7 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     open_verdict_pointer_path = run_dir / "open_verdict.txt"
     open_evidence_pointer_path = run_dir / "open_evidence.txt"
     deprecated_intent_template_path = run_dir / "IntentSpec.md"
+    environment_dir = run_dir / "inputs" / "environment"
     tolerances_path = run_dir / "tolerances.json"
     toolchain_path = run_dir / "toolchain.json"
 
@@ -73,6 +74,7 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert keys_dir.is_dir()
     assert signing_dir.is_dir()
     assert evidence_dir.is_dir()
+    assert environment_dir.is_dir()
     assert not (run_dir / "inputs" / "tier2").exists()
     assert not (run_dir / "inputs" / "tier3").exists()
     assert runbook_template_path.exists()
@@ -89,9 +91,17 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert "inputs/anchors/keys/attestation_pubkey.hex" in runbook_text
     assert "inputs/anchors/signing/seal_signature.b64" in runbook_text
     assert "inputs/evidence/genesis_seal.json" in runbook_text
+    assert "--toolchain-set-ref <object_id>=<repo-relative-path>" in runbook_text
+    assert "--toolchain-ref <object_id>=<repo-relative-path>" in runbook_text
+    assert "ToolchainSet is not an Operator Anchor." in runbook_text
+    assert "must already exist in the evaluated revision truth envelope" in runbook_text
+    assert "`toolchain.main` is reserved" in runbook_text
+    assert "--tolerances-ref <object_id>=<repo-relative-path>" in runbook_text
+    assert "Tolerances is not an Operator Anchor." in runbook_text
+    assert "generates the canonical Tolerances object from the selected tier pack" in runbook_text
     assert "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`." in runbook_text
-    assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
-    assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{}\n"
+    assert not tolerances_path.exists()
+    assert not toolchain_path.exists()
     assert not (run_dir / "EvidenceManifest.json").exists()
     assert run_key_pointer_path.read_text(encoding="utf-8", errors="strict") == "PENDING\n"
     assert last_attempt_pointer_path.read_text(encoding="utf-8", errors="strict") == "PENDING\n"
@@ -101,8 +111,6 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     baseline = {
         "intent": intent_path.read_bytes(),
         "runbook_template": runbook_template_path.read_bytes(),
-        "tolerances": tolerances_path.read_bytes(),
-        "toolchain": toolchain_path.read_bytes(),
         "run_key_pointer": run_key_pointer_path.read_bytes(),
         "last_attempt_pointer": last_attempt_pointer_path.read_bytes(),
         "open_verdict_pointer": open_verdict_pointer_path.read_bytes(),
@@ -112,6 +120,7 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     intent_path.write_text("custom-intent\n", encoding="utf-8", errors="strict", newline="\n")
     runbook_template_path.write_text("custom-runbook-template\n", encoding="utf-8", errors="strict", newline="\n")
     tolerances_path.write_text("{\"x\":1}\n", encoding="utf-8", errors="strict", newline="\n")
+    toolchain_path.write_text("{\"y\":1}\n", encoding="utf-8", errors="strict", newline="\n")
     run_key_pointer_path.write_text("x\n", encoding="utf-8", errors="strict", newline="\n")
     last_attempt_pointer_path.write_text("y\n", encoding="utf-8", errors="strict", newline="\n")
     open_verdict_pointer_path.write_text("z\n", encoding="utf-8", errors="strict", newline="\n")
@@ -124,6 +133,7 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert intent_path.read_text(encoding="utf-8", errors="strict") == "custom-intent\n"
     assert runbook_template_path.read_text(encoding="utf-8", errors="strict") == "custom-runbook-template\n"
     assert tolerances_path.read_text(encoding="utf-8", errors="strict") == "{\"x\":1}\n"
+    assert toolchain_path.read_text(encoding="utf-8", errors="strict") == "{\"y\":1}\n"
     assert run_key_pointer_path.read_text(encoding="utf-8", errors="strict") == "x\n"
     assert last_attempt_pointer_path.read_text(encoding="utf-8", errors="strict") == "y\n"
     assert open_verdict_pointer_path.read_text(encoding="utf-8", errors="strict") == "z\n"
@@ -134,8 +144,8 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert rc3 == 0
     assert intent_path.read_bytes() == baseline["intent"]
     assert runbook_template_path.read_bytes() == baseline["runbook_template"]
-    assert tolerances_path.read_bytes() == baseline["tolerances"]
-    assert toolchain_path.read_bytes() == baseline["toolchain"]
+    assert not tolerances_path.exists()
+    assert not toolchain_path.exists()
     assert run_key_pointer_path.read_bytes() == baseline["run_key_pointer"]
     assert last_attempt_pointer_path.read_bytes() == baseline["last_attempt_pointer"]
     assert open_verdict_pointer_path.read_bytes() == baseline["open_verdict_pointer"]
@@ -155,6 +165,16 @@ def test_init_creates_operator_readme_with_required_sections(tmp_path: Path) -> 
     assert "belgi init --repo ." in text
     assert "belgi run new --repo . --run-id run-001" in text
     assert "belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md --base-revision <SHA40>" in text
+    assert "--toolchain-set-ref env.toolchains=.belgi/runs/run-001/inputs/environment/toolchain-set.json" in text
+    assert "--toolchain-ref deps.requirements=requirements.txt" in text
+    assert "--tolerances-ref tier.tolerances=.belgi/runs/run-001/inputs/environment/tolerances.json" in text
+    assert "Optional shared run object inputs:" in text
+    assert "Use `--toolchain-set-ref <object_id>=<repo-relative-path>`" in text
+    assert "Repeat `--toolchain-ref <object_id>=<repo-relative-path>`" in text
+    assert "Use `--tolerances-ref <object_id>=<repo-relative-path>`" in text
+    assert "must already exist in the evaluated revision truth envelope" in text
+    assert "`toolchain.main` is reserved" in text
+    assert "materializes the canonical Tolerances object from the selected tier pack" in text
     assert "belgi verify --repo ." in text
     assert "## Layout map" in text
     assert ".belgi/runs/<run_id>/" in text

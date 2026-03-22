@@ -8,32 +8,49 @@ from pathlib import Path
 
 def cmd_supplychain_scan(args: argparse.Namespace) -> int:
     from belgi.commands.supplychain_scan import run_supplychain_scan
+
     try:
         return run_supplychain_scan(
             repo=Path(args.repo),
+            base_revision=str(args.base_revision),
             evaluated_revision=str(args.evaluated_revision),
+            declared_toolchain_refs=[str(x) for x in (args.pinned_toolchain_ref or [])],
             out_path=Path(args.out),
             deterministic=bool(args.deterministic),
             run_id=str(getattr(args, "run_id", "unknown") or "unknown"),
         )
     except Exception as e:
         print(f"[belgi supplychain-scan] ERROR: {e}", file=sys.stderr)
-        print("[belgi supplychain-scan] Remediation: Do ensure git is available and --repo is a valid git repository, then re-run supplychain-scan.", file=sys.stderr)
+        print(
+            "[belgi supplychain-scan] Remediation: Do ensure git is available, --repo is a valid git repository, "
+            "and the selected base/evaluated revisions and pinned toolchain refs are valid, then re-run "
+            "supplychain-scan.",
+            file=sys.stderr,
+        )
         return 3
+
 
 def cmd_adversarial_scan(args: argparse.Namespace) -> int:
     from belgi.commands.adversarial_scan import run_adversarial_scan
+
     try:
         return run_adversarial_scan(
             repo=Path(args.repo),
+            base_revision=str(args.base_revision),
+            evaluated_revision=str(args.evaluated_revision),
             out_path=Path(args.out),
             deterministic=bool(args.deterministic),
             run_id=str(getattr(args, "run_id", "unknown") or "unknown"),
         )
     except Exception as e:
         print(f"[belgi adversarial-scan] ERROR: {e}", file=sys.stderr)
-        print("[belgi adversarial-scan] Remediation: Do ensure the repo is readable and Python sources can be parsed, then re-run adversarial-scan.", file=sys.stderr)
+        print(
+            "[belgi adversarial-scan] Remediation: Do ensure git is available, the repo is readable, and the "
+            "selected base/evaluated revisions resolve, then re-run adversarial-scan.",
+            file=sys.stderr,
+        )
         return 3
+
 
 def cmd_policy_stub(args: argparse.Namespace) -> int:
     from belgi.commands.policy_stub import DEFAULT_GENERATED_AT, write_policy_stub

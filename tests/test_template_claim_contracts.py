@@ -14,6 +14,11 @@ def test_promptbundle_template_removes_tier_pack_exact_bytes_claim() -> None:
     text_lc = text.lower()
     assert "`../../tiers/tier-packs.json` as exact bytes at the evaluated repo revision." not in text_lc
     assert "resolved from `../../tiers/tier-packs.json`" not in text_lc
+    assert (
+        "| PB-006 | Tolerances: Scope Budgets Object | constraints | LockedSpec field: "
+        "`tier.tolerances_ref` | always | internal | Provides the locked Tolerances object "
+        "reference that governs scope-budget ceilings. |"
+    ) in text
 
     a31_start = text_lc.index("### a3.1")
     a32_start = text_lc.index("### a3.2")
@@ -44,6 +49,32 @@ def test_running_belgi_docs_require_canonical_out_log_path() -> None:
     assert "this fixed path is required for deterministic discovery and evidence indexability." in text_lc
 
 
+def test_running_belgi_manual_c1_example_matches_current_object_contract() -> None:
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+
+    for text in (running_docs, running_docs_mirror):
+        assert "--toolchain-set env.toolchains=bundle/environment/toolchain-set.json" in text
+        assert "--toolchain-ref toolchain.main=bundle/environment/toolchain.json" in text
+        assert "--tolerances tier.tolerances=bundle/environment/tolerances.json" in text
+        assert "--toolchain-ref tc-001=bundle/toolchains/toolchain-001.json" not in text
+        assert "--tolerances tol-001=bundle/tolerances/tol-001.json" not in text
+        assert "do not pass them as extra shorthand `--toolchain-ref` values" in text
+
+
+def test_schema_readmes_claim_published_schema_backed_locked_objects() -> None:
+    schema_readme = _read_text("schemas/README.md")
+    schema_readme_pack = _read_text("belgi/_protocol_packs/v1/schemas/README.md")
+    required_line = (
+        "Gate Q / Gate R locked-object loaders validate ToolchainSet and Tolerances "
+        "against these published schemas after ObjectRef hash binding."
+    )
+
+    for text in (schema_readme, schema_readme_pack):
+        assert required_line in text
+        assert "schema and runtime both reject legacy `IntentSpec.scope.max_*` fields" in text
+
+
 def test_r7_public_docs_are_explicitly_bounded() -> None:
     gate_r = _read_text("gates/GATE_R.md")
     canonicals = _read_text("CANONICALS.md")
@@ -51,9 +82,7 @@ def test_r7_public_docs_are_explicitly_bounded() -> None:
     evidence_bundles = _read_text("docs/operations/evidence-bundles.md")
     evidence_bundles_mirror = _read_text("belgi/canonicals/docs/operations/evidence-bundles.md")
 
-    required_gate_r = (
-        "repo-state / change-surface signal grounded in workspace/revision state and declared evidence"
-    )
+    required_gate_r = "deterministic declared change-accounting over the actual locked-base -> evaluated diff"
     required_non_claims = (
         "does not claim SBOM generation/verification, provenance or SLSA-style builder attestation, "
         "dependency vulnerability scanning, or a full dependency/toolchain inventory beyond declared evidence surfaces"
@@ -82,8 +111,9 @@ def test_r7_docs_keep_pinned_toolchain_refs_owned_by_q5() -> None:
     pack_rendered_tiers = _read_text("belgi/_protocol_packs/v1/tiers/tier-packs.md")
 
     owner_note = (
-        "Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes declared "
-        "`LockedSpec.environment_envelope.pinned_toolchain_refs` as evidence context but does not read that tier parameter."
+        "Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes the normalized "
+        "`LockedSpec.environment_envelope.pinned_toolchain_refs` evidence context derived from `toolchain_set_ref` "
+        "but does not read that tier parameter."
     )
     old_gate_r_line = "- tier params used: `envelope_policy.pinned_toolchain_refs_required`, `command_log_mode`"
     new_rendered_line = "| R7 | command_log_mode |"
@@ -254,6 +284,8 @@ def test_r8_public_docs_match_runtime_contract() -> None:
 
     command_rule = "successful execution means `exit_code == 0` only"
     findings_mode_line = "semantic verdicting is driven by `adversarial_policy.findings_mode`"
+    diff_subject_line = "changed Python lines on the actual locked-base -> evaluated diff as the primary scan subject"
+    diff_guard_line = "Findings outside the actual diff MUST NOT by themselves drive `summary.failed != 0`"
     warn_line = (
         '`findings_mode == "warn"`: findings do not themselves cause `R8` to fail if command/report/waiver '
         "structure is otherwise valid."
@@ -268,6 +300,13 @@ def test_r8_public_docs_match_runtime_contract() -> None:
     )
     running_docs_command = (
         "R8 command success is satisfied only by a `belgi adversarial-scan` command record with `exit_code == 0`."
+    )
+    running_docs_diff_subject = (
+        "Current shipped R8 producer uses changed Python lines from the actual `base_revision -> evaluated_revision` "
+        "diff as the primary scan subject."
+    )
+    running_docs_diff_guard = (
+        "Findings outside the actual diff do not by themselves produce `FR-ADVERSARIAL-DIFF-SUSPECT`."
     )
     running_docs_warn = (
         'When `adversarial_policy.findings_mode == "warn"`, findings do not themselves cause `R8` to fail if '
@@ -287,6 +326,8 @@ def test_r8_public_docs_match_runtime_contract() -> None:
     for text in (gate_r, gate_r_pack):
         assert command_rule in text
         assert findings_mode_line in text
+        assert diff_subject_line in text
+        assert diff_guard_line in text
         assert warn_line in text
         assert fail_line in text
         assert waiver_pass_line in text
@@ -296,6 +337,8 @@ def test_r8_public_docs_match_runtime_contract() -> None:
     for text in (running_docs, running_docs_mirror):
         assert running_docs_command in text
         assert "R8 semantic verdicting is driven by `adversarial_policy.findings_mode`" in text
+        assert running_docs_diff_subject in text
+        assert running_docs_diff_guard in text
         assert running_docs_warn in text
         assert running_docs_fail in text
         assert running_docs_waiver in text
@@ -305,6 +348,144 @@ def test_r8_public_docs_match_runtime_contract() -> None:
         assert "one or more unwaived findings (`summary.failed != 0`)" in text
         assert "is not emitted in `warn` mode" in text
         assert "is not emitted when all findings are covered by applicable active waivers" in text
+
+
+def test_r2_public_docs_match_locked_tolerances_contract() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    cli_docs = _read_text("docs/operations/cli.md")
+    cli_docs_mirror = _read_text("belgi/canonicals/docs/operations/cli.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+    rendered_tiers = _read_text("tiers/tier-packs.md")
+    rendered_tiers_pack = _read_text("belgi/_protocol_packs/v1/tiers/tier-packs.md")
+    failure_taxonomy = _read_text("gates/failure-taxonomy.md")
+    failure_taxonomy_pack = _read_text("belgi/_protocol_packs/v1/gates/failure-taxonomy.md")
+
+    gate_r_locked_object = "Resolve `LockedSpec.tier.tolerances_ref` and read the locked ceiling values:"
+    gate_r_no_tier_defaults = "`max_touched_files` = `LockedSpec.constraints.max_touched_files` if present else tier default."
+    gate_r_no_hotl = "adjust tier/constraints with HOTL"
+    cli_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>` (singular)"
+    cli_tolerances_binding = "binds a real locked tolerances object into `LockedSpec.tier.tolerances_ref`"
+    running_tolerances_flag = "use `--tolerances-ref <object_id>=<repo-relative-path>` to bind a real locked tolerances object"
+    running_tolerances_default = "if omitted, orchestration generates the canonical tolerances object from the selected tier pack"
+    running_numeric_retired = (
+        "Numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy "
+        "`IntentSpec.scope.max_*` fields with migration guidance."
+    )
+    failure_taxonomy_line = (
+        "`Do reduce scope to within the locked tolerances ceilings or change the locked Tolerances object / "
+        "selected tier and re-run Q, then re-run R.`"
+    )
+
+    for text in (gate_r, gate_r_pack):
+        assert gate_r_locked_object in text
+        assert gate_r_no_tier_defaults not in text
+        assert gate_r_no_hotl not in text
+        assert "scope_budgets.max_touched_files" in text
+        assert "scope_budgets.max_loc_delta" in text
+
+    for text in (cli_docs, cli_docs_mirror):
+        assert cli_tolerances_flag in text
+        assert cli_tolerances_binding in text
+        assert "materializes the canonical tolerances object from the selected tier pack" in text
+        assert "numeric scope budgets no longer live in `IntentSpec`" in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert running_tolerances_flag in text
+        assert running_tolerances_default in text
+        assert running_numeric_retired in text
+        assert "R2 semantic budget ceilings come from the locked `LockedSpec.tier.tolerances_ref` object" in text
+
+    for text in (rendered_tiers, rendered_tiers_pack):
+        assert "| Q4 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" in text
+        assert "| R2 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" not in text
+        assert "The run-local Tolerances object locked at `LockedSpec.tier.tolerances_ref` is the runtime budget authority after lock." in text
+
+    for text in (failure_taxonomy, failure_taxonomy_pack):
+        assert failure_taxonomy_line in text
+
+
+def test_consistency_sweep_docs_keep_shipped_and_manual_object_flags_distinct() -> None:
+    sweep_docs = _read_text("docs/operations/consistency-sweep.md")
+    sweep_docs_mirror = _read_text("belgi/canonicals/docs/operations/consistency-sweep.md")
+
+    required_line = (
+        "Confirm `docs/operations/running-belgi.md` teaches first-class shipped object inputs via "
+        "`--toolchain-set-ref` and `--tolerances-ref`, while keeping manual C1 compiler inputs on "
+        "`--toolchain-set` and `--tolerances`."
+    )
+    stale_line = (
+        "Confirm `docs/operations/running-belgi.md` teaches first-class shipped object inputs via "
+        "`--toolchain-set` and `--tolerances`."
+    )
+
+    for text in (sweep_docs, sweep_docs_mirror):
+        assert required_line in text
+        assert stale_line not in text
+
+
+def test_r7_public_docs_match_runtime_contract() -> None:
+    gate_r = _read_text("gates/GATE_R.md")
+    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
+    cli_docs = _read_text("docs/operations/cli.md")
+    cli_docs_mirror = _read_text("belgi/canonicals/docs/operations/cli.md")
+    running_docs = _read_text("docs/operations/running-belgi.md")
+    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+
+    bounded_meaning = "deterministic declared change-accounting over the actual locked-base -> evaluated diff"
+    declaration_surface_line = "changed paths whose basename matches `requirements*.txt` or `constraints*.txt`"
+    accounting_context_line = (
+        "using `LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` as the accounting context "
+        "derived from the locked ToolchainSet plus built-in `toolchain.main`."
+    )
+    running_docs_meaning = (
+        "Current shipped R7 producer uses the actual `base_revision -> evaluated_revision` diff and limits "
+        "`FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED` to bounded dependency/toolchain declaration paths plus declared "
+        "ToolchainSet paths."
+    )
+    running_docs_accounting = (
+        "The current R7 accounting context is the declared "
+        "`LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` set derived from the locked ToolchainSet "
+        "plus built-in `toolchain.main`."
+    )
+    shipped_run_binding_explicit = (
+        "On the shipped CLI, use `belgi run --toolchain-set-ref <object_id>=<repo-relative-path>` "
+        "for explicit ToolchainSet authority"
+    )
+    shipped_run_binding_shorthand = (
+        "or repeat shorthand `belgi run --toolchain-ref <object_id>=<repo-relative-path>` when you want "
+        "`belgi run` to generate that ToolchainSet authority before lock."
+    )
+    cli_binding = (
+        "binds an authoritative ToolchainSet object into `LockedSpec.environment_envelope.toolchain_set_ref`"
+    )
+    evaluated_revision_guard = "must already exist in the evaluated revision truth envelope"
+    reserved_main = "`toolchain.main` is reserved for the built-in generated run toolchain input"
+
+    for text in (gate_r, gate_r_pack):
+        assert bounded_meaning in text
+        assert declaration_surface_line in text
+        assert accounting_context_line in text
+        assert "ToolchainSet" in text
+
+    for text in (cli_docs, cli_docs_mirror):
+        assert "`--toolchain-set-ref <object_id>=<repo-relative-path>` (singular)" in text
+        assert "`--toolchain-ref <object_id>=<repo-relative-path>` (repeatable)" in text
+        assert cli_binding in text
+        assert "normalizes these refs into authoritative ToolchainSet object authority before lock" in text
+        assert evaluated_revision_guard in text
+        assert reserved_main in text
+        assert "this is not an Operator Anchor" in text
+
+    for text in (running_docs, running_docs_mirror):
+        assert "R7 semantic verdicting is driven by the accepted `policy.supplychain` report after `R4` structural acceptance." in text
+        assert running_docs_meaning in text
+        assert running_docs_accounting in text
+        assert shipped_run_binding_explicit in text
+        assert shipped_run_binding_shorthand in text
+        assert evaluated_revision_guard in text
+        assert reserved_main in text
 
 
 def test_tier3_canonical_authority_docs_are_explicit() -> None:

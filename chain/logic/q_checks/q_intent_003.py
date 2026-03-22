@@ -10,12 +10,10 @@ from .context import QCheckContext
 def _expect_scope_string(intent_obj: dict[str, Any]) -> str:
     scope = intent_obj.get("scope")
     if not isinstance(scope, dict):
-        return "allowed_dirs: []; forbidden_dirs: []; max_touched_files: null; max_loc_delta: null"
+        return "allowed_dirs: []; forbidden_dirs: []"
 
     allowed = scope.get("allowed_dirs")
     forbidden = scope.get("forbidden_dirs")
-    max_touched_files = scope.get("max_touched_files")
-    max_loc_delta = scope.get("max_loc_delta")
 
     def fmt_list(v: Any) -> str:
         if not isinstance(v, list):
@@ -26,16 +24,7 @@ def _expect_scope_string(intent_obj: dict[str, Any]) -> str:
         parts = [x for x in v]
         return "[" + ", ".join(parts) + "]"
 
-    mtf = max_touched_files if isinstance(max_touched_files, int) and not isinstance(max_touched_files, bool) else None
-    mld = max_loc_delta if isinstance(max_loc_delta, int) and not isinstance(max_loc_delta, bool) else None
-
-    mtf_s = str(mtf) if mtf is not None else "null"
-    mld_s = str(mld) if mld is not None else "null"
-
-    return (
-        f"allowed_dirs: {fmt_list(allowed)}; forbidden_dirs: {fmt_list(forbidden)}; "
-        f"max_touched_files: {mtf_s}; max_loc_delta: {mld_s}"
-    )
+    return f"allowed_dirs: {fmt_list(allowed)}; forbidden_dirs: {fmt_list(forbidden)}"
 
 
 def _expect_success_criteria(intent_obj: dict[str, Any]) -> str:
@@ -142,17 +131,27 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
     else:
         scope = ctx.intent_obj.get("scope")
         if isinstance(scope, dict):
+            if "max_touched_files" in scope or "max_loc_delta" in scope:
+                return [
+                    CheckResult(
+                        check_id="Q-INTENT-003",
+                        status="FAIL",
+                        message=(
+                            "IntentSpec.scope numeric budgets are retired on the shipped run spine; "
+                            "move them into a Tolerances object."
+                        ),
+                        pointers=[str(ctx.intent_spec_path), str(ctx.locked_spec_path)],
+                        category="FQ-INTENT-INSUFFICIENT",
+                        remediation_next_instruction=(
+                            "Do remove IntentSpec.scope.max_* and move numeric budgets into a Tolerances object "
+                            "bound by tier.tolerances_ref, then re-run Q."
+                        ),
+                    )
+                ]
             if locked_constraints.get("allowed_paths") != scope.get("allowed_dirs"):
                 mismatches.append("LockedSpec.constraints.allowed_paths")
             if locked_constraints.get("forbidden_paths") != scope.get("forbidden_dirs"):
                 mismatches.append("LockedSpec.constraints.forbidden_paths")
-
-            if "max_touched_files" in scope:
-                if locked_constraints.get("max_touched_files") != scope.get("max_touched_files"):
-                    mismatches.append("LockedSpec.constraints.max_touched_files")
-            if "max_loc_delta" in scope:
-                if locked_constraints.get("max_loc_delta") != scope.get("max_loc_delta"):
-                    mismatches.append("LockedSpec.constraints.max_loc_delta")
 
     # 3) tier mapping
     locked_tier = ctx.locked_spec.get("tier")

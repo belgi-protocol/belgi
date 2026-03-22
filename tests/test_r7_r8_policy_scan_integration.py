@@ -26,6 +26,11 @@ def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 
 
+def _git_text(cwd: Path, *args: str) -> str:
+    cp = subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+    return cp.stdout.strip()
+
+
 def _init_git_repo(tmp_repo: Path) -> None:
     _git(tmp_repo, "init")
     _git(tmp_repo, "config", "user.email", "test@example.com")
@@ -38,6 +43,10 @@ def _commit_file(tmp_repo: Path, rel: str, content: str, msg: str) -> None:
     p.write_text(content, encoding="utf-8", newline="\n")
     _git(tmp_repo, "add", rel)
     _git(tmp_repo, "commit", "-m", msg)
+
+
+def _head_sha(tmp_repo: Path) -> str:
+    return _git_text(tmp_repo, "rev-parse", "HEAD")
 
 
 def _build_ctx_for_policy_report(
@@ -161,20 +170,23 @@ def _write_waiver(
 
 
 class TestR7SupplychainScanIntegration:
-    def test_r7_passes_on_clean_repo(self, tmp_path: Path) -> None:
+    def test_r7_passes_when_diff_has_no_relevant_change_accounting_surface(self, tmp_path: Path) -> None:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
 
         _commit_file(tmp_repo, "README.md", "a\n", "init")
+        base_revision = _head_sha(tmp_repo)
         _commit_file(tmp_repo, "src/x.txt", "b\n", "change")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.supplychain_scan import run_supplychain_scan
 
         out_path = tmp_repo / "out" / "policy-supplychain.json"
         rc = run_supplychain_scan(
             repo=tmp_repo,
-            evaluated_revision="HEAD~1",
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             out_path=out_path,
             deterministic=True,
             run_id="run-test-001",
@@ -182,6 +194,10 @@ class TestR7SupplychainScanIntegration:
         assert rc == 0
 
         _assert_policy_report_schema_valid(repo_root=tmp_repo, report_path=out_path)
+        payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
+        assert payload["summary"]["failed"] == 0
+        assert payload["relevant_changed_paths"] == []
+        assert payload["unaccounted_paths"] == []
 
         from chain.logic.r_checks import r7_supplychain_scan as r7
 
@@ -196,31 +212,34 @@ class TestR7SupplychainScanIntegration:
         assert len(results) == 1
         assert results[0].status == "PASS"
 
-    def test_r7_fails_when_report_indicates_failed(self, tmp_path: Path) -> None:
+    def test_r7_fails_when_declared_dependency_change_is_unaccounted(self, tmp_path: Path) -> None:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
 
         _commit_file(tmp_repo, "README.md", "a\n", "init")
-        _commit_file(tmp_repo, "src/x.txt", "b\n", "change")
-
-        # Make repo dirty
-        (tmp_repo / "src").mkdir(exist_ok=True)
-        (tmp_repo / "src" / "x.txt").write_text("dirty\n", encoding="utf-8", newline="\n")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "requirements.txt", "pytest==8.4.0\n", "deps")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.supplychain_scan import run_supplychain_scan
 
         out_path = tmp_repo / "out" / "policy-supplychain.json"
         rc = run_supplychain_scan(
             repo=tmp_repo,
-            evaluated_revision="HEAD~1",
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             out_path=out_path,
             deterministic=True,
             run_id="run-test-001",
         )
-        assert rc == 2
+        assert rc == 0
 
         _assert_policy_report_schema_valid(repo_root=tmp_repo, report_path=out_path)
+        payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
+        assert payload["summary"]["failed"] == 1
+        assert payload["relevant_changed_paths"] == ["requirements.txt"]
+        assert payload["unaccounted_paths"] == ["requirements.txt"]
 
         from chain.logic.r_checks import r7_supplychain_scan as r7
 
@@ -236,20 +255,55 @@ class TestR7SupplychainScanIntegration:
         assert results[0].status == "FAIL"
         assert results[0].category == "FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED"
 
-
-class TestR8AdversarialScanIntegration:
-    def test_r8_passes_with_no_findings(self, tmp_path: Path) -> None:
+    def test_r7_passes_when_relevant_toolchain_change_is_declared(self, tmp_path: Path) -> None:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
 
-        _commit_file(tmp_repo, "src/ok.py", "print('ok')\n", "init")
+        _commit_file(tmp_repo, "README.md", "a\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "toolchains/python.lock.json", '{"python":"3.10.0"}\n', "toolchain")
+        evaluated_revision = _head_sha(tmp_repo)
+
+        from belgi.commands.supplychain_scan import run_supplychain_scan
+
+        out_path = tmp_repo / "out" / "policy-supplychain.json"
+        rc = run_supplychain_scan(
+            repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
+            declared_toolchain_refs=["tc-main=toolchains/python.lock.json"],
+            out_path=out_path,
+            deterministic=True,
+            run_id="run-test-001",
+        )
+        assert rc == 0
+
+        payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
+        assert payload["summary"]["failed"] == 0
+        assert payload["declared_toolchain_refs"] == ["toolchains/python.lock.json"]
+        assert payload["relevant_changed_paths"] == ["toolchains/python.lock.json"]
+        assert payload["unaccounted_paths"] == []
+
+
+class TestR8AdversarialScanIntegration:
+    def test_r8_ignores_findings_outside_actual_diff(self, tmp_path: Path) -> None:
+        tmp_repo = tmp_path / "repo"
+        tmp_repo.mkdir()
+        _init_git_repo(tmp_repo)
+
+        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "README.md", "still harmless\n", "docs")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.adversarial_scan import run_adversarial_scan
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
         rc = run_adversarial_scan(
             repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             out_path=out_path,
             deterministic=True,
             run_id="run-test-001",
@@ -257,6 +311,9 @@ class TestR8AdversarialScanIntegration:
         assert rc == 0
 
         _assert_policy_report_schema_valid(repo_root=tmp_repo, report_path=out_path)
+        payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
+        assert payload["finding_count"] == 0
+        assert payload["diff_python_paths"] == []
 
         from chain.logic.r_checks import r8_adversarial_scan as r8
 
@@ -271,23 +328,23 @@ class TestR8AdversarialScanIntegration:
         assert len(results) == 1
         assert results[0].status == "PASS"
 
-    def test_r8_fails_when_findings_present(self, tmp_path: Path) -> None:
+    def test_r8_fails_when_findings_are_inside_actual_diff(self, tmp_path: Path) -> None:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
 
-        _commit_file(
-            tmp_repo,
-            "src/bad.py",
-            "import pickle\nexec('1')\npickle.loads(b'')\n",
-            "init",
-        )
+        _commit_file(tmp_repo, "src/bad.py", "print('ok')\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "src/bad.py", "import pickle\nexec('1')\npickle.loads(b'')\n", "diff finding")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.adversarial_scan import run_adversarial_scan
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
         rc = run_adversarial_scan(
             repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             out_path=out_path,
             deterministic=True,
             run_id="run-test-001",
@@ -295,6 +352,10 @@ class TestR8AdversarialScanIntegration:
         assert rc == 0
 
         _assert_policy_report_schema_valid(repo_root=tmp_repo, report_path=out_path)
+        payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
+        assert payload["findings_present"] is True
+        assert payload["finding_count"] == 2
+        assert payload["diff_python_paths"] == ["src/bad.py"]
 
         from chain.logic.r_checks import r8_adversarial_scan as r8
 
@@ -321,12 +382,10 @@ class TestR8AdversarialScanIntegration:
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
 
-        _commit_file(
-            tmp_repo,
-            "src/bad.py",
-            "exec('1')\n",
-            "init",
-        )
+        _commit_file(tmp_repo, "src/bad.py", "print('ok')\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "diff finding")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.adversarial_scan import run_adversarial_scan
         from chain.logic.r_checks import r8_adversarial_scan as r8
@@ -334,6 +393,8 @@ class TestR8AdversarialScanIntegration:
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
         rc = run_adversarial_scan(
             repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
             out_path=out_path,
             deterministic=True,
             run_id="run-test-001",
@@ -359,13 +420,23 @@ class TestR8AdversarialScanIntegration:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
-        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "init")
+        _commit_file(tmp_repo, "src/bad.py", "print('ok')\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "diff finding")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.adversarial_scan import run_adversarial_scan
         from chain.logic.r_checks import r8_adversarial_scan as r8
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
-        rc = run_adversarial_scan(repo=tmp_repo, out_path=out_path, deterministic=True, run_id="run-test-001")
+        rc = run_adversarial_scan(
+            repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
+            out_path=out_path,
+            deterministic=True,
+            run_id="run-test-001",
+        )
         assert rc == 0
 
         payload = json.loads(out_path.read_text(encoding="utf-8", errors="strict"))
@@ -390,13 +461,23 @@ class TestR8AdversarialScanIntegration:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
-        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "init")
+        _commit_file(tmp_repo, "src/bad.py", "print('ok')\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "diff finding")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.adversarial_scan import run_adversarial_scan
         from chain.logic.r_checks import r8_adversarial_scan as r8
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
-        rc = run_adversarial_scan(repo=tmp_repo, out_path=out_path, deterministic=True, run_id="run-test-001")
+        rc = run_adversarial_scan(
+            repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
+            out_path=out_path,
+            deterministic=True,
+            run_id="run-test-001",
+        )
         assert rc == 0
 
         waiver_ref = _write_waiver(
@@ -427,13 +508,23 @@ class TestR8AdversarialScanIntegration:
         tmp_repo = tmp_path / "repo"
         tmp_repo.mkdir()
         _init_git_repo(tmp_repo)
-        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "init")
+        _commit_file(tmp_repo, "src/bad.py", "print('ok')\n", "init")
+        base_revision = _head_sha(tmp_repo)
+        _commit_file(tmp_repo, "src/bad.py", "exec('1')\n", "diff finding")
+        evaluated_revision = _head_sha(tmp_repo)
 
         from belgi.commands.adversarial_scan import run_adversarial_scan
         from chain.logic.r_checks import r8_adversarial_scan as r8
 
         out_path = tmp_repo / "out" / "policy-adversarial-scan.json"
-        rc = run_adversarial_scan(repo=tmp_repo, out_path=out_path, deterministic=True, run_id="run-test-001")
+        rc = run_adversarial_scan(
+            repo=tmp_repo,
+            base_revision=base_revision,
+            evaluated_revision=evaluated_revision,
+            out_path=out_path,
+            deterministic=True,
+            run_id="run-test-001",
+        )
         assert rc == 0
 
         waiver_ref = _write_waiver(

@@ -255,19 +255,19 @@ Optional binding check (when GateVerdict is provided to the verifier):
 ### R2 — Scope / Blast Radius within tier budgets
 - check_id: `R2`
 - required inputs:
-  - `LockedSpec.constraints.allowed_paths`, optional `LockedSpec.constraints.max_touched_files`, optional `LockedSpec.constraints.max_loc_delta`
+  - `LockedSpec.tier.tolerances_ref`
   - `LockedSpec.upstream_state.commit_sha`
-  - Tier defaults (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
 - deterministic procedure:
   1) Compute `touched_files` and `loc_delta` (insertions + deletions) from the diff between the locked base commit and evaluated revision.
-  2) Determine effective limits:
-     - `max_touched_files` = `LockedSpec.constraints.max_touched_files` if present else tier default.
-     - `max_loc_delta` = `LockedSpec.constraints.max_loc_delta` if present else tier default.
-  3) If effective limit is non-null and exceeded => fail.
-- tier params used: `scope_budgets.max_touched_files`, `scope_budgets.max_loc_delta`
+  2) Resolve `LockedSpec.tier.tolerances_ref` and read the locked ceiling values:
+     - `scope_budgets.max_touched_files`
+     - `scope_budgets.max_loc_delta`
+  3) Treat those locked Tolerances values as the authoritative effective limits after lock.
+  4) If an effective limit is non-null and exceeded => fail.
+- tier params used: none
 - failure category: `FR-SCOPE-BUDGET-EXCEEDED`
 - required evidence kinds: `diff`, `command_log`
-- remediation.next_instruction template: `Do reduce scope to within limits (tier scope budgets) or adjust tier/constraints with HOTL then re-run R.`
+- remediation.next_instruction template: `Do reduce scope to within the locked tolerances ceilings or change the locked Tolerances object / selected tier and re-run Q, then re-run R.`
 
 ### R3 — Policy invariants satisfied (paths + constraints)
 - check_id: `R3`
@@ -448,18 +448,28 @@ Optional binding check (when GateVerdict is provided to the verifier):
 ### R7 — Supply chain changes detected and accounted for
 - check_id: `R7`
 - bounded meaning (v1):
-  - repo-state / change-surface signal grounded in workspace/revision state and declared evidence
+  - deterministic declared change-accounting over the actual locked-base -> evaluated diff
+  - bounded to dependency/toolchain declaration surfaces and declared ToolchainSet refs
   - does not claim SBOM generation/verification, provenance or SLSA-style builder attestation, dependency vulnerability scanning, or a full dependency/toolchain inventory beyond declared evidence surfaces
 - required inputs:
+  - Diff between locked base commit and evaluated revision
   - Repo diff base: `LockedSpec.upstream_state.commit_sha`
+  - `LockedSpec.environment_envelope.toolchain_set_ref` (LockedSpec schema)
   - `LockedSpec.environment_envelope.pinned_toolchain_refs` (LockedSpec schema)
+  - bounded declaration surfaces on that diff:
+    - changed paths whose basename is one of: `.python-version`, `.tool-versions`, `Cargo.lock`, `Cargo.toml`, `Gemfile`, `Gemfile.lock`, `Pipfile`, `Pipfile.lock`, `composer.json`, `composer.lock`, `go.mod`, `go.sum`, `package-lock.json`, `package.json`, `pnpm-lock.yaml`, `poetry.lock`, `pyproject.toml`, `runtime.txt`, `setup.cfg`, `setup.py`, `tox.ini`, `uv.lock`, `yarn.lock`
+    - changed paths whose basename matches `requirements*.txt` or `constraints*.txt`
+    - changed paths already named by the locked ToolchainSet `refs[].path`
 - deterministic procedure (v1, deterministic):
   1) Require required command `belgi supplychain-scan` is present and successful (per command matching rule).
   2) Require a `policy_report` artifact with `id == "policy.supplychain"`.
   3) Require `R4` structural acceptance of the required `policy.supplychain` report for the current run (§5.2.1) before semantic interpretation.
+  4) The accepted report MUST treat the actual locked-base -> evaluated diff as the primary R7 change surface.
+  5) The accepted report MUST limit `summary.failed != 0` to unaccounted changes on the bounded declaration surfaces above, using `LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` as the accounting context derived from the locked ToolchainSet plus built-in `toolchain.main`.
+     - On the shipped operator surface, use `belgi run --toolchain-set-ref <object_id>=<repo-relative-path>` for explicit ToolchainSet authority, or repeat shorthand `belgi run --toolchain-ref <object_id>=<repo-relative-path>` when you want `belgi run` to generate that ToolchainSet authority before lock.
      - If the accepted report indicates failures (`summary.failed != 0`) => fail `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED`.
-  4) Gate R does not publish path classification lists or signatures; it treats the scan command + policy report as the authoritative, deterministic evidence obligation.
-  5) Tier ownership note: Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes declared `LockedSpec.environment_envelope.pinned_toolchain_refs` as evidence context but does not read that tier parameter.
+  6) Gate R does not publish path classification lists or signatures; it treats the scan command + policy report as the authoritative, deterministic evidence obligation.
+  7) Tier ownership note: Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes the normalized `LockedSpec.environment_envelope.pinned_toolchain_refs` evidence context derived from `toolchain_set_ref` but does not read that tier parameter.
 - tier params used: `command_log_mode`
 - failure category:
   - `FR-COMMAND-FAILED` if `belgi supplychain-scan` is missing/failed
@@ -482,11 +492,13 @@ Optional binding check (when GateVerdict is provided to the verifier):
   1) Require required command `belgi adversarial-scan` is present and successful (per command matching rule, `exit_code == 0` only).
   2) Require a `policy_report` artifact with `id == "policy.adversarial_scan"`.
   3) Require `R4` structural acceptance of the required `policy.adversarial_scan` report for the current run (§5.2.1) before semantic interpretation.
-  4) Resolve semantic verdicting from `adversarial_policy.findings_mode`:
+  4) The accepted report MUST use changed Python lines on the actual locked-base -> evaluated diff as the primary scan subject.
+     - Findings outside the actual diff MUST NOT by themselves drive `summary.failed != 0` for Gate R semantic verdicting.
+  5) Resolve semantic verdicting from `adversarial_policy.findings_mode`:
      - `findings_mode == "warn"`: findings do not themselves cause `R8` to fail if command/report/waiver structure is otherwise valid.
      - `findings_mode == "fail"`: if the accepted report indicates failures (`summary.failed != 0`) and one or more findings remain unwaived, fail `FR-ADVERSARIAL-DIFF-SUSPECT`.
-  5) If findings are present but all findings are covered by applicable active waivers allowed by the selected tier, `R8` PASSes.
-  6) Gate R does not publish signatures, patterns, regexes, or thresholds; it treats the scan command + policy report as the deterministic evidence obligation.
+  6) If findings are present but all findings are covered by applicable active waivers allowed by the selected tier, `R8` PASSes.
+  7) Gate R does not publish signatures, patterns, regexes, or thresholds; it treats the scan command + policy report as the deterministic evidence obligation.
 - tier params used: `waiver_policy.allowed`, `adversarial_policy.findings_mode`, `command_log_mode`
 - failure category:
   - `FR-COMMAND-FAILED` if `belgi adversarial-scan` is missing/failed

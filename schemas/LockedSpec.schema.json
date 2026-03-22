@@ -62,11 +62,15 @@
     "environment_envelope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "description", "expected_runner", "pinned_toolchain_refs"],
+      "required": ["id", "description", "expected_runner", "toolchain_set_ref", "pinned_toolchain_refs"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "minLength": 1 },
         "expected_runner": { "type": "string", "minLength": 1 },
+        "toolchain_set_ref": {
+          "$ref": "#/$defs/ObjectRef",
+          "description": "Reference to the authoritative ToolchainSet object selected or generated on the run spine."
+        },
         "pinned_toolchain_refs": {
           "type": "array",
           "items": { "$ref": "#/$defs/ObjectRef" }
@@ -115,8 +119,6 @@
           "type": "array",
           "items": { "$ref": "#/$defs/RepoRelPathPrefix" }
         },
-        "max_touched_files": { "type": "integer", "minimum": 0 },
-        "max_loc_delta": { "type": "integer", "minimum": 0 },
         "forbidden_primitives": {
           "type": "array",
           "items": {
