@@ -1182,64 +1182,6 @@ def test_cs_byte_001_tracked_only_fails_on_tracked_crlf(tmp_path: Path) -> None:
     assert paths == ["tracked_crlf.txt"]
 
 
-def test_cs_ev_006_fix_manifest_idempotent() -> None:
-    from tools.sweep import CANONICAL_SWEEP_OUT, _fix_cs_ev_006_manifest
-
-    expected = "0" * 64
-    em = {"artifacts": []}
-    assert _fix_cs_ev_006_manifest(em_obj=em, expected_hash=expected) is True
-    assert _fix_cs_ev_006_manifest(em_obj=em, expected_hash=expected) is False
-
-    arts = em["artifacts"]
-    assert isinstance(arts, list)
-    assert len([a for a in arts if a.get("id") == "policy.consistency_sweep"]) == 1
-    a0 = next(a for a in arts if a.get("id") == "policy.consistency_sweep")
-    assert a0["hash"] == expected
-    assert a0["storage_ref"] == CANONICAL_SWEEP_OUT
-
-
-def test_cs_ev_006_normalization_stable_missing_vs_present() -> None:
-    """Normalization used for fixed-point hash must not depend on whether the entry exists.
-
-    Daily-life analogy: we want the 'receipt calculation' to treat a missing line-item as if it
-    were present with a $0 placeholder, so adding it later doesn't change the total's hash.
-    """
-
-    from tools.sweep import (
-        CANONICAL_SWEEP_OUT,
-        ZERO_SHA256,
-        _ev006_normalized_manifest_bytes,
-    )
-
-    base = {
-        "schema_version": "1.0.0",
-        "run_id": "r",
-        "commands_executed": [],
-        "envelope_attestation": None,
-    }
-
-    em_missing = dict(base)
-    em_present = {
-        **base,
-        "artifacts": [
-            {
-                "kind": "policy_report",
-                "id": "policy.consistency_sweep",
-                "hash": "a" * 64,
-                "media_type": "application/json",
-                "storage_ref": CANONICAL_SWEEP_OUT,
-                "produced_by": "C1",
-            }
-        ],
-    }
-
-    b1 = _ev006_normalized_manifest_bytes(em_missing)
-    b2 = _ev006_normalized_manifest_bytes(em_present)
-
-    assert b1 == b2
-    assert ZERO_SHA256.encode("utf-8") in b1
-
-
 def test_byte_guard_reports_binary_extension_unsafe_hits(tmp_path: Path) -> None:
     """Binary-extension files are skipped from 'checked' but unsafe drift paths must be reported."""
 

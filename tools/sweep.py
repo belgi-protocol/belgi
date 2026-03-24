@@ -32,8 +32,6 @@ EVALUATED_AT = "1970-01-01T00:00:00Z"
 
 CANONICAL_SWEEP_OUT = "policy/consistency_sweep.json"
 CANONICAL_SWEEP_SUMMARY = "policy/consistency_sweep.summary.md"
-ZERO_SHA256 = "0" * 64
-
 CONSISTENCY_SPEC_DOC = "docs/operations/consistency-sweep.md"
 FIXTURE_WORKSPACE_GUIDANCE = "Fixture maintenance moved out of BELGI main repo."
 

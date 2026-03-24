@@ -14,6 +14,7 @@ Patch release finalizing BELGI main-repo fixture-zero closure and tightening the
 - Removed the last embedded fixture sweep and self-referential fixture-hash logic from `tools.sweep`, aligned `dev_sync` to the fixture-zero main-repo sweep path only, and cleaned the consistency/tool docs to remove stale retired-surface wording.
 - Removed retired fixture references from repository-verification and CODEOWNERS so proof surfaces no longer target deleted BELGI main-repo fixture files.
 - Moved the repo-local synthetic payload builder out of `tests/` into top-level `builders.py` and added explicit builder meta-tests guarding determinism, invalid-path preservation, and absence of hidden authority-bearing defaults.
+- Removed the stale tests that still targeted deleted fixture-hash repair helpers, and dropped the last dead `ZERO_SHA256` carryover from `tools.sweep`.
 - Narrowed public docs so BELGI main repo makes no run or completeness claim about any separate maintainer-private fixture workspace.
 
 ### Notes
