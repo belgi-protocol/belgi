@@ -35,6 +35,10 @@ from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
 
+_FIXTURE_WORKSPACE_GUIDANCE = (
+    "Fixture maintenance moved to the private belgi-fixtures repo. "
+)
+
 # Bind imports to ENGINE repo root and prevent shadowing from tools/.
 _TOOLS_DIR = Path(__file__).resolve().parent
 _THIS_REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -62,9 +66,7 @@ for _k in list(sys.modules.keys()):
     if _k == "belgi" or _k.startswith("belgi."):
         del sys.modules[_k]
 
-from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_repo_rel_path, safe_relpath
-from belgi.core.json_canon import canonical_json_bytes
 
 # Deterministic timestamp for reproducible runs
 FIXED_TIMESTAMP = "1970-01-01T00:00:00Z"
@@ -123,635 +125,9 @@ def _canonical_json_no_nl(obj: Any) -> bytes:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8", errors="strict")
 
 
-def _walk_repo_files(root: Path, *, rel_root: str, filename: str) -> list[Path]:
-    """Deterministically enumerate files under repo-relative rel_root.
-
-    Fail-closed if a symlink is encountered anywhere under the walk scope.
-    """
-
-    base = _repo_path(root, rel_root, must_exist=True, must_be_file=False)
-    if not base.is_dir():
-        raise RuntimeError(f"Expected directory at {rel_root}")
-
-    out: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
-        d = Path(dirpath)
-        # Fail-closed on symlink directories (scope escape risk).
-        if d.is_symlink():
-            raise RuntimeError(f"Symlink directory not allowed under {rel_root}: {d}")
-        dirnames.sort()
-        filenames.sort()
-        for name in filenames:
-            p = d / name
-            if p.is_symlink():
-                raise RuntimeError(f"Symlink file not allowed under {rel_root}: {p}")
-            if name == filename:
-                out.append(p)
-
-    out.sort(key=lambda p: p.relative_to(root).as_posix())
-    return out
-
-
-def _active_pack_identity(*, repo_root: Path, pack_rel: str) -> dict[str, str]:
-    """Read active protocol pack identity (pack_id + manifest_sha256) from a pack directory."""
-
-    from belgi.protocol.pack import MANIFEST_FILENAME, validate_manifest_bytes
-
-    pack_dir = _repo_path(repo_root, pack_rel, must_exist=True, must_be_file=False)
-    if not pack_dir.is_dir():
-        raise RuntimeError(f"Pack directory is not a directory: {pack_rel}")
-    if pack_dir.is_symlink():
-        raise RuntimeError(f"Symlink pack directory not allowed: {pack_rel}")
-
-    manifest_path = pack_dir / MANIFEST_FILENAME
-    if not manifest_path.exists():
-        raise RuntimeError(f"Pack manifest not found: {manifest_path.relative_to(repo_root).as_posix()}")
-    if manifest_path.is_symlink():
-        raise RuntimeError(f"Symlink manifest not allowed: {manifest_path.relative_to(repo_root).as_posix()}")
-
-    manifest_bytes = manifest_path.read_bytes()
-    # Fail-closed: validate manifest and its tree binding.
-    validate_manifest_bytes(pack_root=pack_dir, manifest_bytes=manifest_bytes)
-
-    parsed = json.loads(manifest_bytes.decode("utf-8", errors="strict"))
-    if not isinstance(parsed, dict):
-        raise RuntimeError("ProtocolPackManifest.json must be an object")
-
-    pack_id = str(parsed.get("pack_id") or "").strip()
-    pack_name = str(parsed.get("pack_name") or "").strip()
-    if not pack_id:
-        raise RuntimeError("ProtocolPackManifest.json missing pack_id")
-    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
-    return {
-        "pack_id": pack_id,
-        "pack_name": pack_name,
-        "manifest_sha256": manifest_sha256,
-    }
-
-
-def _maybe_update_protocol_pack_pin(*, locked_spec: dict[str, Any], identity: dict[str, str]) -> bool:
-    proto = locked_spec.get("protocol_pack")
-    if not isinstance(proto, dict):
-        proto = {}
-        locked_spec["protocol_pack"] = proto
-
-    changed = False
-    for k in ("pack_id", "manifest_sha256"):
-        v = identity.get(k)
-        if isinstance(v, str) and v and proto.get(k) != v:
-            proto[k] = v
-            changed = True
-
-    # Keep these aligned if present (non-authoritative, but helpful).
-    pn = identity.get("pack_name")
-    if isinstance(pn, str) and pn and proto.get("pack_name") != pn:
-        proto["pack_name"] = pn
-        changed = True
-
-    if proto.get("source") != "builtin":
-        proto["source"] = "builtin"
-        changed = True
-
-    return changed
-
-
-_HEX_64_RE = re.compile(r"^[0-9a-fA-F]{64}$")
-
-
-def _read_text_strict(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="strict")
-
-
-def _load_ed25519_private_key_hex_seed(hex_seed: str) -> Any:
-    try:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError("Missing crypto dependency for Ed25519 (install 'cryptography').") from e
-
-    if not _HEX_64_RE.fullmatch(hex_seed):
-        raise RuntimeError("seal_private_key.hex must contain exactly 64 hex chars")
-    return Ed25519PrivateKey.from_private_bytes(bytes.fromhex(hex_seed))
-
-
-def _ed25519_pubkey_hex_from_private_key_file(priv_path: Path) -> str:
-    try:
-        from cryptography.hazmat.primitives import serialization
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError("Missing crypto dependency for Ed25519 (install 'cryptography').") from e
-
-    seed = _read_text_strict(priv_path).strip()
-    priv = _load_ed25519_private_key_hex_seed(seed)
-    pub = priv.public_key()
-    pub_bytes = pub.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
-    return pub_bytes.hex()
-
-
-def _fixture_dir_rel_for_path(repo_root: Path, p: Path) -> str:
-    return p.parent.relative_to(repo_root).as_posix()
-
-
-def _sync_pack_identity(
-    *,
-    repo_root: Path,
-    pack_dir: str,
-) -> tuple[dict[str, str], list[Path]]:
-    identity = _active_pack_identity(repo_root=repo_root, pack_rel=pack_dir)
-    locked_specs = _walk_repo_files(repo_root, rel_root="policy/fixtures", filename="LockedSpec.json")
-    if not locked_specs:
-        raise RuntimeError("NO-GO: no fixture LockedSpec targets found (checked 0)")
-    modified: list[Path] = []
-    for p in locked_specs:
-        doc = _load_json(p)
-        if not isinstance(doc, dict):
-            raise RuntimeError(f"LockedSpec must be an object: {p.relative_to(repo_root).as_posix()}")
-        if _maybe_update_protocol_pack_pin(locked_spec=doc, identity=identity):
-            _atomic_write_json(p, doc)
-            modified.append(p)
-    modified.sort(key=lambda x: x.relative_to(repo_root).as_posix())
-    return identity, modified
-
-
-def _enforce_seal_keypair_and_pubkey_ref(
-    *,
-    repo_root: Path,
-    locked_spec_path: Path,
-    locked_spec: dict[str, Any],
-    create_missing_private_key: bool,
-) -> tuple[bool, list[str]]:
-    """Ensure seal_pubkey.hex is derived from seal_private_key.hex and seal_pubkey_ref.hash matches bytes.
-
-    Returns (changed, notes).
-    """
-
-    notes: list[str] = []
-    env = locked_spec.get("environment_envelope")
-    if not isinstance(env, dict):
-        return False, notes
-    pub_ref = env.get("seal_pubkey_ref")
-    if not isinstance(pub_ref, dict):
-        return False, notes
-
-    fixture_dir = locked_spec_path.parent
-    fixture_dir_rel = fixture_dir.relative_to(repo_root).as_posix()
-    is_seal_fixture = fixture_dir_rel.startswith("policy/fixtures/public/seal/")
-
-    # For non-SEAL fixtures (e.g., Gate S), only bind seal_pubkey_ref.hash to pubkey bytes.
-    # Do not require or create a private key outside SEAL producer fixtures.
-    if not is_seal_fixture:
-        storage_ref = str(pub_ref.get("storage_ref") or "")
-        if not storage_ref:
-            return False, notes
-        try:
-            pub_path = _repo_path(repo_root, storage_ref, must_exist=True, must_be_file=True)
-        except Exception:
-            # Some historical fixtures may use fixture-local refs like "seal_pubkey.hex".
-            # Fail-closed unless the fixture-local file exists, in which case we normalize to repo-relative.
-            candidate = fixture_dir / storage_ref
-            if candidate.exists() and candidate.is_file() and not candidate.is_symlink():
-                fixed_ref = f"{fixture_dir_rel}/{storage_ref}"
-                pub_ref["storage_ref"] = fixed_ref
-                pub_path = _repo_path(repo_root, fixed_ref, must_exist=True, must_be_file=True)
-                notes.append(
-                    f"updated {locked_spec_path.relative_to(repo_root).as_posix()} seal_pubkey_ref.storage_ref"
-                )
-            else:
-                raise
-        if pub_path.is_symlink():
-            raise RuntimeError(f"Symlink pubkey not allowed: {pub_path.relative_to(repo_root).as_posix()}")
-        pub_bytes = pub_path.read_bytes()
-        computed_hash = sha256_bytes(pub_bytes)
-        declared_hash = str(pub_ref.get("hash") or "")
-        if declared_hash.lower() != computed_hash.lower():
-            pub_ref["hash"] = computed_hash
-            notes.append(f"updated {locked_spec_path.relative_to(repo_root).as_posix()} seal_pubkey_ref.hash")
-            return True, notes
-        return False, notes
-
-    # SEAL fixtures: enforce local pubkey storage_ref binding (and keypair checks when private key is present).
-    storage_ref = str(pub_ref.get("storage_ref") or "")
-    priv_path = fixture_dir / "seal_private_key.hex"
-    expected_pub_hex: str | None = None
-    priv_changed = False
-    if priv_path.exists():
-        if priv_path.is_symlink():
-            raise RuntimeError(f"Symlink private key not allowed: {priv_path}")
-        expected_pub_hex = _ed25519_pubkey_hex_from_private_key_file(priv_path).lower()
-    elif create_missing_private_key:
-        _atomic_write_text(priv_path, "1f" * 32 + "\n")
-        notes.append(f"added {priv_path.relative_to(repo_root).as_posix()}")
-        priv_changed = True
-        expected_pub_hex = _ed25519_pubkey_hex_from_private_key_file(priv_path).lower()
-    desired_storage_ref = f"{fixture_dir_rel}/seal_pubkey.hex"
-    ref_path_changed = False
-    if storage_ref != desired_storage_ref:
-        pub_ref["storage_ref"] = desired_storage_ref
-        pub_path = _repo_path(repo_root, desired_storage_ref, must_exist=False, must_be_file=True)
-        ref_path_changed = True
-        notes.append(f"updated {locked_spec_path.relative_to(repo_root).as_posix()} seal_pubkey_ref.storage_ref")
-    else:
-        pub_path = _repo_path(repo_root, desired_storage_ref, must_exist=False, must_be_file=True)
-
-    if pub_path.exists() and pub_path.is_symlink():
-        raise RuntimeError(f"Symlink pubkey not allowed: {pub_path.relative_to(repo_root).as_posix()}")
-
-    pub_changed = False
-    if not pub_path.exists():
-        if expected_pub_hex is None:
-            raise RuntimeError(
-                f"NO-GO: missing seal_pubkey.hex for SEAL fixture: {locked_spec_path.relative_to(repo_root).as_posix()}"
-            )
-        _atomic_write_text(pub_path, expected_pub_hex + "\n")
-        pub_changed = True
-        notes.append(f"updated {pub_path.relative_to(repo_root).as_posix()}")
-    elif expected_pub_hex is not None:
-        current_pub_hex = _read_text_strict(pub_path).strip().lower()
-        if current_pub_hex != expected_pub_hex:
-            _atomic_write_text(pub_path, expected_pub_hex + "\n")
-            pub_changed = True
-            notes.append(f"updated {pub_path.relative_to(repo_root).as_posix()}")
-
-    # Update seal_pubkey_ref.hash to sha256(bytes(pubkey file)).
-    pub_bytes = pub_path.read_bytes()
-    computed_hash = sha256_bytes(pub_bytes)
-    declared_hash = str(pub_ref.get("hash") or "")
-    ref_changed = False
-    if declared_hash.lower() != computed_hash.lower():
-        pub_ref["hash"] = computed_hash
-        ref_changed = True
-        notes.append(f"updated {locked_spec_path.relative_to(repo_root).as_posix()} seal_pubkey_ref.hash")
-
-    return (priv_changed or ref_path_changed or pub_changed or ref_changed), notes
-
-
-def cmd_fixtures_sync_pack_identity(args: argparse.Namespace) -> int:
-    repo_root = Path(args.repo).resolve()
-    identity, modified_paths = _sync_pack_identity(repo_root=repo_root, pack_dir=str(args.pack_dir))
-
-    modified = [p.relative_to(repo_root).as_posix() for p in modified_paths]
-    if modified:
-        shown = ", ".join(modified[:25]) + (f" ... (+{len(modified) - 25} more)" if len(modified) > 25 else "")
-        print(f"[belgi fixtures sync-pack-identity] modified_files: {shown}", file=sys.stderr)
-    else:
-        print("[belgi fixtures sync-pack-identity] No changes needed.", file=sys.stderr)
-
-    print(
-        f"[belgi fixtures sync-pack-identity] active pack_id={identity['pack_id']} manifest_sha256={identity['manifest_sha256']}",
-        file=sys.stderr,
-    )
-    return 0
-
-
-def _run_module(repo_root: Path, module: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", module, *argv],
-        cwd=str(repo_root),
-        env=_det_env(),
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _load_cases_expected(cases_path: Path) -> dict[str, dict[str, Any]]:
-    doc = _load_json(cases_path)
-    cases = doc.get("cases") if isinstance(doc, dict) else None
-    if not isinstance(cases, list):
-        raise RuntimeError(f"Invalid cases.json shape: {cases_path}")
-    out: dict[str, dict[str, Any]] = {}
-    for c in cases:
-        if not isinstance(c, dict):
-            continue
-        cid = str(c.get("case_id") or "").strip()
-        if not cid:
-            continue
-        out[cid] = dict(c)
-    return out
-
-
-def _regen_gate_s_fixture(
-    *,
-    repo_root: Path,
-    case_id: str,
-    expected_exit_code: int,
-) -> tuple[bool, list[str]]:
-    """Regenerate Gate S fixture SealManifest.json deterministically.
-
-    For failing fixtures that embed an intentionally broken signature field, regenerate the base manifest
-    then re-inject the existing signature fields so the failure remains isolated.
-    """
-
-    fixture_dir_rel = f"policy/fixtures/public/gate_s/{case_id}"
-    fixture_dir = _repo_path(repo_root, fixture_dir_rel, must_exist=True, must_be_file=False)
-    if not fixture_dir.is_dir():
-        raise RuntimeError(f"Gate S fixture dir not found: {fixture_dir_rel}")
-
-    seal_path = fixture_dir / "SealManifest.json"
-    if not seal_path.exists():
-        raise RuntimeError(f"Missing SealManifest.json in {fixture_dir_rel}")
-
-    old = _load_json(seal_path)
-    if not isinstance(old, dict):
-        raise RuntimeError(f"SealManifest.json must be an object: {seal_path.relative_to(repo_root).as_posix()}")
-
-    # Generate a correct base manifest (tier-1: unsigned by default).
-    tmp_out = (fixture_dir / "SealManifest.__regen.tmp.json").relative_to(repo_root).as_posix()
-    cp = _run_module(
-        repo_root,
-        "chain.seal_bundle",
-        [
-            "--repo",
-            ".",
-            "--locked-spec",
-            f"{fixture_dir_rel}/LockedSpec.json",
-            "--gate-q-verdict",
-            f"{fixture_dir_rel}/GateVerdict.Q.json",
-            "--gate-r-verdict",
-            f"{fixture_dir_rel}/GateVerdict.R.json",
-            "--evidence-manifest",
-            f"{fixture_dir_rel}/EvidenceManifest.json",
-            "--final-commit-sha",
-            "0" * 40,
-            "--sealed-at",
-            "2000-01-01T00:30:00Z",
-            "--signer",
-            "human:fixture",
-            "--out",
-            tmp_out,
-        ],
-    )
-    if cp.returncode != 0:
-        raise RuntimeError(f"seal_bundle failed for gate_s/{case_id}: rc={cp.returncode} stderr={cp.stderr.strip()!r}")
-
-    tmp_path = _repo_path(repo_root, tmp_out, must_exist=True, must_be_file=True)
-    base = _load_json(tmp_path)
-    tmp_path.unlink(missing_ok=True)
-
-    if not isinstance(base, dict):
-        raise RuntimeError("seal_bundle produced non-object manifest")
-
-    new_obj = dict(base)
-    # Preserve intentionally broken signature fields for failing fixtures.
-    if expected_exit_code != 0:
-        if "signature_alg" in old:
-            new_obj["signature_alg"] = old.get("signature_alg")
-        if "signature" in old:
-            new_obj["signature"] = old.get("signature")
-        if "replay_instructions_ref" in old:
-            new_obj["replay_instructions_ref"] = old.get("replay_instructions_ref")
-        if "replay_instructions_ref" not in new_obj:
-            replay_rel = f"{fixture_dir_rel}/replay_instructions.json"
-            replay_path = _repo_path(repo_root, replay_rel, must_exist=False, must_be_file=True)
-            if replay_path.exists():
-                replay_bytes = replay_path.read_bytes()
-                replay_hash = sha256_bytes(replay_bytes)
-                run_id = str(new_obj.get("run_id") or "").strip()
-                replay_id = f"replay-{run_id}" if run_id else "replay"
-                new_obj["replay_instructions_ref"] = {
-                    "id": replay_id,
-                    "hash": replay_hash,
-                    "storage_ref": replay_rel,
-                }
-
-    new_bytes = canonical_json_bytes(new_obj)
-    old_bytes = seal_path.read_bytes() if seal_path.exists() else b""
-    if old_bytes != new_bytes:
-        _atomic_write_text(seal_path, new_bytes.decode("utf-8", errors="strict"))
-        return True, [f"updated {seal_path.relative_to(repo_root).as_posix()}"]
-    return False, []
-
-
-def _regen_seal_fixture(
-    *,
-    repo_root: Path,
-    case_id: str,
-    expected_exit_code: int,
-    final_commit_sha: str,
-    sealed_at: str,
-    signer: str,
-) -> tuple[bool, list[str]]:
-    """Regenerate Seal producer fixture manifests/signature deterministically (PASS fixtures only)."""
-
-    fixture_dir_rel = f"policy/fixtures/public/seal/{case_id}"
-    fixture_dir = _repo_path(repo_root, fixture_dir_rel, must_exist=True, must_be_file=False)
-    if not fixture_dir.is_dir():
-        raise RuntimeError(f"Seal fixture dir not found: {fixture_dir_rel}")
-
-    notes: list[str] = []
-    changed = False
-
-    if expected_exit_code != 0:
-        # FAIL fixtures must remain intentionally broken; do not overwrite signature fields.
-        return False, notes
-
-    priv_path = fixture_dir / "seal_private_key.hex"
-    if not priv_path.exists():
-        raise RuntimeError(f"PASS seal fixture missing seal_private_key.hex: {fixture_dir_rel}")
-
-    out_manifest_rel = f"{fixture_dir_rel}/SealManifest.out.json"
-    cp = _run_module(
-        repo_root,
-        "chain.seal_bundle",
-        [
-            "--repo",
-            ".",
-            "--locked-spec",
-            f"{fixture_dir_rel}/LockedSpec.json",
-            "--gate-q-verdict",
-            f"{fixture_dir_rel}/GateVerdict.Q.json",
-            "--gate-r-verdict",
-            f"{fixture_dir_rel}/GateVerdict.R.json",
-            "--evidence-manifest",
-            f"{fixture_dir_rel}/EvidenceManifest.json",
-            "--final-commit-sha",
-            final_commit_sha,
-            "--sealed-at",
-            sealed_at,
-            "--signer",
-            signer,
-            "--seal-private-key",
-            f"{fixture_dir_rel}/seal_private_key.hex",
-            "--fixture-mode",
-            "--out",
-            out_manifest_rel,
-        ],
-    )
-    if cp.returncode != 0:
-        raise RuntimeError(f"seal_bundle failed for seal/{case_id}: rc={cp.returncode} stderr={cp.stderr.strip()!r}")
-
-    out_manifest_path = _repo_path(repo_root, out_manifest_rel, must_exist=True, must_be_file=True)
-    out_doc = _load_json(out_manifest_path)
-    if not isinstance(out_doc, dict):
-        raise RuntimeError(f"SealManifest.out.json must be an object: {out_manifest_rel}")
-
-    # Deterministic byte hygiene: chain.seal_bundle may emit CRLF on Windows.
-    # Canonicalize here so fixtures satisfy CS-BYTE-001.
-    canon_bytes = canonical_json_bytes(out_doc)
-    old_out_bytes = out_manifest_path.read_bytes() if out_manifest_path.exists() else b""
-    if old_out_bytes != canon_bytes:
-        _atomic_write_text(out_manifest_path, canon_bytes.decode("utf-8", errors="strict"))
-        changed = True
-        notes.append(f"updated {out_manifest_rel}")
-
-    sig = str(out_doc.get("signature") or "").strip()
-    if not sig:
-        raise RuntimeError(f"seal_bundle did not produce signature for PASS tier-2/3: {case_id}")
-
-    sig_path = fixture_dir / "seal_signature.b64"
-    new_sig_bytes = (sig + "\n").encode("utf-8", errors="strict")
-    old_sig_bytes = sig_path.read_bytes() if sig_path.exists() else b""
-    if old_sig_bytes != new_sig_bytes:
-        _atomic_write_text(sig_path, new_sig_bytes.decode("utf-8", errors="strict"))
-        changed = True
-        notes.append(f"updated {sig_path.relative_to(repo_root).as_posix()}")
-
-    # Keep a second copy for human inspection (historical name); content is identical.
-    signed_rel = f"{fixture_dir_rel}/SealManifest.signed.json"
-    signed_path = _repo_path(repo_root, signed_rel, must_exist=False, must_be_file=True)
-    old_signed_bytes = signed_path.read_bytes() if signed_path.exists() else b""
-    if old_signed_bytes != canon_bytes:
-        _atomic_write_text(signed_path, canon_bytes.decode("utf-8", errors="strict"))
-        changed = True
-        notes.append(f"updated {signed_rel}")
-
-    return changed, notes
-
-
-def cmd_fixtures_regen_seals(args: argparse.Namespace) -> int:
-    repo_root = Path(args.repo).resolve()
-    only_touched = bool(args.only_touched)
-    create_missing_private_keys = bool(getattr(args, "create_missing_private_keys", False))
-
-    # Load case expectations.
-    gate_s_cases = _load_cases_expected(_repo_path(repo_root, "policy/fixtures/public/gate_s/cases.json", must_exist=True, must_be_file=True))
-    seal_cases = _load_cases_expected(_repo_path(repo_root, "policy/fixtures/public/seal/cases.json", must_exist=True, must_be_file=True))
-
-    # First: enforce keypair/pubkey_ref binding only for seal-related *public* fixtures.
-    # This avoids modifying unrelated/internal fixtures where a broken seal_pubkey_ref may be the intentional failure.
-    locked_specs = []
-    for rel_root in ("policy/fixtures/public/gate_s", "policy/fixtures/public/seal"):
-        try:
-            locked_specs.extend(_walk_repo_files(repo_root, rel_root=rel_root, filename="LockedSpec.json"))
-        except Exception:
-            # Absent fixture sets are treated as empty; verification will fail-closed later when cases.json requires them.
-            continue
-    locked_specs = sorted(set(locked_specs), key=lambda p: p.relative_to(repo_root).as_posix())
-    if not locked_specs:
-        raise RuntimeError("NO-GO: no seal-related fixture LockedSpec targets found (checked 0)")
-    touched_fixture_dirs: set[str] = set()
-    for p in locked_specs:
-        rel = p.relative_to(repo_root).as_posix()
-        doc = _load_json(p)
-        if not isinstance(doc, dict):
-            raise RuntimeError(f"LockedSpec must be an object: {rel}")
-
-        changed, _notes = _enforce_seal_keypair_and_pubkey_ref(
-            repo_root=repo_root,
-            locked_spec_path=p,
-            locked_spec=doc,
-            create_missing_private_key=create_missing_private_keys,
-        )
-        if changed:
-            _atomic_write_json(p, doc)
-            touched_fixture_dirs.add(_fixture_dir_rel_for_path(repo_root, p))
-
-    # Second: regenerate seal-related payloads (scoped).
-    modified: list[str] = []
-
-    for case_id, entry in gate_s_cases.items():
-        expected_rc = int(entry.get("expected_exit_code", 2))
-        fixture_dir_rel = f"policy/fixtures/public/gate_s/{case_id}"
-        if only_touched and (fixture_dir_rel not in touched_fixture_dirs):
-            continue
-        changed, notes = _regen_gate_s_fixture(repo_root=repo_root, case_id=case_id, expected_exit_code=expected_rc)
-        if changed:
-            modified.extend(notes)
-
-    for case_id, entry in seal_cases.items():
-        expected_rc = int(entry.get("expected_exit_code", 2))
-        params = entry.get("params") if isinstance(entry.get("params"), dict) else {}
-        final_commit_sha = str(params.get("final_commit_sha") or "0" * 40)
-        sealed_at = str(params.get("sealed_at") or "2000-01-01T00:30:00Z")
-        signer = str(params.get("signer") or "human:fixture")
-        fixture_dir_rel = f"policy/fixtures/public/seal/{case_id}"
-        if only_touched and (fixture_dir_rel not in touched_fixture_dirs):
-            continue
-        changed, notes = _regen_seal_fixture(
-            repo_root=repo_root,
-            case_id=case_id,
-            expected_exit_code=expected_rc,
-            final_commit_sha=final_commit_sha,
-            sealed_at=sealed_at,
-            signer=signer,
-        )
-        if changed:
-            modified.extend(notes)
-
-    modified = sorted(set(modified))
-    if modified:
-        shown = ", ".join(modified[:25]) + (f" ... (+{len(modified)-25} more)" if len(modified) > 25 else "")
-        print(f"[belgi fixtures regen-seals] updated: {shown}", file=sys.stderr)
-    else:
-        print("[belgi fixtures regen-seals] No changes needed.", file=sys.stderr)
-    return 0
-
-
-def cmd_fixtures_fix_all(args: argparse.Namespace) -> int:
-    repo_root = Path(args.repo).resolve()
-    create_missing_private_keys = bool(getattr(args, "create_missing_private_keys", False))
-    # 1) Sync pack identity pins.
-    identity, modified_paths = _sync_pack_identity(repo_root=repo_root, pack_dir=str(args.pack_dir))
-    modified = [p.relative_to(repo_root).as_posix() for p in modified_paths]
-    if modified:
-        shown = ", ".join(modified[:25]) + (f" ... (+{len(modified) - 25} more)" if len(modified) > 25 else "")
-        print(f"[belgi fixtures fix-all] sync-pack modified_files: {shown}", file=sys.stderr)
-    else:
-        print("[belgi fixtures fix-all] sync-pack: No changes needed.", file=sys.stderr)
-    print(
-        f"[belgi fixtures fix-all] active pack_id={identity['pack_id']} manifest_sha256={identity['manifest_sha256']}",
-        file=sys.stderr,
-    )
-
-    # 2) Regenerate seals/signatures for any fixtures whose LockedSpec changed.
-    touched_dirs: set[str] = set(_fixture_dir_rel_for_path(repo_root, p) for p in modified_paths)
-
-    # Reuse regen-seals logic, but constrain to changed fixture dirs.
-    # This preserves "only touch what needs touching".
-    # Build a minimal run by temporarily using only_touched=True and pre-seeding touched dirs via keypair enforcement.
-    # (cmd_fixtures_regen_seals will still skip untargeted dirs in this path.)
-    regen_args = argparse.Namespace(repo=str(repo_root), only_touched=True, create_missing_private_keys=create_missing_private_keys)
-    rc = cmd_fixtures_regen_seals(regen_args)
-    if rc != 0:
-        return rc
-
-    # Ensure Gate S + Seal manifests are regenerated for pack-touched dirs.
-    # (Keypair enforcement alone does not trigger this when pack pins drift.)
-    # Use the canonical chain entrypoints directly.
-    gate_s_cases = _load_cases_expected(_repo_path(repo_root, "policy/fixtures/public/gate_s/cases.json", must_exist=True, must_be_file=True))
-    seal_cases = _load_cases_expected(_repo_path(repo_root, "policy/fixtures/public/seal/cases.json", must_exist=True, must_be_file=True))
-
-    for d in sorted(touched_dirs):
-        if d.startswith("policy/fixtures/public/gate_s/"):
-            case_id = Path(d).name
-            entry = gate_s_cases.get(case_id)
-            if entry is None:
-                raise RuntimeError(f"Unknown gate_s fixture case_id: {case_id}")
-            _regen_gate_s_fixture(repo_root=repo_root, case_id=case_id, expected_exit_code=int(entry.get("expected_exit_code", 2)))
-        if d.startswith("policy/fixtures/public/seal/"):
-            case_id = Path(d).name
-            entry = seal_cases.get(case_id)
-            if entry is None:
-                raise RuntimeError(f"Unknown seal fixture case_id: {case_id}")
-            params = entry.get("params") if isinstance(entry.get("params"), dict) else {}
-            _regen_seal_fixture(
-                repo_root=repo_root,
-                case_id=case_id,
-                expected_exit_code=int(entry.get("expected_exit_code", 2)),
-                final_commit_sha=str(params.get("final_commit_sha") or "0" * 40),
-                sealed_at=str(params.get("sealed_at") or "2000-01-01T00:30:00Z"),
-                signer=str(params.get("signer") or "human:fixture"),
-            )
-
-    return 0
+def _deprecated_fixture_command(name: str) -> int:
+    print(f"NO-GO: `{name}` no longer runs in BELGI main repo. {_FIXTURE_WORKSPACE_GUIDANCE}", file=sys.stderr)
+    return 2
 
 
 def _load_json(path: Path) -> Any:
@@ -1992,19 +1368,19 @@ def main() -> int:
     p_pack_verify.add_argument("--verbose", action="store_true", help="Verbose output")
 
     # fixtures (subparser group)
-    p_fix = subparsers.add_parser("fixtures", help="Repo-local fixture maintenance commands")
+    p_fix = subparsers.add_parser("fixtures", help="Deprecated compatibility stubs for fixture maintenance")
     fix_subs = p_fix.add_subparsers(dest="fixtures_command", help="fixtures subcommand")
 
-    p_sync = fix_subs.add_parser("sync-pack-identity", help="Sync LockedSpec.protocol_pack pins across policy/fixtures")
+    p_sync = fix_subs.add_parser("sync-pack-identity", help="Deprecated: moved to private belgi-fixtures repo")
     p_sync.add_argument("--repo", default=".", help="Repo root")
     p_sync.add_argument("--pack-dir", default="belgi/_protocol_packs/v1", help="Repo-relative active protocol pack directory")
 
-    p_regen = fix_subs.add_parser("regen-seals", help="Regenerate seal-related fixture artifacts deterministically")
+    p_regen = fix_subs.add_parser("regen-seals", help="Deprecated: moved to private belgi-fixtures repo")
     p_regen.add_argument("--repo", default=".", help="Repo root")
     p_regen.add_argument(
         "--create-missing-private-keys",
         action="store_true",
-        help="Create missing policy/fixtures/public/seal/*/seal_private_key.hex deterministically (default: NO-GO)",
+        help="Create missing seal private keys deterministically in the private fixture workspace (default: NO-GO)",
     )
     p_regen.add_argument(
         "--only-touched",
@@ -2012,13 +1388,13 @@ def main() -> int:
         help="Only update fixtures that required self-healing changes in this run (default: update all eligible fixtures)",
     )
 
-    p_all = fix_subs.add_parser("fix-all", help="Sync pack pins then regenerate seal-related fixtures (scoped)")
+    p_all = fix_subs.add_parser("fix-all", help="Deprecated: moved to private belgi-fixtures repo")
     p_all.add_argument("--repo", default=".", help="Repo root")
     p_all.add_argument("--pack-dir", default="belgi/_protocol_packs/v1", help="Repo-relative active protocol pack directory")
     p_all.add_argument(
         "--create-missing-private-keys",
         action="store_true",
-        help="Create missing policy/fixtures/public/seal/*/seal_private_key.hex deterministically (default: NO-GO)",
+        help="Create missing seal private keys deterministically in the private fixture workspace (default: NO-GO)",
     )
     
     args = parser.parse_args()
@@ -2051,12 +1427,8 @@ def main() -> int:
             p_pack.print_help()
             return 3
     elif cmd_norm == "fixtures":
-        if args.fixtures_command == "sync-pack-identity":
-            return cmd_fixtures_sync_pack_identity(args)
-        elif args.fixtures_command == "regen-seals":
-            return cmd_fixtures_regen_seals(args)
-        elif args.fixtures_command == "fix-all":
-            return cmd_fixtures_fix_all(args)
+        if args.fixtures_command in {"sync-pack-identity", "regen-seals", "fix-all"}:
+            return _deprecated_fixture_command(str(args.fixtures_command))
         else:
             p_fix.print_help()
             return 3

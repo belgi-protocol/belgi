@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.1 — 2026-03-23
+
+### Summary
+Patch release finalizing BELGI main-repo fixture-zero closure and tightening the repo-local synthetic builder trust surface without changing shipped gate or runtime semantics.
+
+### Changed
+- BELGI main repo no longer maintains in-repo Q/R/S/Seal fixtures; the scoped regression coverage for this surface is programmatic and pytest-based.
+- Removed the remaining scoped fixture-path dependencies from BELGI main-repo tests and filled the programmatic Q/R coverage gaps for `Q3`, `Q5`, `Q7`, `Q-PROMPT-001`, `Q-DOC-002`, and `R-DOC-001`.
+- Removed BELGI main-repo fixture sweep and regen burden, kept only the vault-only placeholders under `policy/fixtures/internal/`, and left legacy fixture-maintenance command surfaces fail-closed with explicit maintainer guidance.
+- Moved the repo-local synthetic payload builder out of `tests/` into top-level `builders.py` and added explicit builder meta-tests guarding determinism, invalid-path preservation, and absence of hidden authority-bearing defaults.
+- Narrowed public docs so BELGI main repo makes no run or completeness claim about any separate maintainer-private fixture workspace.
+
+### Notes
+- This patch is maintenance and trust-surface tightening only; shipped gate semantics, `chain/` behavior, and TierPacks behavior are unchanged.
+
 ## 1.6.0 — 2026-03-22
 
 ### Summary

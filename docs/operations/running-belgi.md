@@ -259,8 +259,7 @@ python -m chain.gate_r_verify \
 `evaluated_revision` MUST be a stable 40-hex commit SHA (not a moving ref). Obtain it via `git rev-parse HEAD`.
 
 Fixture note (Gate R):
-- Fixtures are runnable without git history. If the repo is a zip snapshot (no `.git`), Gate R may accept a 40-hex `--evaluated-revision` as an opaque id only when inputs are under `policy/fixtures/`.
-- In that fixture context, git-dependent checks are bypassed or replaced with byte-level comparisons (e.g., diff-bytes parsing).
+- BELGI main repo no longer ships Gate R fixtures.
 - Real runs remain strict and require a stable 40-hex commit SHA for `--evaluated-revision`.
 
 ### Stage C3 — Compile docs + final manifest (append-only)
@@ -350,22 +349,15 @@ Repo-local boundary:
 
 DEV (tight loop):
 - After any change to gates, chain logic, schemas, tiers, templates, or manuals: run `python -m tools.sweep consistency --repo .`
-- After any change to Q/R logic or fixtures: run `python -m tools.sweep fixtures-qr --repo .`
-- After any change to Seal/Gate S logic or fixtures: run `python -m tools.sweep fixtures-seal --repo .` and/or `python -m tools.sweep fixtures-s --repo .`
-
-If the consistency sweep fails only on `CS-EV-006`, converge deterministically with:
-- `python -m tools.sweep consistency --repo . --fix-fixtures`
-
-If you see `REGEN-SEALS NO-GO` after `--fix-fixtures`, regenerate only the touched seal-related fixtures (then re-verify via Gate S) with:
-- `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`
+- Main-repo gate regression coverage is pytest-based; BELGI no longer maintains in-repo fixture sweeps.
 
 PRE-MERGE (repo safety):
 - Run `python -m tools.sweep consistency --repo .` (and fix any FAILs; do not waive)
-- Run the relevant fixture sweeps for the areas touched (`fixtures-qr`, `fixtures-s`, `fixtures-seal`)
+- Run the relevant pytest coverage for the areas touched
 
 RELEASE / PACK (publish posture):
 - Run `python -m tools.sweep consistency --repo .`
-- Ensure all fixture sweeps are green and the builtin protocol pack is drift-clean
+- Ensure pytest coverage is green and the builtin protocol pack is drift-clean
 
 ## 1) Overview: what happens in P → C1 → Q → C2 → R → C3 → S
 
@@ -587,7 +579,7 @@ Verifier ordered-results contract (hardening note):
 - If the snapshot index invariant fails or the R-snapshot manifest cannot be written, Gate R stops there and no later checks appear in `results[]`.
 - If the R4-owned required-report current-run prevalidation fails, Gate R stops there and semantic checks do not execute.
 - Primary cause is defined as the **first FAIL** entry in that ordered `results[]` list.
-- Any tooling that enforces primary-cause selection across fixtures (e.g., `tools/sweep.py fixtures-qr`) MUST **FAIL closed** if the verifier output lacks an ordered `results[]` list.
+- Any tooling that enforces primary-cause selection across migrated fixtures in the private audit workspace MUST **FAIL closed** if the verifier output lacks an ordered `results[]` list.
 
 Chain of custody note (R-Snapshot):
 - Gate R’s verdict references its EvidenceManifest by ObjectRef hash (`GateVerdict.evidence_manifest_ref`). Therefore, the EvidenceManifest used for Gate R MUST be treated as immutable after R evaluation.
@@ -753,7 +745,7 @@ Guidelines:
 - Proposer ran under LockedSpec constraints; no waiver actions by proposer.
 - R-Snapshot EvidenceManifest contains all tier-required evidence kinds.
 - Gate R verdict is GO.
-- Fixture sweep (closure gate): `python -m tools.sweep fixtures-qr`.
+- Main-repo closure coverage is pytest-based; migrated fixture sweeps live only in the private audit workspace.
 - Docs compilation evidence recorded (C3).
 - SealManifest produced, schema-valid, and references LockedSpec, both verdicts, EvidenceManifest, and waiver refs (if any).
 
@@ -766,7 +758,7 @@ R-Snapshot / Final EvidenceManifest integrity:
 Checklist (must be mechanically checkable):
 - Byte-normalize first (prevents avoidable hash churn): `python -m tools.normalize --repo . --check --tracked-only` (or `--fix` if it fails).
 - Run the sweep: `python -m tools.sweep consistency --repo .`.
-- CS-EV-006 bootstrap behavior is expected: a first-run FAIL can occur due to self-referential hash pinning. Converge deterministically with `python -m tools.sweep consistency --repo . --fix-fixtures`, which pins the hash printed as `SHA-256 (fixtures should declare)`.
+- In BELGI main repo, CS-EV-006 now PASSes vacuously because the maintained fixture surface moved to the private audit workspace.
 - Every referenced schema name exists: `LockedSpec.schema.json`, `GateVerdict.schema.json`, `EvidenceManifest.schema.json`, `SealManifest.schema.json`, `Waiver.schema.json`.
 - Every mentioned evidence kind exists in `EvidenceManifest.artifacts[].kind`: `diff`, `test_report`, `command_log`, `env_attestation`, `policy_report`, `schema_validation`, `docs_compilation_log`.
 - Every referenced gate check_id exists:

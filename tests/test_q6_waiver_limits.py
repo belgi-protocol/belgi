@@ -8,11 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from belgi.protocol.pack import get_builtin_protocol_context
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+from builders import build_q_repo
 
 pytestmark = pytest.mark.repo_local
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+Q_REL_ROOT = "synthetic/gate_q"
+Q_INTENT_REL = f"{Q_REL_ROOT}/IntentSpec.core.md"
+Q_LOCKED_REL = f"{Q_REL_ROOT}/LockedSpec.json"
+Q_EVIDENCE_REL = f"{Q_REL_ROOT}/EvidenceManifest.json"
 
 
 def _write_json(path: Path, obj: dict) -> None:
@@ -43,28 +48,17 @@ def _prepare_gate_q_repo(
     waiver_count: int,
     anchored_time_utc: str | None = "2000-01-01T00:00:00Z",
 ) -> Path:
-    fixture = REPO_ROOT / "policy" / "fixtures" / "public" / "gate_q" / "q_pass_tier0"
     repo = tmp_path / "repo"
     repo.mkdir(parents=True, exist_ok=True)
 
-    (repo / "IntentSpec.core.md").write_text(
-        (fixture / "IntentSpec.core.md").read_text(encoding="utf-8", errors="strict"),
-        encoding="utf-8",
-        errors="strict",
-    )
-    evidence_obj = json.loads((fixture / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict"))
+    build_q_repo(repo, rel_root=Q_REL_ROOT, run_id="q6-waivers")
+
+    evidence_obj = json.loads((repo / Q_EVIDENCE_REL).read_text(encoding="utf-8", errors="strict"))
     if anchored_time_utc is not None:
         evidence_obj["anchored_time_utc"] = anchored_time_utc
-    _write_json(repo / "EvidenceManifest.json", evidence_obj)
+    _write_json(repo / Q_EVIDENCE_REL, evidence_obj)
 
-    locked = json.loads((fixture / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
-    proto = get_builtin_protocol_context()
-    locked["protocol_pack"] = {
-        "pack_id": proto.pack_id,
-        "pack_name": proto.pack_name,
-        "manifest_sha256": proto.manifest_sha256,
-        "source": "builtin",
-    }
+    locked = json.loads((repo / Q_LOCKED_REL).read_text(encoding="utf-8", errors="strict"))
 
     waivers: list[str] = []
     for idx in range(waiver_count):
@@ -73,13 +67,7 @@ def _prepare_gate_q_repo(
         waivers.append(rel)
 
     locked["waivers_applied"] = waivers
-    for rel in (
-        "policy/fixtures/public/gate_q/q_pass_tier0/toolchain-set.json",
-        "policy/fixtures/public/gate_q/q_pass_tier0/tolerances.json",
-    ):
-        src = REPO_ROOT / rel
-        _write_json(repo / rel, json.loads(src.read_text(encoding="utf-8", errors="strict")))
-    _write_json(repo / "LockedSpec.json", locked)
+    _write_json(repo / Q_LOCKED_REL, locked)
     return repo
 
 
@@ -101,11 +89,11 @@ def _run_gate_q_with_override(repo: Path) -> subprocess.CompletedProcess[str]:
             "--repo",
             str(repo),
             "--intent-spec",
-            "IntentSpec.core.md",
+            Q_INTENT_REL,
             "--locked-spec",
-            "LockedSpec.json",
+            Q_LOCKED_REL,
             "--evidence-manifest",
-            "EvidenceManifest.json",
+            Q_EVIDENCE_REL,
             "--out",
             "GateVerdict.Q.json",
             "--tiers",

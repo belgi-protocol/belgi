@@ -349,15 +349,6 @@ def _rehash(repo_root: Path) -> None:
             cwd=str(repo_root),
         )
 
-    # Rehash required report ObjectRefs for public Gate R fixture set.
-    cases = "policy/fixtures/public/gate_r/cases.json"
-    cases_path = (repo_root / cases).resolve()
-    if cases_path.exists():
-        subprocess.check_call(
-            [py, str(rehash_py), "required-reports", "--", "--cases", cases],
-            cwd=str(repo_root),
-        )
-
 
 def _write_report(path: Path, obj: object) -> None:
     # Mekanik Namus: explicit newline enforcement for text-mode writes.

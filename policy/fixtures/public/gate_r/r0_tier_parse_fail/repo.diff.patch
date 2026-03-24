@@ -1,6 +1,0 @@
-diff --git a/policy/fixtures/gate_r/r0_tier_parse_fail/changed.txt b/policy/fixtures/gate_r/r0_tier_parse_fail/changed.txt
---- a/policy/fixtures/gate_r/r0_tier_parse_fail/changed.txt
-+++ b/policy/fixtures/gate_r/r0_tier_parse_fail/changed.txt
-@@ -1 +1 @@
--old
-+new

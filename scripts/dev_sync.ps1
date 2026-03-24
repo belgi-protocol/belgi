@@ -134,22 +134,10 @@ try {
   Run-Step "Protocol Pack Drift Guard"    $pyInfo @("-m","tools.check_drift")
   Run-Step "Ruff lint"                    $ruffPyInfo @("-m","ruff","check","belgi","chain","tools","wrapper","tests","scripts",".github/scripts")
 
-  # Local calibration: keep builtin protocol pack manifest + fixture pins in sync.
+  # Local calibration: keep builtin protocol pack manifest in sync.
   Run-Step "Protocol Pack Manifest (rehash)"              $pyInfo @("-m","tools.rehash","protocol-pack","--pack","belgi/_protocol_packs/v1")
-  Run-Step "Fixtures: Protocol Pack Pins (rehash)"        $pyInfo @("-m","tools.rehash","fixtures-protocol-pack","--pack","belgi/_protocol_packs/v1")
 
-  # Canonical sweep: fix fixtures + (optionally) regen seals in one pass, then verify.
-  Run-Step "Consistency sweep (FIX fixtures + regen seals)" $pyInfo @("-m","tools.sweep","consistency","--repo",".","--fix-fixtures","--regen-seals")
-
-  # Deterministic calibration: regenerate PASS seal producer fixtures even if --fix-fixtures touched nothing.
-  Run-Step "Fixtures: Regen seals (PASS fixtures)"        $pyInfo @("-m","tools.belgi","fixtures","regen-seals","--repo",".")
-  Run-Step "Rehash required reports"                      $pyInfo @("-m","tools.rehash","required-reports","--repo",".")
   Run-Step "Consistency sweep (VERIFY)"                   $pyInfo @("-m","tools.sweep","consistency","--repo",".")
-
-  # Fixture sweeps (VERIFY fixtures behavior)
-  Run-Step "Fixture sweeps (QR)"                          $pyInfo @("-m","tools.sweep","fixtures-qr","--repo",".")
-  Run-Step "Fixture sweeps (Seal)"                        $pyInfo @("-m","tools.sweep","fixtures-seal","--repo",".")
-  Run-Step "Fixture sweeps (S)"                           $pyInfo @("-m","tools.sweep","fixtures-s","--repo",".")
 
   Write-Host ""
   Write-Host "OK: dev-sync completed."

@@ -4,7 +4,8 @@
 Commands:
 - sha256-txt: rehash or check sha256sum-style manifest files
 - evidence-manifest: recompute hashes inside EvidenceManifest.json
-- required-reports: rehash required policy/test report ObjectRefs in fixture manifests
+- required-reports / fixtures-protocol-pack:
+  deprecated compatibility surfaces that now fail closed with private-workspace guidance
 
 Security / determinism posture:
 - Repo-root confinement: reject absolute paths, '..', NUL bytes.
@@ -37,6 +38,11 @@ from belgi.core.jail import resolve_repo_rel_path as _resolve_repo_rel_path
 
 class _UserInputError(RuntimeError):
     pass
+
+
+FIXTURE_WORKSPACE_GUIDANCE = (
+    "Fixture maintenance moved to the private belgi-fixtures repo. "
+)
 
 
 def _validate_repo_rel(rel: str) -> str:
@@ -212,7 +218,9 @@ def _extract_case_path(case: dict[str, Any], key: str) -> str | None:
 
 
 def _cmd_fixtures_protocol_pack(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description="Update/check fixture LockedSpec.protocol_pack pins to match builtin protocol pack")
+    ap = argparse.ArgumentParser(
+        description="Deprecated fixture protocol-pack helper for the private belgi-fixtures workspace"
+    )
     ap.add_argument("--repo", default=".", help="Repo root")
     ap.add_argument(
         "--pack",
@@ -221,13 +229,13 @@ def _cmd_fixtures_protocol_pack(argv: list[str]) -> int:
     )
     ap.add_argument(
         "--cases-q",
-        default="policy/fixtures/public/gate_q/cases.json",
-        help="Gate Q cases.json path (repo-relative)",
+        default="gate_q/cases.json",
+        help="Gate Q cases.json path inside the private fixture workspace (repo-relative)",
     )
     ap.add_argument(
         "--cases-r",
-        default="policy/fixtures/public/gate_r/cases.json",
-        help="Gate R cases.json path (repo-relative)",
+        default="gate_r/cases.json",
+        help="Gate R cases.json path inside the private fixture workspace (repo-relative)",
     )
     ap.add_argument(
         "--gates",
@@ -641,12 +649,14 @@ def _rehash_one_required_reports(
 
 
 def _cmd_required_reports(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(description="Re-hash required report ObjectRefs in fixture EvidenceManifest.json files")
+    ap = argparse.ArgumentParser(
+        description="Deprecated required-report rehash helper for the private belgi-fixtures workspace"
+    )
     ap.add_argument("--repo", default=".", help="Repo root")
     ap.add_argument(
         "--cases",
-        default="policy/fixtures/public/gate_r/cases.json",
-        help="Cases JSON (repo-relative)",
+        default="gate_r/cases.json",
+        help="Gate R cases.json path inside the private fixture workspace (repo-relative)",
     )
     ap.add_argument(
         "--demo-manifest",
@@ -763,11 +773,13 @@ def main(argv: list[str] | None = None) -> int:
         if ns.cmd == "evidence-manifest":
             return _cmd_evidence_manifest(rest)
         if ns.cmd == "required-reports":
-            return _cmd_required_reports(rest)
+            print(f"NO-GO: `required-reports` no longer runs in BELGI main repo. {FIXTURE_WORKSPACE_GUIDANCE}")
+            return 2
         if ns.cmd == "protocol-pack":
             return _cmd_protocol_pack(rest)
         if ns.cmd == "fixtures-protocol-pack":
-            return _cmd_fixtures_protocol_pack(rest)
+            print(f"NO-GO: `fixtures-protocol-pack` no longer runs in BELGI main repo. {FIXTURE_WORKSPACE_GUIDANCE}")
+            return 2
 
         raise _UserInputError(f"Unknown command: {ns.cmd}")
     except _UserInputError as e:

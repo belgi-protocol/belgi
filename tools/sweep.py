@@ -5,11 +5,8 @@ This file is the canonical sweep CLI.
 
 Commands:
 - consistency: generate policy/consistency_sweep.json (canonical)
-- fixtures-q: run Gate Q fixtures only
-- fixtures-r: run Gate R fixtures only
-- fixtures-qr: run Gate Q+R fixtures
-- fixtures-s: run Gate S verifier fixtures
-- fixtures-seal: run Seal producer fixtures
+- fixtures-q / fixtures-r / fixtures-qr / fixtures-s / fixtures-seal:
+  deprecated compatibility surfaces that now fail closed with private-workspace guidance
 """
 
 # maintainer marker: bk_ycanary_7f3a9c2d
@@ -38,6 +35,9 @@ CANONICAL_SWEEP_SUMMARY = "policy/consistency_sweep.summary.md"
 ZERO_SHA256 = "0" * 64
 
 CONSISTENCY_SPEC_DOC = "docs/operations/consistency-sweep.md"
+FIXTURE_WORKSPACE_GUIDANCE = (
+    "Fixture maintenance moved to the private belgi-fixtures repo. "
+)
 
 _C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
     ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
@@ -86,6 +86,11 @@ _PROTOCOL_IDENTITY_SOURCE_FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]],
         re.compile(r"\bsource mismatch\b", flags=re.IGNORECASE),
     ),
 )
+
+
+def _main_repo_fixture_surface_present(root: Path) -> bool:
+    public_root = root / "policy" / "fixtures" / "public"
+    return public_root.exists() and public_root.is_dir()
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -170,8 +175,8 @@ _SEAL_PAYLOAD_FILENAMES: tuple[str, ...] = (
 )
 
 _REGEN_SEALS_REMEDIATION_TEXT = (
-    "Seal-related fixture SealManifest drift detected after --fix-fixtures. "
-    "Remediation: run `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`."
+    "Seal-related fixture SealManifest drift detected inside a governed fixture workspace. "
+    "Remediation: repair migrated seal fixtures in the private belgi-fixtures workspace."
 )
 
 
@@ -444,6 +449,9 @@ def _ev006_normalized_manifest_bytes(em_obj: dict[str, Any]) -> bytes:
 
 
 def _ev006_manifest_paths_for_normalization(root: Path) -> list[str]:
+    if not _main_repo_fixture_surface_present(root):
+        return []
+
     cases_path = _resolve_repo_path(root, "policy/fixtures/public/gate_r/cases.json", must_exist=True, must_be_file=True)
     try:
         cases_obj = load_json(cases_path)
@@ -485,6 +493,9 @@ def _ev006_manifest_paths_for_normalization(root: Path) -> list[str]:
 
 
 def _ev006_blob_overrides_for_normalization(root: Path) -> dict[str, bytes]:
+    if not _main_repo_fixture_surface_present(root):
+        return {}
+
     overrides: dict[str, bytes] = {}
     for em_rel in _ev006_manifest_paths_for_normalization(root):
         em_path = _resolve_repo_path(root, em_rel, must_exist=True, must_be_file=True)
@@ -3424,11 +3435,6 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "tools/report.py",
         "tools/sweep.py",
         "tools/wheel_boundary.py",
-        # Fixture governance
-        "policy/fixtures/public/gate_q/cases.json",
-        "policy/fixtures/public/gate_r/cases.json",
-        "policy/fixtures/public/gate_s/cases.json",
-        "policy/fixtures/public/seal/cases.json",
         # R-check wiring governance
         "chain/logic/r_checks/context.py",
         "chain/logic/r_checks/registry.py",
@@ -3576,6 +3582,9 @@ def _eval_cs_ev_006_expected_hash(root: Path, expected_hash: str, *, fix_fixture
 
     This avoids circular dependence on reading policy/consistency_sweep.json while it is being generated.
     """
+
+    if not _main_repo_fixture_surface_present(root):
+        return (InvariantResult("CS-EV-006", "PASS", [CONSISTENCY_SPEC_DOC], ""), [])
 
     # Primary enforcement surface: governed public Gate R fixtures.
     cases_path = _resolve_repo_path(root, "policy/fixtures/public/gate_r/cases.json", must_exist=True, must_be_file=True)
@@ -3762,7 +3771,7 @@ def _eval_cs_ev_006_expected_hash(root: Path, expected_hash: str, *, fix_fixture
             f"Index policy.consistency_sweep in every Tier>=1 PASS EvidenceManifest (fixtures) with hash={expected_hash}, then rerun the sweep."
         )
         if not fix_fixtures:
-            remediation += " (Tip: run python -m tools.sweep consistency --repo . --fix-fixtures)"
+            remediation += " (Tip: update the migrated fixtures in the private belgi-fixtures workspace before re-running the sweep there)"
         return (
             InvariantResult(
                 "CS-EV-006",
@@ -3783,6 +3792,9 @@ def check_cs_ev_006(root: Path) -> InvariantResult:
     The canonical consistency sweep command evaluates this invariant against the would-be report hash
     (see _consistency_sweep_main). This shim is fail-closed for any other callers.
     """
+
+    if not _main_repo_fixture_surface_present(root):
+        return InvariantResult("CS-EV-006", "PASS", [CONSISTENCY_SPEC_DOC], "")
 
     try:
         p = _resolve_repo_path(root, CANONICAL_SWEEP_OUT, must_exist=True, must_be_file=True)
@@ -3861,7 +3873,9 @@ def _iter_fixture_locked_specs(repo_root: Path) -> list[Path]:
     Fail-closed on symlinks anywhere under policy/fixtures.
     """
 
-    base = _resolve_repo_path(repo_root, "policy/fixtures", must_exist=True, must_be_file=False)
+    base = _resolve_repo_path(repo_root, "policy/fixtures", must_exist=False, must_be_file=False)
+    if not base.exists():
+        return []
     if not base.is_dir():
         raise _UserInputError("policy/fixtures is not a directory")
 
@@ -3925,9 +3939,9 @@ def check_cs_pack_identity_001(root: Path) -> InvariantResult:
     if not locked_specs:
         return InvariantResult(
             "CS-PACK-IDENTITY-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC],
-            "NO-GO: no fixture LockedSpec targets found (checked 0).",
+            "PASS",
+            [CONSISTENCY_SPEC_DOC, "belgi/_protocol_packs/v1/ProtocolPackManifest.json"],
+            "",
         )
 
     mismatches: list[str] = []
@@ -3965,7 +3979,10 @@ def check_cs_pack_identity_001(root: Path) -> InvariantResult:
             "CS-PACK-IDENTITY-001",
             "FAIL",
             [CONSISTENCY_SPEC_DOC, "belgi/_protocol_packs/v1/ProtocolPackManifest.json"],
-            "Run `python -m tools.belgi fixtures sync-pack-identity --repo . --pack-dir belgi/_protocol_packs/v1`, then rerun the sweep.",
+            (
+                "BELGI main repo no longer repairs fixture protocol-pack pins. "
+                "Run the equivalent maintenance only in the separate private fixture workspace, then rerun the sweep there."
+            ),
             details,
         )
 
@@ -3979,6 +3996,9 @@ def check_cs_pack_identity_001(root: Path) -> InvariantResult:
 
 def check_cs_seal_keypair_001(root: Path) -> InvariantResult:
     """CS-SEAL-KEYPAIR-001 — SEAL fixture keypair and seal_pubkey_ref binding are correct."""
+
+    if not _main_repo_fixture_surface_present(root):
+        return InvariantResult("CS-SEAL-KEYPAIR-001", "PASS", [CONSISTENCY_SPEC_DOC], "")
 
     try:
         from cryptography.hazmat.primitives import serialization
@@ -4100,7 +4120,10 @@ def check_cs_seal_keypair_001(root: Path) -> InvariantResult:
             "CS-SEAL-KEYPAIR-001",
             "FAIL",
             [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal/cases.json"],
-            "Run `python -m tools.belgi fixtures fix-all --repo . --create-missing-private-keys`, then rerun the sweep.",
+            (
+                "BELGI main repo no longer repairs seal fixtures. "
+                "Run the equivalent maintenance only in the separate private fixture workspace, then rerun the sweep there."
+            ),
             details,
         )
 
@@ -4253,9 +4276,9 @@ def _remediation_for_message(msg: str) -> str:
     m = (msg or "").lower()
     if "fixtures should declare" in m or ("fixtures" in m and "sha-256" in m) or "hash=" in m:
         return (
-            "CS-EV-006 bootstrap: update fixture expected hash to the printed 'fixtures should declare' value "
-            "(or run `python -m tools.sweep consistency --repo . --fix-fixtures`) and add/update the "
-            "EvidenceManifest.artifacts[] entry for policy.consistency_sweep."
+            "CS-EV-006 fixture maintenance now lives in the private belgi-fixtures workspace. "
+            "If you are updating migrated fixtures there, pin policy.consistency_sweep to the reported hash "
+            "and refresh the fixture EvidenceManifest entry."
         )
     if "run_id" in m and ("missing" in m or "empty" in m):
         return "Ensure all required artifacts include non-empty run_id; regenerate bundle."
@@ -4617,17 +4640,21 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--fix-fixtures",
         action="store_true",
-        help="Deterministically patch governed Gate R fixture EvidenceManifest.json files for CS-EV-006 (default: no changes)",
+        help="Deprecated compatibility flag; in-repo fixture repair moved to private belgi-fixtures",
     )
     ap.add_argument(
         "--regen-seals",
         action="store_true",
-        help="When used with --fix-fixtures, regenerate SealManifests for touched seal-related fixtures (policy/fixtures/**/(gate_s|seal)/**) and verify via Gate S (default: no regen)",
+        help="Deprecated compatibility flag; seal fixture regeneration moved to private belgi-fixtures",
     )
     args = ap.parse_args(argv)
 
-    if bool(args.regen_seals) and not bool(args.fix_fixtures):
-        print("NO-GO: --regen-seals requires --fix-fixtures", file=sys.stderr)
+    if bool(args.fix_fixtures) or bool(args.regen_seals):
+        print(
+            "NO-GO: in-repo fixture repair flags are removed from BELGI main repo. "
+            + FIXTURE_WORKSPACE_GUIDANCE,
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
     # Deterministic contract: the consistency sweep artifact location is fixed and
@@ -4644,6 +4671,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     if not root.exists() or not root.is_dir():
         raise _UserInputError(f"repo root is not a directory: {root}")
     started = utc_now_rfc3339()
+    fixture_surface_present = _main_repo_fixture_surface_present(root)
 
     # Spec-sync guard: law (consistency-sweep.md) must match enforcer registry 1:1.
     spec_ids = _extract_spec_invariant_ids(root)
@@ -4733,9 +4761,10 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
                 print(f"  - {inv}", file=sys.stderr)
         return 2
 
-    # Evaluate all invariants except CS-EV-006 first. CS-EV-006 binds fixtures to the
-    # hash of this sweep's output artifact, so it must be evaluated against the
-    # would-be report hash via a deterministic fixed-point stabilization.
+    # Evaluate all invariants except CS-EV-006 first. When the BELGI main repo still
+    # carries a governed Gate R fixture surface, CS-EV-006 binds those fixtures to the
+    # hash of this sweep's output artifact and must be evaluated against the would-be
+    # report hash via deterministic fixed-point stabilization.
     base_results: List[InvariantResult] = []
     for inv_id in spec_ids:
         if inv_id == "CS-EV-006":
@@ -4820,36 +4849,21 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         h = hashlib.sha256(b).hexdigest()
         return report, b, h, passed_count, failed_count, ordered
 
-    # CS-EV-006 is self-referential: fixtures declare the sweep artifact hash, and CS-EV-006
-    # checks those declarations. Compute the PASS-target artifact hash (i.e., the hash of the
-    # report where CS-EV-006 is PASS) and evaluate CS-EV-006 against that target.
-    cs_pass = InvariantResult("CS-EV-006", "PASS", ["policy/fixtures/public/gate_r/cases.json"], "")
-    _, _, fixture_target_hash, _, _, _ = _render_report(list(base_results) + [cs_pass])
-
-    cs_eval, modified = _eval_cs_ev_006_expected_hash(root, fixture_target_hash, fix_fixtures=bool(args.fix_fixtures))
-    if args.fix_fixtures and modified:
-        max_paths = 25
-        shown = modified[:max_paths]
-        suffix = "" if len(modified) <= max_paths else f" ... (+{len(modified) - max_paths} more)"
-        joined = ", ".join(shown)
-        print(f"FIX-FIXTURES modified_files: {joined}{suffix}", file=sys.stderr)
-
-    # If fix-fixtures touched any seal-related fixture dirs, optionally regenerate seals (scoped)
-    # or fail-closed with deterministic remediation if Gate S indicates drift.
-    touched_fixture_dirs: list[str] = []
-    if bool(args.fix_fixtures) and modified:
-        for p in modified:
-            d = _fixture_dir_from_repo_rel_written_file(p)
-            if d is not None:
-                touched_fixture_dirs.append(d)
-    if bool(args.fix_fixtures) and touched_fixture_dirs:
-        rc = _regen_and_verify_seal_related_fixtures(
-            repo_root=root,
-            fixture_dirs_rel=touched_fixture_dirs,
-            regen_seals=bool(args.regen_seals),
+    if fixture_surface_present:
+        # CS-EV-006 is self-referential: fixtures declare the sweep artifact hash, and CS-EV-006
+        # checks those declarations. Compute the PASS-target artifact hash (i.e., the hash of the
+        # report where CS-EV-006 is PASS) and evaluate CS-EV-006 against that target.
+        cs_pass = InvariantResult("CS-EV-006", "PASS", ["policy/fixtures/public/gate_r/cases.json"], "")
+        _, _, fixture_target_hash, _, _, _ = _render_report(list(base_results) + [cs_pass])
+        cs_eval, _ = _eval_cs_ev_006_expected_hash(root, fixture_target_hash, fix_fixtures=bool(args.fix_fixtures))
+    else:
+        fixture_target_hash = None
+        cs_eval = InvariantResult(
+            "CS-EV-006",
+            "PASS",
+            [CONSISTENCY_SPEC_DOC],
+            "BELGI main repo fixture-zero posture: no governed Gate R fixture surface remains in-repo.",
         )
-        if rc != 0:
-            return rc
 
     report_obj, _, report_hash, passed, failed, results = _render_report(list(base_results) + [cs_eval])
     _write_json(out_path, report_obj, canonical=True)
@@ -4860,7 +4874,8 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
 
     print(f"Wrote: {args.out}")
     print(f"SHA-256 (report): {report_hash}")
-    print(f"SHA-256 (fixtures should declare): {fixture_target_hash}")
+    if fixture_target_hash is not None:
+        print(f"SHA-256 (fixtures should declare): {fixture_target_hash}")
     print(f"Summary: total={len(results)} passed={passed} failed={failed}")
 
     failed_ids = [r.invariant_id for r in results if r.status == "FAIL"]
@@ -4870,28 +4885,34 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
             primary_msg = str(primary.remediation or "").replace("\n", " ").strip()
             print(f"PRIMARY_CAUSE: {primary.invariant_id}: {primary_msg}", file=sys.stderr)
 
-    if not args.fix_fixtures and failed_ids == ["CS-EV-006"]:
+    if fixture_surface_present and not args.fix_fixtures and failed_ids == ["CS-EV-006"]:
         print(
             "\nNote: CS-EV-006 is intentionally self-referential (fixtures pin the sweep artifact hash; the sweep also reports CS-EV-006). "
-            "Until fixtures are updated, the written report hash will differ from the PASS-target hash printed as 'fixtures should declare'.\n"
-            "Fix: run `python -m tools.sweep consistency --repo . --fix-fixtures` to deterministically patch governed fixtures and converge in one pass.",
+            "Until migrated fixtures are updated in the private workspace, the written report hash will differ from the PASS-target hash printed as 'fixtures should declare'.\n"
+            "Fix: update the migrated fixture manifests in the private belgi-fixtures workspace before re-running the sweep there.",
             file=sys.stderr,
         )
 
-    print("\nEvidenceManifest.artifacts[] entry you must include (example):")
-    print(
-        json.dumps(
-            {
-                "kind": "policy_report",
-                "id": "policy.consistency_sweep",
-                "hash": fixture_target_hash,
-                "media_type": "application/json",
-                "storage_ref": CANONICAL_SWEEP_OUT,
-                "produced_by": "C1",
-            },
-            indent=2,
+    if fixture_target_hash is not None:
+        print("\nEvidenceManifest.artifacts[] entry you must include (example):")
+        print(
+            json.dumps(
+                {
+                    "kind": "policy_report",
+                    "id": "policy.consistency_sweep",
+                    "hash": fixture_target_hash,
+                    "media_type": "application/json",
+                    "storage_ref": CANONICAL_SWEEP_OUT,
+                    "produced_by": "C1",
+                },
+                indent=2,
+            )
         )
-    )
+    else:
+        print(
+            "\nCS-EV-006 note: BELGI main repo no longer maintains in-repo Gate R fixtures; "
+            "fixture hash pinning, if needed, belongs only in the private belgi-fixtures workspace."
+        )
 
     return 1 if failed > 0 else 0
 
@@ -5164,9 +5185,11 @@ def _primary_from_gate_r_report(report_path: Path) -> tuple[str | None, str | No
 
 
 def _fixtures_qr_main(argv: list[str] | None = None) -> int:
-    """Sweep Gate Q/R fixtures (policy/fixtures/public/gate_{q,r})."""
+    """Deprecated compatibility runner for private Gate Q/R fixture workspaces."""
 
-    parser = argparse.ArgumentParser(description="Run Gate Q/R verifiers across fixtures and record results.")
+    parser = argparse.ArgumentParser(
+        description="Deprecated compatibility runner for Gate Q/R fixtures in the private belgi-fixtures workspace."
+    )
     parser.add_argument(
         "--repo",
         default=str(REPO_ROOT),
@@ -5174,10 +5197,10 @@ def _fixtures_qr_main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--fixtures-root",
-        default="policy/fixtures/public",
+        default=".",
         help=(
-            "Repo-relative path to a fixtures root that contains gate_q/ and/or gate_r/. "
-            "Defaults to policy/fixtures/public."
+            "Repo-relative path to a private fixture workspace root that contains gate_q/ and/or gate_r/. "
+            "Defaults to the current workspace root."
         ),
     )
     parser.add_argument(
@@ -5455,10 +5478,12 @@ def _fixtures_qr_main(argv: list[str] | None = None) -> int:
 
 
 def _fixtures_seal_main(argv: list[str] | None = None) -> int:
-    """Sweep Seal producer fixtures (policy/fixtures/public/seal) through chain/seal_bundle.py."""
+    """Deprecated compatibility runner for private seal fixture workspaces."""
 
-    default_fixtures_root = "policy/fixtures/public/seal"
-    ap = argparse.ArgumentParser(description="Run Seal producer fixtures sweep")
+    default_fixtures_root = "seal"
+    ap = argparse.ArgumentParser(
+        description="Deprecated compatibility runner for seal fixtures in the private belgi-fixtures workspace."
+    )
     ap.add_argument(
         "--repo",
         default=str(REPO_ROOT),
@@ -5601,10 +5626,12 @@ def _fixtures_seal_main(argv: list[str] | None = None) -> int:
 
 
 def _fixtures_s_main(argv: list[str] | None = None) -> int:
-    """Sweep Gate S verifier fixtures (policy/fixtures/public/gate_s) through chain/gate_s_verify.py."""
+    """Deprecated compatibility runner for private Gate S fixture workspaces."""
 
-    default_fixtures_root = "policy/fixtures/public/gate_s"
-    ap = argparse.ArgumentParser(description="Run Gate S verifier fixtures sweep")
+    default_fixtures_root = "gate_s"
+    ap = argparse.ArgumentParser(
+        description="Deprecated compatibility runner for Gate S fixtures in the private belgi-fixtures workspace."
+    )
     ap.add_argument(
         "--repo",
         default=str(REPO_ROOT),
@@ -5736,6 +5763,14 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[argparse.Namespace, list[st
     return ns, rest
 
 
+def _fixture_workspace_removed(cmd: str) -> int:
+    print(
+        f"NO-GO: `{cmd}` no longer runs in BELGI main repo. {FIXTURE_WORKSPACE_GUIDANCE}",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         ns, rest = _parse_args(argv)
@@ -5744,19 +5779,13 @@ def main(argv: list[str] | None = None) -> int:
             return int(_consistency_sweep_main(rest))
 
         if ns.cmd in ("fixtures-q", "fixtures-r", "fixtures-qr"):
-            gate = "QR"
-            if ns.cmd == "fixtures-q":
-                gate = "Q"
-            elif ns.cmd == "fixtures-r":
-                gate = "R"
-
-            return int(_fixtures_qr_main(["--gate", gate] + rest))
+            return _fixture_workspace_removed(str(ns.cmd))
 
         if ns.cmd == "fixtures-s":
-            return int(_fixtures_s_main(rest))
+            return _fixture_workspace_removed(str(ns.cmd))
 
         if ns.cmd == "fixtures-seal":
-            return int(_fixtures_seal_main(rest))
+            return _fixture_workspace_removed(str(ns.cmd))
 
         raise _UserInputError(f"Unknown command: {ns.cmd}")
     except _UserInputError as e:

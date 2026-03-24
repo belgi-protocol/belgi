@@ -21,19 +21,11 @@ Note: `manifest-init` creates a schema-valid manifest binding current governed b
 
 See docs/operations/evidence-ownership.md for the canonical chain ownership story and Gate Q wrapper commands.
 
-### Why CS-EV-006 often fails right after a commit
+### CS-EV-006 after fixture-zero
 
-`CS-EV-006` binds governed **public Gate R fixtures** to the exact SHA-256 of `policy/consistency_sweep.json`.
+BELGI main repo no longer maintains governed Gate R fixtures, so `CS-EV-006` now PASSes vacuously here once the fixture surface is absent.
 
-That creates an intentional “bootstrap / fixed-point” loop:
-- If you change anything that changes the sweep report bytes, fixtures are now pinned to the *previous* report hash and `CS-EV-006` will FAIL.
-- The sweep prints `SHA-256 (fixtures should declare)` which is the PASS-target hash (what fixtures must be updated to pin).
-
-Use:
-- `python -m tools.sweep consistency --repo . --fix-fixtures` to deterministically patch governed fixtures and converge in one pass.
-
-If the sweep reports `REGEN-SEALS NO-GO` after `--fix-fixtures`, regenerate only the touched seal-related fixtures (and immediately re-verify via Gate S):
-- `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`
+If you are maintaining migrated fixtures, that work is maintainer-private follow-up outside BELGI main-repo scope here. BELGI main repo makes no run or completeness claim about that separate workspace and no longer supports `tools.sweep consistency --fix-fixtures` or `--regen-seals`.
 
 ## github_vars_sanitize.py
 
@@ -99,19 +91,13 @@ If the manifest contains zero hash targets, this is **NO-GO** unless you pass `-
 
 ### required-reports
 
-Rehash required report ObjectRefs inside fixture `EvidenceManifest.json` files referenced by a fixture `cases.json`.
+Deprecated compatibility surface. Required-report rehash for migrated fixtures is maintainer-private follow-up outside BELGI main-repo scope here and fails closed in BELGI main repo.
 
 - Supported `cases.json` shapes:
   - `cases[].paths.evidence_manifest` (current)
   - `cases[].evidence_manifest` (legacy)
 
-```bash
-python -m tools.rehash required-reports --repo . --cases policy/fixtures/public/gate_r/cases.json
-```
-
-If any required report ObjectRef is missing/invalid, this subcommand is **NO-GO**.
-
-By default it enforces this strictly only for cases with `expected_exit_code: 0` (fixtures expected to PASS). Failing fixtures may intentionally omit required artifacts and will be reported as notes without forcing a NO-GO.
+Use the maintainer-private equivalent outside BELGI main repo if you need to refresh migrated fixture report refs.
 
 ## sweep.py
 
@@ -137,8 +123,8 @@ Exit codes:
 Notes:
 - `--out` is fixed by contract and MUST remain `policy/consistency_sweep.json`.
 
-CS-EV-006 tip (fixture manifests):
-- If the sweep prints both `SHA-256 (report)` and `SHA-256 (fixtures should declare)`, fixture `EvidenceManifest.json` files MUST copy the `fixtures should declare` value into the `policy.consistency_sweep` artifact entry.
+CS-EV-006 note:
+- BELGI main repo no longer prints fixture pin guidance because the maintained fixture surface moved to the private audit workspace.
 
 ## report.py
 
