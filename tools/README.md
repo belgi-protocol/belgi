@@ -83,16 +83,6 @@ python -m tools.rehash evidence-manifest --repo . --manifest EvidenceManifest.js
 
 If the manifest contains zero hash targets, this is **NO-GO** unless you pass `--allow-empty`.
 
-### required-reports
-
-Deprecated compatibility surface. Required-report rehash for migrated fixtures is maintainer-private follow-up outside BELGI main-repo scope here and fails closed in BELGI main repo.
-
-- Supported `cases.json` shapes:
-  - `cases[].paths.evidence_manifest` (current)
-  - `cases[].evidence_manifest` (legacy)
-
-Use the maintainer-private equivalent outside BELGI main repo if you need to refresh migrated fixture report refs.
-
 ## sweep.py
 
 Purpose: produce the canonical **Consistency Sweep Report** at `policy/consistency_sweep.json`.
@@ -268,11 +258,11 @@ Note: This is a demo-grade checker. It does **not** replay Gate Q/R/S logic. Ful
 ## tools/belgi_tools.py (dev helper)
 
 For development workflows that run from the repo, `tools/belgi_tools.py` provides additional
-subcommands used by fixtures and Gate R integration tests.
+subcommands used by repo-local synthetic evidence generation and Gate R integration tests.
 
 Compatibility: `tools/belgi.py` is kept as a thin wrapper that dispatches to
 `tools/belgi_tools.py` to avoid Python import-shadowing issues.
-evidence generation commands. These are used by Gate R workflows:
+These evidence-generation commands are used by Gate R workflows:
 
 ```bash
 python -m tools.belgi run-tests --run-id <id>

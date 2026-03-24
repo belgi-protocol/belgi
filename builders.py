@@ -131,6 +131,58 @@ def _sync_repo_locked_specs_upstream_commit(repo_root: Path, commit_sha: str) ->
         write_json(locked_path, locked)
 
 
+def _install_synthetic_gitignore(repo_root: Path) -> None:
+    write_text(
+        repo_root / ".gitignore",
+        "\n".join(
+            [
+                "gate_q/",
+                "gate_r/",
+                "inputs/",
+                "synthetic/",
+                "out/",
+                "protocol_pack/",
+                "belgi_pack/",
+                "tiers.override.json",
+                "",
+            ]
+        ),
+    )
+
+
+def _apply_synthetic_repo_diff_targets(repo_root: Path) -> None:
+    for diff_path in sorted(repo_root.rglob("repo.diff.patch"), key=lambda path: path.as_posix()):
+        text = diff_path.read_text(encoding="utf-8", errors="strict")
+        current_rel: str | None = None
+        added_lines: list[str] = []
+
+        def flush() -> None:
+            if current_rel is None:
+                return
+            final_bytes = ("\n".join(added_lines) + "\n").encode("utf-8", errors="strict")
+            write_bytes(repo_root / Path(*current_rel.split("/")), final_bytes)
+
+        for line in text.splitlines():
+            if line.startswith("diff --git "):
+                flush()
+                parts = line.split()
+                if len(parts) < 4:
+                    raise AssertionError(f"unexpected synthetic diff header: {line}")
+                old_rel = parts[2].removeprefix("a/")
+                new_rel = parts[3].removeprefix("b/")
+                if old_rel != new_rel:
+                    raise AssertionError(f"synthetic rename diff not supported: {line}")
+                current_rel = new_rel
+                added_lines = []
+                continue
+            if line.startswith("+++ ") or line.startswith("--- ") or line.startswith("@@"):
+                continue
+            if line.startswith("+"):
+                added_lines.append(line[1:])
+
+        flush()
+
+
 def structured_command(subcommand: str, *, exit_code: int = 0) -> dict[str, Any]:
     return {
         "argv": ["belgi", subcommand],
@@ -455,6 +507,7 @@ def build_r_repo(
     diff_rel = f"{rel_root}/repo.diff.patch"
     diff_lines = []
     for changed in diff_paths:
+        write_text(repo_root / Path(*changed.split("/")), "old\n")
         diff_lines.extend(
             [
                 f"diff --git a/{changed} b/{changed}",
@@ -812,6 +865,17 @@ def run_gate_r(
 
 
 def init_git_repo(repo_root: Path) -> str:
+    """Create a synthetic repo and return the final clean HEAD under test.
+
+    The returned revision is the exact committed state that positive Gate R
+    tests must evaluate. Synthetic inputs remain off the tracked git surface;
+    the git diff under test is produced only by committed repo bytes.
+    """
+
+    git_env = os.environ.copy()
+    git_env["GIT_AUTHOR_DATE"] = "1970-01-01T00:00:00Z"
+    git_env["GIT_COMMITTER_DATE"] = "1970-01-01T00:00:00Z"
+
     def git(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["git", *args],
@@ -819,14 +883,27 @@ def init_git_repo(repo_root: Path) -> str:
             check=True,
             capture_output=True,
             text=True,
+            env=git_env,
         )
 
     git("init")
     git("config", "user.email", "ci@example.invalid")
     git("config", "user.name", "ci")
     git("config", "core.autocrlf", "false")
+    _install_synthetic_gitignore(repo_root)
     git("add", "-A")
-    git("commit", "--allow-empty", "-m", "init")
-    commit_sha = git("rev-parse", "HEAD").stdout.strip()
-    _sync_repo_locked_specs_upstream_commit(repo_root, commit_sha)
-    return commit_sha
+    git("commit", "--allow-empty", "-m", "synthetic-base")
+    upstream_commit_sha = git("rev-parse", "HEAD").stdout.strip()
+
+    _sync_repo_locked_specs_upstream_commit(repo_root, upstream_commit_sha)
+    _apply_synthetic_repo_diff_targets(repo_root)
+    git("add", "-A")
+
+    if git("status", "--porcelain").stdout.strip():
+        git("commit", "--allow-empty", "-m", "synthetic-evaluated")
+
+    final_head = git("rev-parse", "HEAD").stdout.strip()
+    dirty = git("status", "--porcelain").stdout.strip()
+    assert final_head, "synthetic repo HEAD missing after initialization"
+    assert not dirty, f"synthetic repo must be clean after initialization: {dirty}"
+    return final_head

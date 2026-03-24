@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 import builders
@@ -32,6 +33,25 @@ def _first_failure_rule_id(verdict_path: Path) -> str:
     rule_id = failures[0].get("rule_id")
     assert isinstance(rule_id, str) and rule_id
     return rule_id
+
+
+def _git(repo_root: Path, *args: str) -> str:
+    cp = subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return cp.stdout
+
+
+def _git_head(repo_root: Path) -> str:
+    return _git(repo_root, "rev-parse", "HEAD").strip()
+
+
+def _git_status_porcelain(repo_root: Path) -> str:
+    return _git(repo_root, "status", "--porcelain")
 
 
 def test_build_q_repo_is_deterministic_for_same_explicit_inputs(tmp_path: Path) -> None:
@@ -180,3 +200,40 @@ def test_build_r_repo_does_not_mask_r_doc_001_ownership(tmp_path: Path) -> None:
 
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
     assert _first_failure_rule_id(repo_root / "out" / "GateVerdict.R.json") == "R-DOC-001"
+
+
+def test_init_git_repo_returns_final_clean_head_for_positive_r_setup(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    paths = builders.build_r_repo(repo_root, rel_root="synthetic/r-pass", run_id="r-pass")
+
+    evaluated_revision = builders.init_git_repo(repo_root)
+
+    assert evaluated_revision == _git_head(repo_root)
+    assert _git_status_porcelain(repo_root) == ""
+
+    locked = _read_json(repo_root / paths["locked"])
+    upstream_state = locked.get("upstream_state")
+    assert isinstance(upstream_state, dict)
+    commit_sha = upstream_state.get("commit_sha")
+    assert isinstance(commit_sha, str) and len(commit_sha) == 40
+    assert commit_sha != "0" * 40
+    assert commit_sha != evaluated_revision
+
+    changed_paths = _git(repo_root, "diff", "--name-only", f"{commit_sha}..{evaluated_revision}").splitlines()
+    assert changed_paths == ["src/changed.py"]
+
+
+def test_post_head_tracked_mutation_is_visible_before_positive_r_invocation(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    builders.build_r_repo(repo_root, rel_root="synthetic/r-pass", run_id="r-pass")
+
+    evaluated_revision = builders.init_git_repo(repo_root)
+    assert _git_status_porcelain(repo_root) == ""
+
+    tracked_path = repo_root / "src" / "changed.py"
+    tracked_path.write_text("dirty\n", encoding="utf-8", errors="strict", newline="\n")
+
+    assert _git_head(repo_root) == evaluated_revision
+    status = _git_status_porcelain(repo_root)
+    assert status != ""
+    assert "src/changed.py" in status.replace("\\", "/")

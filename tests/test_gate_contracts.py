@@ -375,7 +375,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
                 "produced_by": "R",
             }
         ],
-        "commands_executed": ["fixture"],
+        "commands_executed": ["synthetic"],
         "envelope_attestation": None,
     }
     _write_json(fake_root, qsnap_rel, qsnap_obj)
@@ -390,7 +390,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
         "failures": [],
         "evidence_manifest_ref": _object_ref(obj_id="evidence.q_snapshot", storage_ref=qsnap_rel, file_bytes=qsnap_bytes),
         "evaluated_at": "1970-01-01T00:00:00Z",
-        "evaluator": "fixture",
+        "evaluator": "synthetic",
     }
     _write_json(fake_root, q_rel, qv_obj)
     qv_bytes = (fake_root / Path(*q_rel.split("/"))).read_bytes()
@@ -417,7 +417,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
                 "produced_by": "R",
             },
         ],
-        "commands_executed": ["fixture"],
+        "commands_executed": ["synthetic"],
         "envelope_attestation": None,
     }
     _write_json(fake_root, rsnap_rel, rsnap_obj)
@@ -432,7 +432,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
         "failures": [],
         "evidence_manifest_ref": _object_ref(obj_id="evidence.r_snapshot", storage_ref=rsnap_rel, file_bytes=rsnap_bytes),
         "evaluated_at": "1970-01-01T00:00:00Z",
-        "evaluator": "fixture",
+        "evaluator": "synthetic",
     }
     _write_json(fake_root, r_rel, rv_obj)
 
@@ -714,7 +714,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
                 "produced_by": "R",
             }
         ],
-        "commands_executed": ["fixture"],
+        "commands_executed": ["synthetic"],
         "envelope_attestation": None,
     }
     _write_json(fake_root, rsnap_rel, rsnap_obj_missing_q)
@@ -748,8 +748,8 @@ def test_gate_r_snapshot_index_hash_mismatch_is_no_go(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -758,7 +758,7 @@ def test_gate_r_snapshot_index_hash_mismatch_is_no_go(tmp_path: Path) -> None:
     (tmp_path / "inputs").mkdir(parents=True, exist_ok=True)
     gate_q_rel = "inputs/GateVerdict.Q.json"
     (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "synthetic", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -823,8 +823,8 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -833,7 +833,7 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     (tmp_path / "inputs").mkdir(parents=True, exist_ok=True)
     gate_q_rel = "inputs/GateVerdict.Q.json"
     (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "synthetic", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -889,8 +889,8 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     assert failures[0].get("rule_id") == "R-SNAPSHOT-INDEX-001"
 
 
-def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path) -> None:
-    """Outside fixture context, Gate R must remain strict about git commit resolution."""
+def test_gate_r_requires_git_for_revision_resolution(tmp_path: Path) -> None:
+    """Gate R must remain strict about git commit resolution."""
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
@@ -901,13 +901,13 @@ def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path)
         json.dumps(
             {
                 "schema_version": "1.0.0",
-                "run_id": "test-non-fixture",
+                "run_id": "test-strict-git",
                 "tier": {"tier_id": "tier-1"},
-                "upstream_state": {"commit_sha": "a" * 40, "dirty_flag": False, "repo_ref": "fixture"},
+                "upstream_state": {"commit_sha": "a" * 40, "dirty_flag": False, "repo_ref": "synthetic"},
                 "protocol_pack": {
                     "pack_id": "0" * 64,
                     "manifest_sha256": "0" * 64,
-                    "pack_name": "fixture",
+                    "pack_name": "synthetic",
                     "source": "builtin",
                 },
             },
@@ -921,7 +921,7 @@ def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path)
     )
 
     (tmp_path / "inputs" / "EvidenceManifest.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "test-non-fixture", "artifacts": []}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "test-strict-git", "artifacts": []}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -929,7 +929,7 @@ def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path)
     )
 
     (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "test-non-fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "test-strict-git", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -977,6 +977,21 @@ def _setup_fake_repo_with_pack(tmp_path: Path, builtin_pack_root: Path) -> Path:
 
 def _init_git_repo(repo_root: Path) -> str:
     return builders.init_git_repo(repo_root)
+
+
+def _git_head(repo_root: Path) -> str:
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
+def _git_status_porcelain(repo_root: Path) -> str:
+    result = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, check=True, capture_output=True, text=True)
+    return result.stdout
+
+
+def _assert_clean_head(repo_root: Path, evaluated_revision: str) -> None:
+    assert _git_head(repo_root) == evaluated_revision
+    assert _git_status_porcelain(repo_root) == ""
 
 
 
@@ -1159,20 +1174,20 @@ def test_byte_guard_reports_binary_extension_unsafe_hits(tmp_path: Path) -> None
     assert paths == ["file.pdf"]
 
 
-def _copy_fixture_inputs(
-    fixture_root: Path, fake_root: Path, fixture_dir: str, include_locked: bool = True
+def _copy_synthetic_inputs(
+    _case_root: Path, fake_root: Path, case_dir: str, include_locked: bool = True
 ) -> dict[str, str]:
     """Generate synthetic case inputs under fake_root using the historical case id."""
 
-    if fixture_dir.endswith("q_pass_tier0"):
-        paths = builders.build_q_repo(fake_root, rel_root=fixture_dir, run_id="q-pass-tier0")
-    elif fixture_dir.endswith("q_intent_001_no_yaml_block"):
-        paths = builders.build_q_repo(fake_root, rel_root=fixture_dir, run_id="q-intent-001")
+    if case_dir.endswith("q_pass_tier0"):
+        paths = builders.build_q_repo(fake_root, rel_root=case_dir, run_id="q-pass-tier0")
+    elif case_dir.endswith("q_intent_001_no_yaml_block"):
+        paths = builders.build_q_repo(fake_root, rel_root=case_dir, run_id="q-intent-001")
         (fake_root / paths["intent"]).write_text("# Intent\nNo YAML block here.\n", encoding="utf-8", errors="strict")
-    elif fixture_dir.endswith("r_pass_tier1"):
-        paths = builders.build_r_repo(fake_root, rel_root=fixture_dir, run_id="r-pass-tier1")
-    elif fixture_dir.endswith("r0_evidence_sufficiency_fail"):
-        paths = builders.build_r_repo(fake_root, rel_root=fixture_dir, run_id="r0-evidence-001")
+    elif case_dir.endswith("r_pass_tier1"):
+        paths = builders.build_r_repo(fake_root, rel_root=case_dir, run_id="r-pass-tier1")
+    elif case_dir.endswith("r0_evidence_sufficiency_fail"):
+        paths = builders.build_r_repo(fake_root, rel_root=case_dir, run_id="r0-evidence-001")
         evidence_path = fake_root / paths["evidence"]
         evidence = _read_json(evidence_path)
         artifacts = evidence.get("artifacts")
@@ -1192,10 +1207,10 @@ def _copy_fixture_inputs(
             errors="strict",
             newline="\n",
         )
-    elif fixture_dir.endswith("s_pass_tier1_unsigned"):
-        paths = builders.build_s_repo(fake_root, rel_root=fixture_dir, run_id="s-pass-tier1")
+    elif case_dir.endswith("s_pass_tier1_unsigned"):
+        paths = builders.build_s_repo(fake_root, rel_root=case_dir, run_id="s-pass-tier1")
     else:
-        raise AssertionError(f"unsupported synthetic case request: {fixture_dir}")
+        raise AssertionError(f"unsupported synthetic case request: {case_dir}")
 
     if not include_locked:
         paths = dict(paths)
@@ -1253,7 +1268,7 @@ def _first_fail_result(results: list[dict[str, Any]]) -> dict[str, Any]:
     raise AssertionError("expected at least one FAIL result")
 
 
-def _prepare_r_pass_tier1_fixture_repo(tmp_path: Path) -> dict[str, str]:
+def _prepare_r_pass_tier1_repo(tmp_path: Path) -> dict[str, str]:
     return builders.build_r_repo(
         tmp_path,
         rel_root="gate_r/r_pass_tier1",
@@ -1519,8 +1534,8 @@ def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_q/q_pass_tier0"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_q/q_pass_tier0"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Tamper pack_id in LockedSpec.
     locked_path = tmp_path / paths["locked"]
@@ -1552,8 +1567,8 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -1573,14 +1588,14 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
         json.dumps(
             {
                 "schema_version": "1.0.0",
-                "run_id": "fixture",
+                "run_id": "synthetic",
                 "gate_id": "Q",
                 "verdict": "GO",
                 "failure_category": None,
                 "failures": [],
                 "evidence_manifest_ref": {"id": "evidence", "hash": "0" * 64, "storage_ref": "inputs/EvidenceManifest.Q.json"},
                 "evaluated_at": "1970-01-01T00:00:00Z",
-                "evaluator": "fixture",
+                "evaluator": "synthetic",
             },
             indent=2,
             sort_keys=True,
@@ -1632,8 +1647,8 @@ def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path)
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -1700,9 +1715,10 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
     verify_rel = "out/verify_report.pass.json"
     verdict_rel = "out/GateVerdict.pass.json"
     snapshot_path = tmp_path / "out" / "EvidenceManifest.r_snapshot.json"
@@ -1748,6 +1764,23 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
     assert verdict.get("failure_category") is None
 
 
+def test_gate_r_positive_head_guard_detects_post_head_tracked_mutation(tmp_path: Path) -> None:
+    """Positive Gate R setup must stop looking clean after a tracked post-HEAD mutation."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    _prepare_r_pass_tier1_repo(tmp_path)
+
+    commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
+
+    tracked_path = tmp_path / "src" / "changed.py"
+    tracked_path.write_text("dirty\n", encoding="utf-8", errors="strict", newline="\n")
+
+    with pytest.raises(AssertionError):
+        _assert_clean_head(tmp_path, commit_sha)
+
+
 @pytest.mark.parametrize(
     ("report_id", "semantic_owner"),
     [
@@ -1765,7 +1798,7 @@ def test_gate_r_foreign_run_required_policy_report_is_structurally_invalid(
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     _rewrite_required_report_payload_run_id(
         tmp_path,
@@ -1825,7 +1858,7 @@ def test_gate_r_foreign_run_required_test_report_is_structurally_invalid(tmp_pat
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     _rewrite_required_report_payload_run_id(
         tmp_path,
@@ -1899,7 +1932,7 @@ def test_gate_r_current_run_required_report_payloads_still_pass(
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
     locked = _read_json(tmp_path / paths["locked"])
     locked_run_id = str(locked.get("run_id"))
 
@@ -1912,6 +1945,7 @@ def test_gate_r_current_run_required_report_payloads_still_pass(
     )
 
     commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
     verify_rel = f"out/verify_report.{artifact_id.replace('.', '_')}.current_run.json"
     verdict_rel = f"out/GateVerdict.{artifact_id.replace('.', '_')}.current_run.json"
     cp = _run_module(
@@ -1948,7 +1982,7 @@ def test_gate_r_missing_policy_supplychain_is_owned_by_r7(tmp_path: Path) -> Non
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -2009,7 +2043,7 @@ def test_gate_r_missing_policy_adversarial_scan_is_owned_by_r8(tmp_path: Path) -
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -2081,7 +2115,7 @@ def test_gate_r_duplicate_required_policy_report_is_owned_by_dedicated_check(
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -2356,6 +2390,7 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
     )
 
     commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
 
     verify_report_rel = "out/verify_report.overlay.json"
     gate_verdict_rel = "out/GateVerdict.R.overlay.json"
@@ -2386,8 +2421,8 @@ def test_gate_s_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_s/s_pass_tier1_unsigned"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_s/s_pass_tier1_unsigned"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Tamper pack_id in LockedSpec.
     locked_path = tmp_path / paths["locked"]
@@ -2505,8 +2540,8 @@ def test_gate_q_missing_protocol_pack_field(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_q/q_pass_tier0"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_q/q_pass_tier0"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Remove protocol_pack field entirely.
     locked_path = tmp_path / paths["locked"]
@@ -2539,8 +2574,8 @@ def test_gate_r_missing_protocol_pack_field(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Remove protocol_pack field entirely.
     locked_path = tmp_path / paths["locked"]
@@ -2555,14 +2590,14 @@ def test_gate_r_missing_protocol_pack_field(tmp_path: Path) -> None:
         json.dumps(
             {
                 "schema_version": "1.0.0",
-                "run_id": "fixture",
+                "run_id": "synthetic",
                 "gate_id": "Q",
                 "verdict": "GO",
                 "failure_category": None,
                 "failures": [],
                 "evidence_manifest_ref": {"id": "evidence", "hash": "0" * 64, "storage_ref": "inputs/EvidenceManifest.Q.json"},
                 "evaluated_at": "1970-01-01T00:00:00Z",
-                "evaluator": "fixture",
+                "evaluator": "synthetic",
             },
             indent=2,
             sort_keys=True,
@@ -2601,8 +2636,8 @@ def test_gate_s_missing_protocol_pack_field(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "gate_s/s_pass_tier1_unsigned"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_s/s_pass_tier1_unsigned"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Remove protocol_pack field entirely.
     locked_path = tmp_path / paths["locked"]

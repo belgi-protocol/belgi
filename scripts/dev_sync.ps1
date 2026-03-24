@@ -137,8 +137,7 @@ try {
   # Local calibration: keep builtin protocol pack manifest in sync.
   Run-Step "Protocol Pack Manifest (rehash)"              $pyInfo @("-m","tools.rehash","protocol-pack","--pack","belgi/_protocol_packs/v1")
 
-  # BELGI main repo is fixture-zero: dev-sync runs only the main-repo consistency sweep,
-  # not any retired fixture maintenance surfaces.
+  # Main-repo deterministic maintenance surface.
   Run-Step "Consistency sweep"   $pyInfo @("-m","tools.sweep","consistency","--repo",".")
 
   Write-Host ""

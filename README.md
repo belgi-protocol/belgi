@@ -120,7 +120,7 @@ SSOT/mirror rule:
 
 BELGI’s determinism guarantee is about **verification**: the same inputs must verify to the same outputs. CI is **verifier-only** and must not mutate tracked artifacts.
 
-Local development is allowed to **repair** governed reports and protocol-pack mirrors after you make changes. BELGI no longer maintains Q/R/S/Seal fixtures in this repo. Any migrated fixture maintenance is maintainer-private follow-up outside BELGI main-repo scope here, and BELGI makes no run or completeness claim about that separate workspace.
+Local development is allowed to **repair** governed reports and protocol-pack mirrors after you make changes.
 
 - **Local fixer (calibration)**: updates tracked artifacts that still belong to BELGI main repo, such as governed reports and pack mirrors. Those changes are expected, transparent, and must be committed.
 - **CI verifier**: validates the repo state; it must never auto-fix or paper over drift.
@@ -164,7 +164,7 @@ From the repo workspace:
 # Local fixer (single command; may modify tracked artifacts that still live in BELGI)
 ./scripts/dev_sync.ps1
 
-# Main-repo regression coverage is pytest-based; migrated fixtures are no longer an in-repo dependency.
+# Main-repo regression coverage is pytest-based.
 python -m pytest
 
 # CI verifier equivalents for tracked repo truth (must not modify files)

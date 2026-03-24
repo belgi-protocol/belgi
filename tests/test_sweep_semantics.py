@@ -87,6 +87,28 @@ def test_known_bad_must_fail(tmp_path: Path) -> None:
     assert res.status == "FAIL"
 
 
+def test_cs_fixture_zero_001_passes_when_governed_public_surface_is_absent(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    res = sweep_mod.check_cs_fixture_zero_001(tmp_path)
+    assert res.invariant_id == "CS-FIXTURE-ZERO-001"
+    assert res.status == "PASS"
+
+
+def test_cs_fixture_zero_001_fails_when_governed_public_surface_reappears(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    reintroduced = tmp_path / "policy" / "fixtures" / "public" / "gate_r" / "cases.json"
+    reintroduced.parent.mkdir(parents=True, exist_ok=True)
+    reintroduced.write_text("{\"cases\": []}\n", encoding="utf-8", errors="strict", newline="\n")
+
+    res = sweep_mod.check_cs_fixture_zero_001(tmp_path)
+    assert res.invariant_id == "CS-FIXTURE-ZERO-001"
+    assert res.status == "FAIL"
+    assert "policy/fixtures/public/gate_r/cases.json" in res.remediation
+    assert res.details == {"reintroduced_paths": ["policy/fixtures/public/gate_r/cases.json"]}
+
+
 def test_abuse_no_boolean_negation_of_missing_needles() -> None:
     txt = (REPO_ROOT / "tools" / "sweep.py").read_text(encoding="utf-8", errors="strict")
 

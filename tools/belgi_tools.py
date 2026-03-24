@@ -35,10 +35,6 @@ from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
 
-_FIXTURE_WORKSPACE_GUIDANCE = (
-    "Fixture maintenance moved to the private belgi-fixtures repo. "
-)
-
 # Bind imports to ENGINE repo root and prevent shadowing from tools/.
 _TOOLS_DIR = Path(__file__).resolve().parent
 _THIS_REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -123,11 +119,6 @@ def _is_hex_40(s: str) -> bool:
 def _canonical_json_no_nl(obj: Any) -> bytes:
     # Must match Gate R R6 canonicalization (sorted keys, compact separators, no trailing LF).
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8", errors="strict")
-
-
-def _deprecated_fixture_command(name: str) -> int:
-    print(f"NO-GO: `{name}` no longer runs in BELGI main repo. {_FIXTURE_WORKSPACE_GUIDANCE}", file=sys.stderr)
-    return 2
 
 
 def _load_json(path: Path) -> Any:
@@ -1367,36 +1358,6 @@ def main() -> int:
     p_pack_verify.add_argument("--builtin", action="store_true", help="Verify builtin pack from installed package")
     p_pack_verify.add_argument("--verbose", action="store_true", help="Verbose output")
 
-    # fixtures (subparser group)
-    p_fix = subparsers.add_parser("fixtures", help="Deprecated compatibility stubs for fixture maintenance")
-    fix_subs = p_fix.add_subparsers(dest="fixtures_command", help="fixtures subcommand")
-
-    p_sync = fix_subs.add_parser("sync-pack-identity", help="Deprecated: moved to private belgi-fixtures repo")
-    p_sync.add_argument("--repo", default=".", help="Repo root")
-    p_sync.add_argument("--pack-dir", default="belgi/_protocol_packs/v1", help="Repo-relative active protocol pack directory")
-
-    p_regen = fix_subs.add_parser("regen-seals", help="Deprecated: moved to private belgi-fixtures repo")
-    p_regen.add_argument("--repo", default=".", help="Repo root")
-    p_regen.add_argument(
-        "--create-missing-private-keys",
-        action="store_true",
-        help="Create missing seal private keys deterministically in the private fixture workspace (default: NO-GO)",
-    )
-    p_regen.add_argument(
-        "--only-touched",
-        action="store_true",
-        help="Only update fixtures that required self-healing changes in this run (default: update all eligible fixtures)",
-    )
-
-    p_all = fix_subs.add_parser("fix-all", help="Deprecated: moved to private belgi-fixtures repo")
-    p_all.add_argument("--repo", default=".", help="Repo root")
-    p_all.add_argument("--pack-dir", default="belgi/_protocol_packs/v1", help="Repo-relative active protocol pack directory")
-    p_all.add_argument(
-        "--create-missing-private-keys",
-        action="store_true",
-        help="Create missing seal private keys deterministically in the private fixture workspace (default: NO-GO)",
-    )
-    
     args = parser.parse_args()
 
     cmd = str(getattr(args, "command", "") or "")
@@ -1425,12 +1386,6 @@ def main() -> int:
             return cmd_pack_verify(args)
         else:
             p_pack.print_help()
-            return 3
-    elif cmd_norm == "fixtures":
-        if args.fixtures_command in {"sync-pack-identity", "regen-seals", "fix-all"}:
-            return _deprecated_fixture_command(str(args.fixtures_command))
-        else:
-            p_fix.print_help()
             return 3
     else:
         parser.print_help()

@@ -4,8 +4,8 @@
 Gate Q is executed as an ordered plugin pipeline (registry):
   chain/logic/q_checks/registry.py
 
-This implementation currently covers the checks needed by the public fixture
-suite and follows the Gate Q contract for deterministic failure selection.
+This implementation follows the Gate Q contract for deterministic failure
+selection.
 
 Exit codes:
 - 0: GO

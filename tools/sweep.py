@@ -5,8 +5,6 @@ This file is the canonical sweep CLI.
 
 Commands:
 - consistency: generate policy/consistency_sweep.json (canonical)
-- fixtures-q / fixtures-r / fixtures-qr / fixtures-s / fixtures-seal:
-  removed compatibility surfaces that now fail closed with private-workspace guidance
 """
 
 # maintainer marker: bk_ycanary_7f3a9c2d
@@ -33,7 +31,6 @@ EVALUATED_AT = "1970-01-01T00:00:00Z"
 CANONICAL_SWEEP_OUT = "policy/consistency_sweep.json"
 CANONICAL_SWEEP_SUMMARY = "policy/consistency_sweep.summary.md"
 CONSISTENCY_SPEC_DOC = "docs/operations/consistency-sweep.md"
-FIXTURE_WORKSPACE_GUIDANCE = "Fixture maintenance moved out of BELGI main repo."
 
 _C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
     ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
@@ -83,10 +80,12 @@ _PROTOCOL_IDENTITY_SOURCE_FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]],
     ),
 )
 
-
-def _main_repo_fixture_surface_present(root: Path) -> bool:
-    public_root = root / "policy" / "fixtures" / "public"
-    return public_root.exists() and public_root.is_dir()
+_FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS: tuple[str, ...] = (
+    "policy/fixtures/public/gate_q/cases.json",
+    "policy/fixtures/public/gate_r/cases.json",
+    "policy/fixtures/public/gate_s/cases.json",
+    "policy/fixtures/public/seal/cases.json",
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -3375,23 +3374,6 @@ def check_cs_byte_001(root: Path) -> InvariantResult:
     return InvariantResult("CS-BYTE-001", "PASS", ["tools/normalize.py"], "", details)
 
 
-def check_cs_ev_006(root: Path) -> InvariantResult:
-    """CS-EV-006 — governed Gate R fixture manifest completeness is vacuous under fixture-zero."""
-
-    if not _main_repo_fixture_surface_present(root):
-        return InvariantResult("CS-EV-006", "PASS", [CONSISTENCY_SPEC_DOC], "")
-
-    return InvariantResult(
-        "CS-EV-006",
-        "FAIL",
-        [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/gate_r"],
-        (
-            "BELGI main repo is fixture-zero. Remove the reintroduced Gate R fixture surface from "
-            "policy/fixtures/public/ and keep any migrated fixture maintenance outside BELGI main repo."
-        ),
-    )
-
-
 def check_cs_protocol_identity_001(root: Path) -> InvariantResult:
     """CS-PROTOCOL-IDENTITY-001 — Protocol identity language excludes source from identity tuple."""
 
@@ -3450,37 +3432,30 @@ def check_cs_protocol_identity_001(root: Path) -> InvariantResult:
     )
 
 
-def check_cs_pack_identity_001(root: Path) -> InvariantResult:
-    """CS-PACK-IDENTITY-001 — fixture protocol-pack pinning is vacuous under fixture-zero."""
+def check_cs_fixture_zero_001(root: Path) -> InvariantResult:
+    """CS-FIXTURE-ZERO-001 — governed public fixture surface stays absent."""
 
-    if not _main_repo_fixture_surface_present(root):
-        return InvariantResult("CS-PACK-IDENTITY-001", "PASS", [CONSISTENCY_SPEC_DOC], "")
-
+    reintroduced = [
+        rel
+        for rel in _FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS
+        if (root / Path(*rel.split("/"))).exists()
+    ]
+    evidence = [f"{CONSISTENCY_SPEC_DOC}#cs-fixture-zero-001--governed-public-fixture-surface-absent-in-belgi-main-repo"]
+    if reintroduced:
+        sample = ", ".join(reintroduced)
+        return InvariantResult(
+            "CS-FIXTURE-ZERO-001",
+            "FAIL",
+            evidence,
+            f"Remove reintroduced governed public fixture surface path(s): {sample}.",
+            {"reintroduced_paths": reintroduced},
+        )
     return InvariantResult(
-        "CS-PACK-IDENTITY-001",
-        "FAIL",
-        [CONSISTENCY_SPEC_DOC, "policy/fixtures/public"],
-        (
-            "BELGI main repo is fixture-zero. Remove the reintroduced fixture surface from "
-            "policy/fixtures/public/ instead of maintaining fixture protocol-pack pins in BELGI."
-        ),
-    )
-
-
-def check_cs_seal_keypair_001(root: Path) -> InvariantResult:
-    """CS-SEAL-KEYPAIR-001 — SEAL fixture key material is vacuous under fixture-zero."""
-
-    if not _main_repo_fixture_surface_present(root):
-        return InvariantResult("CS-SEAL-KEYPAIR-001", "PASS", [CONSISTENCY_SPEC_DOC], "")
-
-    return InvariantResult(
-        "CS-SEAL-KEYPAIR-001",
-        "FAIL",
-        [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal"],
-        (
-            "BELGI main repo is fixture-zero. Remove the reintroduced SEAL fixture surface from "
-            "policy/fixtures/public/ instead of maintaining seal fixture key material in BELGI."
-        ),
+        "CS-FIXTURE-ZERO-001",
+        "PASS",
+        evidence,
+        "",
+        {"checked_paths": list(_FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS)},
     )
 
 
@@ -3687,25 +3662,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         default=[],
         help="Additional repo-relative input files to include (canonical core inputs are always included)",
     )
-    ap.add_argument(
-        "--fix-fixtures",
-        action="store_true",
-        help="Deprecated compatibility flag; in-repo fixture repair moved to private belgi-fixtures",
-    )
-    ap.add_argument(
-        "--regen-seals",
-        action="store_true",
-        help="Deprecated compatibility flag; seal fixture regeneration moved to private belgi-fixtures",
-    )
     args = ap.parse_args(argv)
-
-    if bool(args.fix_fixtures) or bool(args.regen_seals):
-        print(
-            "NO-GO: in-repo fixture repair flags are removed from BELGI main repo. "
-            + FIXTURE_WORKSPACE_GUIDANCE,
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
 
     # Deterministic contract: the consistency sweep artifact location is fixed and
     # is consumed as evidence by downstream verification. Fail closed if asked to
@@ -3780,10 +3737,8 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001": check_cs_verify_bundle_gateverdict_binding_001,
         # Orchestration invariants
         "CS-BYTE-001": check_cs_byte_001,
-        "CS-EV-006": check_cs_ev_006,
+        "CS-FIXTURE-ZERO-001": check_cs_fixture_zero_001,
         "CS-PROTOCOL-IDENTITY-001": check_cs_protocol_identity_001,
-        "CS-PACK-IDENTITY-001": check_cs_pack_identity_001,
-        "CS-SEAL-KEYPAIR-001": check_cs_seal_keypair_001,
         "CS-SWEEP-001": check_cs_sweep_001,
         "CS-SWEEP-002": check_cs_sweep_002,
         "CS-GV-001": check_cs_gv_001,
@@ -3915,7 +3870,7 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[argparse.Namespace, list[st
     ap = argparse.ArgumentParser(description="Unified sweeper entrypoint")
     ap.add_argument(
         "cmd",
-        choices=["consistency", "fixtures-q", "fixtures-r", "fixtures-qr", "fixtures-s", "fixtures-seal"],
+        choices=["consistency"],
         help="Subcommand",
     )
     ap.add_argument("args", nargs=argparse.REMAINDER, help="Subcommand args (optional leading '--' accepted)")
@@ -3924,23 +3879,12 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[argparse.Namespace, list[st
     return ns, rest
 
 
-def _fixture_workspace_removed(cmd: str) -> int:
-    print(
-        f"NO-GO: `{cmd}` no longer runs in BELGI main repo. {FIXTURE_WORKSPACE_GUIDANCE}",
-        file=sys.stderr,
-    )
-    return 2
-
-
 def main(argv: list[str] | None = None) -> int:
     try:
         ns, rest = _parse_args(argv)
 
         if ns.cmd == "consistency":
             return int(_consistency_sweep_main(rest))
-
-        if ns.cmd in {"fixtures-q", "fixtures-r", "fixtures-qr", "fixtures-s", "fixtures-seal"}:
-            return _fixture_workspace_removed(str(ns.cmd))
 
         raise _UserInputError(f"Unknown command: {ns.cmd}")
     except _UserInputError as e:

@@ -911,19 +911,21 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
   - PASS if normalize --check exits 0.
   - FAIL otherwise.
 
-### CS-EV-006 — Manifest Completeness (Tier>=1)
-- invariant_id: CS-EV-006
-- statement: BELGI main repo no longer maintains governed Gate R fixtures. This invariant PASSes when no governed Gate R fixture surface exists under `policy/fixtures/public/gate_r/` and FAILs closed if that removed surface reappears.
+### CS-FIXTURE-ZERO-001 — Governed public fixture surface absent in BELGI main repo
+- invariant_id: CS-FIXTURE-ZERO-001
+- statement: BELGI main repo MUST NOT carry governed public Q/R/S/Seal fixture suites.
 - source-of-truth (file/section):
-  - docs/operations/consistency-sweep.md#d11-evidence-pointer-format-mechanically-checkable
-  - docs/operations/consistency-sweep.md#d12-sweep-report-artifact-mandatory-machine-readable
+  - `policy/fixtures/public/`
 - check procedure (deterministic):
-  1) Check whether BELGI main repo has a governed Gate R fixture surface under `policy/fixtures/public/gate_r/`.
-  2) If that surface is absent, PASS.
-  3) If that surface is present, FAIL closed because BELGI main repo is fixture-zero and any migrated fixture maintenance belongs outside BELGI main repo.
+  1) Check these governed public fixture authority paths in stable order:
+     - `policy/fixtures/public/gate_q/cases.json`
+     - `policy/fixtures/public/gate_r/cases.json`
+     - `policy/fixtures/public/gate_s/cases.json`
+     - `policy/fixtures/public/seal/cases.json`
+  2) FAIL closed if any of those paths exist.
 - required evidence/artifacts (schema kinds): none (repo-path presence check)
 - pass/fail criteria:
-  - PASS if `policy/fixtures/public/gate_r/` is absent from BELGI main repo.
+  - PASS if none of the governed public fixture authority paths exist.
   - FAIL otherwise.
 
 ### CS-PROTOCOL-IDENTITY-001 — Protocol identity language excludes source from identity tuple
@@ -948,34 +950,6 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if all managed files keep source out of identity semantics.
-  - FAIL otherwise.
-
-### CS-PACK-IDENTITY-001 — Fixture protocol pack pinning stays out of BELGI main repo
-- invariant_id: CS-PACK-IDENTITY-001
-- statement: BELGI main repo no longer maintains fixture LockedSpecs. This invariant PASSes when no governed fixture surface remains under `policy/fixtures/public/` and FAILs closed if that removed surface reappears.
-- source-of-truth (file/section):
-  - `docs/operations/consistency-sweep.md` (fixture-zero main-repo policy)
-- check procedure (deterministic):
-  1) Check whether BELGI main repo has any governed fixture surface under `policy/fixtures/public/`.
-  2) If that surface is absent, PASS.
-  3) If that surface is present, FAIL closed because BELGI main repo is fixture-zero and fixture protocol-pack maintenance is out of scope here.
-- required evidence/artifacts (schema kinds): none (repo-path presence check)
-- pass/fail criteria:
-  - PASS if `policy/fixtures/public/` is absent from BELGI main repo.
-  - FAIL otherwise.
-
-### CS-SEAL-KEYPAIR-001 — SEAL fixture key material stays out of BELGI main repo
-- invariant_id: CS-SEAL-KEYPAIR-001
-- statement: BELGI main repo no longer maintains SEAL fixture key material. This invariant PASSes when no governed SEAL fixture surface exists under `policy/fixtures/public/seal/` and FAILs closed if that removed surface reappears.
-- source-of-truth (file/section):
-  - `docs/operations/consistency-sweep.md` (fixture-zero main-repo policy)
-- check procedure (deterministic):
-  1) Check whether BELGI main repo has a governed SEAL fixture surface under `policy/fixtures/public/seal/`.
-  2) If that surface is absent, PASS.
-  3) If that surface is present, FAIL closed because BELGI main repo is fixture-zero and SEAL fixture key maintenance is out of scope here.
-- required evidence/artifacts (schema kinds): none (repo-path presence check)
-- pass/fail criteria:
-  - PASS if `policy/fixtures/public/seal/` is absent from BELGI main repo.
   - FAIL otherwise.
 
 ### CS-SWEEP-001 — Input Authority
@@ -1128,6 +1102,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - [ ] CS-CAN-003: publication posture prohibition present and respected.
 - [ ] CS-TERM-001: verification/validation boundaries are enforced across public docs.
 - [ ] CS-BYTE-001: Byte Guard passes (no CRLF / byte drift).
+- [ ] CS-FIXTURE-ZERO-001: governed public fixture authority paths stay absent from BELGI main repo.
 - [ ] CS-GS-001: GateVerdict GO/NO-GO semantics match schema and gate specs.
 - [ ] CS-GS-002: remediation instruction format matches schema + taxonomy.
 - [ ] CS-GS-003: all gate failure categories exist in failure-taxonomy.
@@ -1142,7 +1117,6 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - [ ] CS-EV-003: Gate R evidence sufficiency is tier-driven (no hardcoded extras).
 - [ ] CS-EV-004: R-Snapshot immutability + append-only final manifest is consistent.
 - [ ] CS-EV-005: Seal binds core replay set + waivers via ObjectRefs.
-- [ ] CS-EV-006: BELGI main repo remains fixture-zero for governed Gate R sweep bindings.
 - [ ] CS-PROTOCOL-IDENTITY-001: identity wording excludes source from the identity tuple.
 - [ ] CS-TIER-001: tier IDs are exactly tier-0..tier-3 everywhere.
 - [ ] CS-TIER-002: tier required_evidence_kinds match across tier-packs/evidence-bundles/running-belgi.
@@ -1230,7 +1204,7 @@ The JSON document at `policy/consistency_sweep.json` MUST be a single JSON objec
 - `tool`: object with:
   - `name`: string (operator tool identity; MAY be a repo-local script name)
   - `version`: string (tool version; MAY be a git describe string)
-- `repo_revision`: string (git tree hash for the evaluated inputs). For determinism, the sweep outputs themselves are excluded from the evaluated tree (currently: `policy/consistency_sweep.json`, `policy/consistency_sweep.summary.md`). BELGI main repo does not normalize any fixture manifests here; removed fixture surfaces fail closed instead. Implementation uses a temporary git index (read-tree/update-index/write-tree), not tree construction commands.
+- `repo_revision`: string (git tree hash for the evaluated inputs). For determinism, the sweep outputs themselves are excluded from the evaluated tree (currently: `policy/consistency_sweep.json`, `policy/consistency_sweep.summary.md`). Implementation uses a temporary git index (read-tree/update-index/write-tree), not tree construction commands.
 - `inputs`: array of objects, each with:
   - `path`: string, repository-relative, using `/` separators
   - `sha256`: string, 64 hex chars, SHA-256 over the file bytes

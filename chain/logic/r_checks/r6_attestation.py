@@ -82,7 +82,7 @@ def _load_ed25519_public_key(pem_bytes: bytes) -> Any:
         ) from e
 
     # Allow either PEM SubjectPublicKeyInfo OR a raw 32-byte public key stored as ASCII hex.
-    # This keeps fixtures and bundle-local key pinning simple and deterministic.
+    # This keeps bundle-local key pinning simple and deterministic.
     blob = pem_bytes.strip()
     try:
         hex_s = blob.decode("ascii", errors="strict").strip()
