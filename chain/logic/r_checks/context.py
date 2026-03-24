@@ -27,7 +27,3 @@ class RCheckContext:
 
     required_policy_report_ids: list[str]
     required_test_report_id: str
-
-    # Optional fields added for fixture safety; defaults preserve legacy positional constructors.
-    fixture_context: bool = False
-    evaluated_revision_is_commit: bool = True

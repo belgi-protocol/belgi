@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from builders import build_q_repo
+
 pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -53,9 +55,6 @@ def test_manifest_init_produces_schema_valid_manifest(tmp_path: Path) -> None:
     em = _read_json(tmp_path / "EvidenceManifest.json")
 
     # Validate against pinned schema using BELGI's deterministic validator.
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
-
     from belgi.core.schema import validate_schema
 
     schema = _read_json(REPO_ROOT / "schemas" / "EvidenceManifest.schema.json")
@@ -176,34 +175,34 @@ def test_manifest_init_fail_closed_on_schema_invalid_kind(tmp_path: Path) -> Non
     assert cp.returncode != 0
 
 
-def test_manifest_init_gate_q_integration_passes_fixture() -> None:
-    uniq = uuid.uuid4().hex
-    base_rel = f"temp/pytest_gate_contracts/manifest_init_q/{uniq}"
-    work = REPO_ROOT / Path(*base_rel.split("/"))
-    work.mkdir(parents=True, exist_ok=True)
+def test_manifest_init_gate_q_integration_passes_synthetic_payload(tmp_path: Path) -> None:
+    repo = tmp_path / uuid.uuid4().hex
+    repo.mkdir(parents=True, exist_ok=True)
 
-    locked_rel = "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
-    intent_rel = "policy/fixtures/public/gate_q/q_pass_tier0/IntentSpec.core.md"
+    rel_root = "synthetic_gate_q"
+    paths = build_q_repo(repo, rel_root=rel_root, run_id="manifest-init-q")
+    locked_rel = paths["locked"]
+    intent_rel = paths["intent"]
 
-    em_rel = f"{base_rel}/EvidenceManifest.init.json"
-    out_rel = f"{base_rel}/GateVerdict.json"
+    em_rel = "EvidenceManifest.init.json"
+    out_rel = "GateVerdict.json"
 
     cp_init = _run_module(
         "tools.belgi",
         [
             "manifest-init",
             "--repo",
-            ".",
+            str(repo),
             "--out",
             em_rel,
             "--locked-spec",
             locked_rel,
             "--add",
-            f"command_log:command_log.fixture:{locked_rel}:application/octet-stream:C1",
+            f"command_log:command_log.synthetic:{locked_rel}:application/octet-stream:C1",
             "--add",
-            f"policy_report:policy_report.fixture:{locked_rel}:application/octet-stream:C1",
+            f"policy_report:policy_report.synthetic:{locked_rel}:application/octet-stream:C1",
             "--add",
-            f"schema_validation:schema_validation.fixture:{locked_rel}:application/octet-stream:C1",
+            f"schema_validation:schema_validation.synthetic:{locked_rel}:application/octet-stream:C1",
             "--overwrite",
         ],
         cwd=REPO_ROOT,
@@ -214,7 +213,7 @@ def test_manifest_init_gate_q_integration_passes_fixture() -> None:
         "chain.gate_q_verify",
         [
             "--repo",
-            ".",
+            str(repo),
             "--intent-spec",
             intent_rel,
             "--locked-spec",

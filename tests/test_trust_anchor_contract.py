@@ -163,12 +163,19 @@ def test_legacy_genesis_payload_cannot_act_as_canonical_authority(tmp_path: Path
         load_pinned_trust_anchor(tmp_path)
 
 
-def test_tier2_has_no_genesis_requirement() -> None:
+def test_tier2_has_no_genesis_requirement(tmp_path: Path) -> None:
+    locked_path = tmp_path / "LockedSpec.json"
+    evidence_path = tmp_path / "EvidenceManifest.json"
+    locked_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    locked_path.write_text("{\"schema_version\":\"1.0.0\"}\n", encoding="utf-8", errors="strict")
+    evidence_path.write_text("{\"schema_version\":\"1.0.0\",\"artifacts\":[]}\n", encoding="utf-8", errors="strict")
+
     ctx = RCheckContext(
         repo_root=REPO_ROOT,
         protocol=get_builtin_protocol_context(),
-        locked_spec_path=REPO_ROOT / "policy" / "fixtures" / "public" / "gate_r" / "r_pass_tier1" / "LockedSpec.json",
-        evidence_manifest_path=REPO_ROOT / "policy" / "fixtures" / "public" / "gate_r" / "r_pass_tier1" / "EvidenceManifest.json",
+        locked_spec_path=locked_path,
+        evidence_manifest_path=evidence_path,
         gate_verdict_path=None,
         locked_spec={"tier": {"tier_id": "tier-2"}},
         evidence_manifest={"artifacts": []},

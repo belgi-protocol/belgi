@@ -42,7 +42,7 @@ from belgi.protocol.pack import (
 from chain.logic.base import CheckResult, load_json, verify_protocol_identity
 from chain.logic.r_checks import r4_schema_contract
 from chain.logic.r_checks.context import RCheckContext
-from chain.logic.r_checks.git_ops import git_resolve_commit, is_fixture_context
+from chain.logic.r_checks.git_ops import git_resolve_commit
 from chain.logic.r_checks.registry import get_checks
 from chain.logic.tier_packs import load_tier_params
 
@@ -207,7 +207,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     # Optional binding input (defense-in-depth).
     ap.add_argument("--gate-verdict", default=None, help="Optional path to GateVerdict.json")
 
-    # Compatibility knobs for fixtures.
+    # Compatibility knobs for schema-development repros.
     ap.add_argument(
         "--policy-payload-schema",
         default=None,
@@ -549,8 +549,6 @@ def main(argv: list[str] | None = None) -> int:
             repo_root, str(args.evidence_manifest), must_exist=True, must_be_file=True
         )
 
-        fixture_ctx = is_fixture_context(repo_root, locked_spec_path, evidence_manifest_path)
-
         if isinstance(args.r_snapshot_manifest_out, str) and args.r_snapshot_manifest_out.strip():
             r_snapshot_manifest_path = _resolve_repo_rel_path(
                 repo_root,
@@ -610,18 +608,8 @@ def main(argv: list[str] | None = None) -> int:
         evaluated_rev_raw = str(args.evaluated_revision)
         try:
             evaluated_commit_sha = git_resolve_commit(repo_root, evaluated_rev_raw)
-            evaluated_is_commit = True
         except Exception as e:
-            # Fixture mode must be runnable without repo history (.git absent); accept a 40-hex revision
-            # as an opaque identifier and let downstream checks fall back when git ops are unavailable.
-            if fixture_ctx:
-                rev = evaluated_rev_raw.strip()
-                if not re.fullmatch(r"[0-9a-fA-F]{40}", rev):
-                    raise
-                evaluated_commit_sha = rev.lower()
-                evaluated_is_commit = False
-            else:
-                raise ValueError(str(e)) from e
+            raise ValueError(str(e)) from e
 
         protocol_identity_result = _protocol_identity_check_result(locked_spec=locked, protocol=protocol)
         ordered_results: list[CheckResult] = [protocol_identity_result]
@@ -726,9 +714,7 @@ def main(argv: list[str] | None = None) -> int:
                     evidence_manifest=evidence,
                     gate_verdict=gate_verdict_obj,
                     tier_params=tier_params,
-                    fixture_context=fixture_ctx,
                     evaluated_revision=evaluated_commit_sha,
-                    evaluated_revision_is_commit=evaluated_is_commit,
                     upstream_commit_sha=upstream_commit_sha,
                     policy_payload_schema=policy_payload_schema,
                     test_payload_schema=test_payload_schema,

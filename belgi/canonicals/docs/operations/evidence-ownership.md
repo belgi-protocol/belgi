@@ -54,7 +54,7 @@ This note defines which BELGI step is the canonical **owner** of each runtime ar
 ## Runtime-mandatory inputs
 
 - **Gate Q requires** a schema-valid EvidenceManifest and enforces required evidence kinds per tier (`required_evidence_kinds_q`).
-  - Required kinds are **tier/policy-defined** (protocol pack); public fixtures commonly exercise `command_log`, `policy_report`, and `schema_validation`.
+  - Required kinds are **tier/policy-defined** (protocol pack); common minimal inputs are `command_log`, `policy_report`, and `schema_validation`.
 
 - **Gate R requires** evidence sufficiency kinds per tier (`required_evidence_kinds`) plus the required command log shape (`command_log_mode`).
 
@@ -94,7 +94,7 @@ python -m chain.gate_q_verify `
   --out _out/run_0001/GateVerdict.Q.json
 ```
 
-Note: `manifest-init` can bind the *same* governed file under multiple required evidence kinds (as the public fixtures do). When you have real `command_log` / `policy_report` / `schema_validation` artifacts, point each `--add` to its true file.
+Note: `manifest-init` can bind the *same* governed file under multiple required evidence kinds. When you have real `command_log` / `policy_report` / `schema_validation` artifacts, point each `--add` to its true file.
 
 ## Why this is deterministic & safe
 

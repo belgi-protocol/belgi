@@ -442,14 +442,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional environment variable containing the Ed25519 private key material (PEM or 64-hex seed).",
     )
     ap.add_argument(
-        "--fixture-mode",
-        action="store_true",
-        help=(
-            "Allow repo-local fixture signing keys for --seal-private-key (fixture-only). "
-            "When set, --seal-private-key MUST be under policy/fixtures/. Default: NO-GO."
-        ),
-    )
-    ap.add_argument(
         "--seal-signature",
         default=None,
         help="Optional base64 Ed25519 signature to embed as the cryptographic seal signature (verified against the pinned seal_pubkey_ref).",
@@ -690,24 +682,6 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError as e:
                 raise RuntimeError(str(e)) from e
 
-            # Fixture-only guard: deterministic fixture keys must not be used accidentally.
-            fixtures_root = (repo_root / "policy" / "fixtures").resolve()
-
-            is_fixture_key = False
-            try:
-                priv_path.resolve().relative_to(fixtures_root)
-                is_fixture_key = True
-            except Exception:
-                is_fixture_key = False
-
-            if is_fixture_key and not bool(args.fixture_mode):
-                raise ValueError(
-                    "FIXTURE-KEY NO-GO: --seal-private-key requires explicit --fixture-mode (fixture-only signing keys)."
-                )
-            if bool(args.fixture_mode) and not is_fixture_key:
-                raise ValueError(
-                    "FIXTURE-KEY NO-GO: --seal-private-key must be under policy/fixtures/ when --fixture-mode is set."
-                )
 
         if sig_required or args.seal_private_key or args.seal_private_key_env or sig_b64_override is not None:
             env = locked_spec.get("environment_envelope")

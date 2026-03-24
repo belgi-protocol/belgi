@@ -38,11 +38,9 @@
 /tools/check_codeowners.py                      @sovsparrow
 /tools/wheel_boundary.py                        @sovsparrow
 
-# Fixture control planes
-/policy/fixtures/public/gate_q/cases.json       @sovsparrow
-/policy/fixtures/public/gate_r/cases.json       @sovsparrow
-/policy/fixtures/public/gate_s/cases.json       @sovsparrow
-/policy/fixtures/public/seal/cases.json         @sovsparrow
+# Fixture-zero vault placeholders
+/policy/fixtures/internal/.gitignore            @sovsparrow
+/policy/fixtures/internal/HALLOFFAME.md         @sovsparrow
 
 # CODEOWNERS governance itself
 /.github/CODEOWNERS                             @sovsparrow

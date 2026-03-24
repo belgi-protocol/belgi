@@ -21,20 +21,6 @@ Note: `manifest-init` creates a schema-valid manifest binding current governed b
 
 See docs/operations/evidence-ownership.md for the canonical chain ownership story and Gate Q wrapper commands.
 
-### Why CS-EV-006 often fails right after a commit
-
-`CS-EV-006` binds governed **public Gate R fixtures** to the exact SHA-256 of `policy/consistency_sweep.json`.
-
-That creates an intentional “bootstrap / fixed-point” loop:
-- If you change anything that changes the sweep report bytes, fixtures are now pinned to the *previous* report hash and `CS-EV-006` will FAIL.
-- The sweep prints `SHA-256 (fixtures should declare)` which is the PASS-target hash (what fixtures must be updated to pin).
-
-Use:
-- `python -m tools.sweep consistency --repo . --fix-fixtures` to deterministically patch governed fixtures and converge in one pass.
-
-If the sweep reports `REGEN-SEALS NO-GO` after `--fix-fixtures`, regenerate only the touched seal-related fixtures (and immediately re-verify via Gate S):
-- `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`
-
 ## github_vars_sanitize.py
 
 Purpose: deterministic workflow helper for repository variable ingestion (`BELGI_VARS_JSON`) in GitHub Actions.
@@ -97,22 +83,6 @@ python -m tools.rehash evidence-manifest --repo . --manifest EvidenceManifest.js
 
 If the manifest contains zero hash targets, this is **NO-GO** unless you pass `--allow-empty`.
 
-### required-reports
-
-Rehash required report ObjectRefs inside fixture `EvidenceManifest.json` files referenced by a fixture `cases.json`.
-
-- Supported `cases.json` shapes:
-  - `cases[].paths.evidence_manifest` (current)
-  - `cases[].evidence_manifest` (legacy)
-
-```bash
-python -m tools.rehash required-reports --repo . --cases policy/fixtures/public/gate_r/cases.json
-```
-
-If any required report ObjectRef is missing/invalid, this subcommand is **NO-GO**.
-
-By default it enforces this strictly only for cases with `expected_exit_code: 0` (fixtures expected to PASS). Failing fixtures may intentionally omit required artifacts and will be reported as notes without forcing a NO-GO.
-
 ## sweep.py
 
 Purpose: produce the canonical **Consistency Sweep Report** at `policy/consistency_sweep.json`.
@@ -136,9 +106,6 @@ Exit codes:
 
 Notes:
 - `--out` is fixed by contract and MUST remain `policy/consistency_sweep.json`.
-
-CS-EV-006 tip (fixture manifests):
-- If the sweep prints both `SHA-256 (report)` and `SHA-256 (fixtures should declare)`, fixture `EvidenceManifest.json` files MUST copy the `fixtures should declare` value into the `policy.consistency_sweep` artifact entry.
 
 ## report.py
 
@@ -291,11 +258,11 @@ Note: This is a demo-grade checker. It does **not** replay Gate Q/R/S logic. Ful
 ## tools/belgi_tools.py (dev helper)
 
 For development workflows that run from the repo, `tools/belgi_tools.py` provides additional
-subcommands used by fixtures and Gate R integration tests.
+subcommands used by repo-local synthetic evidence generation and Gate R integration tests.
 
 Compatibility: `tools/belgi.py` is kept as a thin wrapper that dispatches to
 `tools/belgi_tools.py` to avoid Python import-shadowing issues.
-evidence generation commands. These are used by Gate R workflows:
+These evidence-generation commands are used by Gate R workflows:
 
 ```bash
 python -m tools.belgi run-tests --run-id <id>

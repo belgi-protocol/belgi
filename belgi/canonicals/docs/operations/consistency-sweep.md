@@ -76,10 +76,6 @@ Canonical trigger:
 - tools/check_codeowners.py
 - tools/sweep.py
 - tools/wheel_boundary.py
-- policy/fixtures/public/gate_q/cases.json
-- policy/fixtures/public/gate_r/cases.json
-- policy/fixtures/public/gate_s/cases.json
-- policy/fixtures/public/seal/cases.json
 - belgi/templates/IntentSpec.core.template.md
 - schemas/IntentSpec.schema.json
 - docs/research/experiment-design.md
@@ -915,49 +911,22 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
   - PASS if normalize --check exits 0.
   - FAIL otherwise.
 
-### CS-EV-006 — Manifest Completeness (Tier>=1)
-- invariant_id: CS-EV-006
-- statement: Any EvidenceManifest associated with a Tier 1+ PASS case MUST index the sweep policy report (`policy.consistency_sweep`) as a `policy_report` artifact.
+### CS-FIXTURE-ZERO-001 — Governed public fixture surface absent in BELGI main repo
+- invariant_id: CS-FIXTURE-ZERO-001
+- statement: BELGI main repo MUST NOT carry governed public Q/R/S/Seal fixture suites.
 - source-of-truth (file/section):
-  - docs/operations/consistency-sweep.md#d11-evidence-pointer-format-mechanically-checkable
-  - docs/operations/consistency-sweep.md#d12-sweep-report-artifact-mandatory-machine-readable
+  - `policy/fixtures/public/`
 - check procedure (deterministic):
-  1) Enumerate governed public Gate R fixtures from `policy/fixtures/public/gate_r/cases.json`.
-  2) For each case with `expected_exit_code == 0`:
-     - Load `LockedSpec.json` and read `tier.tier_id`.
-     - If `tier_id` is `tier-1`, `tier-2`, or `tier-3`, then the case’s `EvidenceManifest.json` MUST include exactly one artifact entry with:
-       - `kind: "policy_report"`
-       - `id: "policy.consistency_sweep"`
-       - `storage_ref: "policy/consistency_sweep.json"`
-       - `hash` equal to the sweep artifact hash.
-  3) FAIL on any missing/ambiguous entry or hash mismatch.
-- required evidence/artifacts (schema kinds): EvidenceManifest.json; LockedSpec.json
+  1) Check these governed public fixture authority paths in stable order:
+     - `policy/fixtures/public/gate_q/cases.json`
+     - `policy/fixtures/public/gate_r/cases.json`
+     - `policy/fixtures/public/gate_s/cases.json`
+     - `policy/fixtures/public/seal/cases.json`
+  2) FAIL closed if any of those paths exist.
+- required evidence/artifacts (schema kinds): none (repo-path presence check)
 - pass/fail criteria:
-  - PASS if every Tier>=1 PASS case’s EvidenceManifest indexes `policy.consistency_sweep` correctly.
+  - PASS if none of the governed public fixture authority paths exist.
   - FAIL otherwise.
-
-Implementation note (deterministic fixed-point):
-- On PASS, the CS-EV-006 result SHOULD omit `details` to avoid self-referential hash drift.
-
-Operational convenience (deterministic, optional):
-- Bootstrap note (canonical, deterministic): a first-run CS-EV-006 FAIL can be expected due to self-referential hash pinning.
-- Converge deterministically with: `python -m tools.sweep consistency --repo . --fix-fixtures`.
-- Fixtures MUST pin the hash printed as `SHA-256 (fixtures should declare)`.
-
-- `python -m tools.sweep consistency --repo . --fix-fixtures` MAY be used to deterministically patch governed Gate R fixture EvidenceManifest.json files to include/update the required `policy.consistency_sweep` artifact entry.
-- When `--fix-fixtures` is used, any fixture EvidenceManifest files that may be patched MUST NOT be counted as authoritative sweep inputs (to avoid `inputs[].sha256` becoming self-invalidating mid-run). The sweep MUST fail closed if a modified file overlaps the reported `inputs[].path` set.
-
-Seal-related fixture drift note (deterministic, fail-closed):
-- If `--fix-fixtures` touches any **seal-related** fixture directories (under `policy/fixtures/**/(gate_s|seal)/**` that contain a `SealManifest*.json` payload file), the sweep MUST treat any resulting SealManifest drift as **NO-GO**.
-- Default behavior (no regen): the sweep runs a minimal Gate S precheck for those touched fixture dirs; on mismatch it returns exit code `2` and prints the deterministic remediation:
-  - `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`
-- Remediation behavior (regen enabled): `--regen-seals` (only valid with `--fix-fixtures`) regenerates SealManifest payloads **only** for the touched seal-related fixture dirs and then immediately re-verifies them via Gate S.
-
-Operational note (avoids CS-EV-006 “hash ping-pong”):
-- The sweep report is self-referential: CS-EV-006 depends on the sweep hash, and the sweep hash depends on whether CS-EV-006 is PASS/FAIL.
-- When `python -m tools.sweep consistency` prints two hashes, fixture manifests MUST copy the one labeled `SHA-256 (fixtures should declare)`.
-- Once CS-EV-006 is PASS, `SHA-256 (report)` and `SHA-256 (fixtures should declare)` become equal, and the fixture hash also equals SHA-256(bytes) of `policy/consistency_sweep.json`.
-- Normalization rule (deterministic): when evaluating CS-EV-006, any EvidenceManifest artifact entry with `id == policy.consistency_sweep` is treated as if its `hash` were `000...000` for purposes of computing the expected hash. If the entry is missing, it is treated as present with that zero hash. Verifier mode MUST NOT mutate fixture files.
 
 ### CS-PROTOCOL-IDENTITY-001 — Protocol identity language excludes source from identity tuple
 - invariant_id: CS-PROTOCOL-IDENTITY-001
@@ -982,48 +951,6 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - pass/fail criteria:
   - PASS if all managed files keep source out of identity semantics.
   - FAIL otherwise.
-
-### CS-PACK-IDENTITY-001 — Fixture protocol pack pins match builtin
-- invariant_id: CS-PACK-IDENTITY-001
-- statement: Every fixture `LockedSpec.json` under `policy/fixtures/**` MUST pin the active builtin protocol pack identity.
-- source-of-truth (file/section):
-  - `belgi/_protocol_packs/v1/ProtocolPackManifest.json` (pack_id + manifest bytes hash)
-- check procedure (deterministic):
-  1) Load and verify `belgi/_protocol_packs/v1/ProtocolPackManifest.json` against its pack tree.
-  2) Compute `manifest_sha256 = sha256(bytes(manifest))`.
-  3) Enumerate all `policy/fixtures/**/LockedSpec.json` (fail-closed on symlinks).
-  4) For each LockedSpec, require `protocol_pack.pack_id == manifest.pack_id` and `protocol_pack.manifest_sha256 == manifest_sha256`.
-  5) FAIL on any mismatch or missing protocol_pack.
-- required evidence/artifacts (schema kinds): LockedSpec.json
-- pass/fail criteria:
-  - PASS if every fixture pin matches the active builtin pack.
-  - FAIL otherwise.
-- remediation (single-command):
-  - `python -m tools.belgi fixtures sync-pack-identity --repo . --pack-dir belgi/_protocol_packs/v1`
-
-### CS-SEAL-KEYPAIR-001 — SEAL fixture keypair + pubkey ref binding
-- invariant_id: CS-SEAL-KEYPAIR-001
-- statement: For every SEAL fixture under `policy/fixtures/public/seal/*`, `seal_pubkey.hex` MUST be an Ed25519 public key derived from an in-repo `seal_private_key.hex` (preferably the fixture’s own, if present), and `LockedSpec.environment_envelope.seal_pubkey_ref` MUST bind to that pubkey’s bytes hash.
-- source-of-truth (file/section):
-  - `policy/fixtures/public/seal/cases.json` (fixture set)
-  - `chain/seal_bundle.py` (Ed25519 signing/verification)
-- check procedure (deterministic):
-  1) Enumerate SEAL fixture case_ids from `policy/fixtures/public/seal/cases.json`.
-  2) Build a set of derived pubkeys from any present, valid `policy/fixtures/public/seal/*/seal_private_key.hex` (64 hex chars).
-  3) For each fixture dir, require files:
-    - `seal_pubkey.hex`
-    - `LockedSpec.json`
-    If `seal_private_key.hex` is present and valid, derive the Ed25519 public key bytes from it and require it matches `seal_pubkey.hex`.
-    If `seal_private_key.hex` is absent, require `seal_pubkey.hex` still matches one of the derived pubkeys from step 2.
-  4) Require `LockedSpec.environment_envelope.seal_pubkey_ref.storage_ref` equals `policy/fixtures/public/seal/<case_id>/seal_pubkey.hex`.
-  5) Require `LockedSpec.environment_envelope.seal_pubkey_ref.hash == sha256(bytes(seal_pubkey.hex))`.
-  6) FAIL on any mismatch.
-- required evidence/artifacts (schema kinds): LockedSpec.json
-- pass/fail criteria:
-  - PASS if every SEAL fixture is internally consistent.
-  - FAIL otherwise.
-- remediation (single-command):
-  - `python -m tools.belgi fixtures fix-all --repo . --create-missing-private-keys`
 
 ### CS-SWEEP-001 — Input Authority
 - invariant_id: CS-SWEEP-001
@@ -1175,6 +1102,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-CAN-003: publication posture prohibition present and respected.
 - [ ] CS-TERM-001: verification/validation boundaries are enforced across public docs.
 - [ ] CS-BYTE-001: Byte Guard passes (no CRLF / byte drift).
+- [ ] CS-FIXTURE-ZERO-001: governed public fixture authority paths stay absent from BELGI main repo.
 - [ ] CS-GS-001: GateVerdict GO/NO-GO semantics match schema and gate specs.
 - [ ] CS-GS-002: remediation instruction format matches schema + taxonomy.
 - [ ] CS-GS-003: all gate failure categories exist in failure-taxonomy.
@@ -1189,7 +1117,6 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-EV-003: Gate R evidence sufficiency is tier-driven (no hardcoded extras).
 - [ ] CS-EV-004: R-Snapshot immutability + append-only final manifest is consistent.
 - [ ] CS-EV-005: Seal binds core replay set + waivers via ObjectRefs.
-- [ ] CS-EV-006: Tier>=1 PASS manifests index policy.consistency_sweep.
 - [ ] CS-PROTOCOL-IDENTITY-001: identity wording excludes source from the identity tuple.
 - [ ] CS-TIER-001: tier IDs are exactly tier-0..tier-3 everywhere.
 - [ ] CS-TIER-002: tier required_evidence_kinds match across tier-packs/evidence-bundles/running-belgi.
@@ -1277,7 +1204,7 @@ The JSON document at `policy/consistency_sweep.json` MUST be a single JSON objec
 - `tool`: object with:
   - `name`: string (operator tool identity; MAY be a repo-local script name)
   - `version`: string (tool version; MAY be a git describe string)
-- `repo_revision`: string (git tree hash for the evaluated inputs). For determinism, the sweep outputs themselves are excluded from the evaluated tree (currently: `policy/consistency_sweep.json`, `policy/consistency_sweep.summary.md`). For CS-EV-006 stability, fixture EvidenceManifest entries for `policy.consistency_sweep` are normalized to a zero hash during the repo revision computation (self-referential pinning does not alter the revision). Implementation uses a temporary git index (read-tree/update-index/write-tree), not tree construction commands.
+- `repo_revision`: string (git tree hash for the evaluated inputs). For determinism, the sweep outputs themselves are excluded from the evaluated tree (currently: `policy/consistency_sweep.json`, `policy/consistency_sweep.summary.md`). Implementation uses a temporary git index (read-tree/update-index/write-tree), not tree construction commands.
 - `inputs`: array of objects, each with:
   - `path`: string, repository-relative, using `/` separators
   - `sha256`: string, 64 hex chars, SHA-256 over the file bytes

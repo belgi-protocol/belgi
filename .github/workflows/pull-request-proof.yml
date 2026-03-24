@@ -66,15 +66,21 @@ jobs:
         run: |
           set -euo pipefail
           actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
           force_raw="${BELGI_FORCE_ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
           force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
           force_act=0
+          direct_act=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            direct_act=1
+          fi
           if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
             force_act=1
           fi
 
           is_act=0
-          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+          if [ "$actor" = "nektos/act" ] || [ "$direct_act" -eq 1 ] || [ "$force_act" -eq 1 ]; then
             is_act=1
           fi
           echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
@@ -129,15 +135,21 @@ jobs:
         run: |
           set -euo pipefail
           actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
           force_raw="${BELGI_FORCE_ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
           force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
           force_act=0
+          direct_act=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            direct_act=1
+          fi
           if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
             force_act=1
           fi
 
           is_act=0
-          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+          if [ "$actor" = "nektos/act" ] || [ "$direct_act" -eq 1 ] || [ "$force_act" -eq 1 ]; then
             is_act=1
           fi
           echo "is_act=$is_act" >> "$GITHUB_OUTPUT"
@@ -197,15 +209,21 @@ jobs:
         run: |
           set -euo pipefail
           actor="${GITHUB_ACTOR:-}"
+          act_raw="${ACT:-}"
           force_raw="${BELGI_FORCE_ACT:-}"
+          act_lc="$(printf '%s' "$act_raw" | tr '[:upper:]' '[:lower:]')"
           force_lc="$(printf '%s' "$force_raw" | tr '[:upper:]' '[:lower:]')"
           force_act=0
+          direct_act=0
+          if [ "$act_lc" = "1" ] || [ "$act_lc" = "true" ]; then
+            direct_act=1
+          fi
           if [ "$force_lc" = "1" ] || [ "$force_lc" = "true" ]; then
             force_act=1
           fi
 
           is_act=0
-          if [ "$actor" = "nektos/act" ] || [ "$force_act" -eq 1 ]; then
+          if [ "$actor" = "nektos/act" ] || [ "$direct_act" -eq 1 ] || [ "$force_act" -eq 1 ]; then
             is_act=1
           fi
           echo "is_act=$is_act" >> "$GITHUB_OUTPUT"

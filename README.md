@@ -118,23 +118,23 @@ SSOT/mirror rule:
 
 #### Verifier vs. fixer flow (important)
 
-BELGI’s determinism guarantee is about **verification**: the same inputs must verify to the same outputs. CI is **verifier‑only** and must not mutate tracked artifacts.
+BELGI’s determinism guarantee is about **verification**: the same inputs must verify to the same outputs. CI is **verifier-only** and must not mutate tracked artifacts.
 
-Local development is allowed to **repair** fixtures and governed reports after you make changes. This is expected and required for keeping the repo invariant surface consistent.
+Local development is allowed to **repair** governed reports and protocol-pack mirrors after you make changes.
 
-- **Local fixer (calibration)**: updates tracked artifacts (fixtures, report hashes, seals) to restore repo invariants after edits. This is expected, transparent, and must be committed.
-- **CI verifier**: validates the repo state; it must never auto‑fix or “paper over” drift.
+- **Local fixer (calibration)**: updates tracked artifacts that still belong to BELGI main repo, such as governed reports and pack mirrors. Those changes are expected, transparent, and must be committed.
+- **CI verifier**: validates the repo state; it must never auto-fix or paper over drift.
 
-When you change repo inputs during development (schemas, tier rules, fixtures, compilers), some **tracked** outputs become stale (hashes, derived summaries, fixture seals). CI will fail because it refuses to rewrite those files for you.
+When you change repo inputs during development (schemas, tier rules, compilers, pack mirrors), some **tracked** outputs become stale. CI will fail because it refuses to rewrite those files for you.
 
 Example (what this looks like in practice):
 - You change a tier rule or a schema (e.g. add a required field).
-- Now the previously committed fixtures/reports no longer match the new invariants.
-- CI runs the verifier sweeps and reports deterministic drift (hash mismatch / missing required fields / fixture exit-code mismatch).
-- Locally, you run the fixer (`./scripts/dev_sync.ps1`) which regenerates the affected tracked artifacts (and rehashes references).
+- Now previously committed governed reports or pack mirrors no longer match the new invariants.
+- CI runs the verifier surfaces and reports deterministic drift.
+- Locally, you run the fixer (`./scripts/dev_sync.ps1`) which refreshes the affected tracked artifacts.
 - You commit those updates; CI then passes because it is validating the same committed state.
 
-If CI fails on sweep/fixtures, run the local fixer and commit the resulting changes. CI only verifies what’s in the repo; it must not mutate artifacts during verification.
+If CI fails on consistency or pack drift, run the local fixer and commit the resulting changes. CI only verifies what’s in the repo; it must not mutate artifacts during verification.
 
 Operator CLI quickstart and NO-GO triage SSOT: [docs/operations/cli.md](docs/operations/cli.md)
 
@@ -161,15 +161,15 @@ GitHub will still show additional job-level checks for proof-carrying jobs and m
 From the repo workspace:
 
 ```bash
-# Local fixer (single command; may modify tracked artifacts)
+# Local fixer (single command; may modify tracked artifacts that still live in BELGI)
 ./scripts/dev_sync.ps1
 
-# CI verifier equivalents (must not modify files)
+# Main-repo regression coverage is pytest-based.
+python -m pytest
+
+# CI verifier equivalents for tracked repo truth (must not modify files)
 python -m ruff check belgi chain tools wrapper tests scripts .github/scripts
 python -m tools.sweep consistency --repo .
-python -m tools.sweep fixtures-qr --repo .
-python -m tools.sweep fixtures-s --repo .
-python -m tools.sweep fixtures-seal --repo .
 ```
 
 Tracked `ruff` configuration is active as the repo-maintenance lint authority for the chosen `F`, `I`, and `B` rule families in the local and hosted verification path. Pyright remains non-gating.

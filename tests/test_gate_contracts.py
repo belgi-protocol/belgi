@@ -19,13 +19,11 @@ import pytest
 pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 for _k in list(sys.modules.keys()):
     if _k == "belgi" or _k.startswith("belgi."):
         del sys.modules[_k]
 
+import builders
 from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes
 from chain.logic.s_checks import s2_objectref_binding
 from chain.logic.s_checks.context import SCheckContext
@@ -211,36 +209,29 @@ def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dic
     return out
 
 
-def test_gate_q_evidence_002_remediation_substitutes_missing_kind() -> None:
+def test_gate_q_evidence_002_remediation_substitutes_missing_kind(tmp_path: Path) -> None:
     taxo = _taxonomy_ids(REPO_ROOT)
-
-    work = REPO_ROOT / "temp" / "pytest_gate_contracts" / "q_evidence_002"
-    _clean_dir(work)
-
-    # Use the passing fixture's Intent+LockedSpec, but a modified EvidenceManifest with
-    # the first required kind removed (tier order => command_log).
-    fixture_root = REPO_ROOT / "policy" / "fixtures" / "public" / "gate_q" / "q_pass_tier0"
-    intent_rel = "policy/fixtures/public/gate_q/q_pass_tier0/IntentSpec.core.md"
-    locked_rel = "policy/fixtures/public/gate_q/q_pass_tier0/LockedSpec.json"
-
-    em = _read_json(fixture_root / "EvidenceManifest.json")
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q_pass_tier0", run_id="q-evidence-002")
+    intent_rel = paths["intent"]
+    locked_rel = paths["locked"]
+    em = _read_json(tmp_path / paths["evidence"])
     artifacts = em.get("artifacts")
     assert isinstance(artifacts, list)
     em["artifacts"] = [a for a in artifacts if isinstance(a, dict) and a.get("kind") != "command_log"]
-
-    em_rel = "temp/pytest_gate_contracts/q_evidence_002/EvidenceManifest.missing_command_log.json"
-    em_path = REPO_ROOT / Path(*em_rel.split("/"))
+    em_rel = "out/EvidenceManifest.missing_command_log.json"
+    em_path = tmp_path / Path(*em_rel.split("/"))
     em_path.parent.mkdir(parents=True, exist_ok=True)
     em_path.write_text(json.dumps(em, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
-
-    out_rel = "temp/pytest_gate_contracts/q_evidence_002/GateVerdict.json"
-    out_path = REPO_ROOT / Path(*out_rel.split("/"))
+    out_rel = "out/GateVerdict.Q.missing_command_log.json"
+    out_path = tmp_path / Path(*out_rel.split("/"))
 
     cp = _run_module(
         "chain.gate_q_verify",
         [
             "--repo",
-            ".",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
             "--intent-spec",
             intent_rel,
             "--locked-spec",
@@ -265,136 +256,26 @@ def test_gate_q_evidence_002_remediation_substitutes_missing_kind() -> None:
     assert "missing_kind" not in remediation
 
 
-def test_gate_q_r_s_categories_are_taxonomy_valid_for_fixtures() -> None:
-    taxo = _taxonomy_ids(REPO_ROOT)
-
-    work = REPO_ROOT / "temp" / "pytest_gate_contracts" / "taxo_valid"
-    _clean_dir(work)
-
-    # Gate Q fixture (NO-GO)
-    q_out_rel = "temp/pytest_gate_contracts/taxo_valid/Q.GateVerdict.json"
-    q_cp = _run_module(
-        "chain.gate_q_verify",
-        [
-            "--repo",
-            ".",
-            "--intent-spec",
-            "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/IntentSpec.core.md",
-            "--locked-spec",
-            "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json",
-            "--evidence-manifest",
-            "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/EvidenceManifest.json",
-            "--out",
-            q_out_rel,
-        ],
-        cwd=REPO_ROOT,
-    )
-    assert q_cp.returncode == 2, (q_cp.returncode, q_cp.stdout, q_cp.stderr)
-    q_gv = _read_json(REPO_ROOT / Path(*q_out_rel.split("/")))
-    assert q_gv.get("failure_category") in taxo
-
-    # Gate R fixture (NO-GO)
-    r_report_rel = "temp/pytest_gate_contracts/taxo_valid/R.verify_report.json"
-    r_gv_rel = "temp/pytest_gate_contracts/taxo_valid/R.GateVerdict.json"
-    r_snap_rel = "temp/pytest_gate_contracts/taxo_valid/R.EvidenceManifest.r_snapshot.json"
-    r_cp = _run_module(
-        "chain.gate_r_verify",
-        [
-            "--repo",
-            ".",
-            "--locked-spec",
-            "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/LockedSpec.json",
-            "--gate-q-verdict",
-            "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/GateVerdict.Q.json",
-            "--evidence-manifest",
-            "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail/EvidenceManifest.json",
-            "--r-snapshot-manifest-out",
-            r_snap_rel,
-            "--evaluated-revision",
-            "HEAD",
-            "--out",
-            r_report_rel,
-            "--gate-verdict-out",
-            r_gv_rel,
-        ],
-        cwd=REPO_ROOT,
-    )
-    assert r_cp.returncode == 2, (r_cp.returncode, r_cp.stdout, r_cp.stderr)
-    r_gv = _read_json(REPO_ROOT / Path(*r_gv_rel.split("/")))
-    assert r_gv.get("failure_category") in taxo
-
-    # Gate S fixture (NO-GO)
-    s_out_rel = "temp/pytest_gate_contracts/taxo_valid/S.GateVerdict.json"
-    s_cp = _run_module(
-        "chain.gate_s_verify",
-        [
-            "--repo",
-            ".",
-            "--locked-spec",
-            "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/LockedSpec.json",
-            "--seal-manifest",
-            "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/SealManifest.json",
-            "--evidence-manifest",
-            "policy/fixtures/public/gate_s/s_fail_tier1_bad_signature_len/EvidenceManifest.json",
-            "--out",
-            s_out_rel,
-        ],
-        cwd=REPO_ROOT,
-    )
-    assert s_cp.returncode == 2, (s_cp.returncode, s_cp.stdout, s_cp.stderr)
-    s_gv = _read_json(REPO_ROOT / Path(*s_out_rel.split("/")))
-    assert s_gv.get("failure_category") in taxo
-
-
-def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output() -> None:
+def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output(tmp_path: Path) -> None:
     # Create a fake repo root with an incomplete taxonomy, proving verifiers fail-closed
     # (exit code 3) and do not emit a GateVerdict.
-    fake_root = REPO_ROOT / "temp" / "pytest_gate_contracts" / "fake_repo"
+    fake_root = tmp_path / "fake_repo"
     _clean_dir(fake_root)
 
-    # Under pack-truth, Gate Q loads taxonomy/schemas/tiers from the active protocol pack.
-    # Build a minimal valid protocol pack with an incomplete taxonomy so category validation fails.
+    paths = builders.build_q_repo(
+        fake_root,
+        rel_root="gate_q/q_intent_001_no_yaml_block",
+        run_id="q-taxonomy-mismatch",
+    )
     pack_root = fake_root / "protocol_pack"
-    pack_root.mkdir(parents=True, exist_ok=True)
-
-    def _copy_into_pack(rel: str) -> None:
-        src = REPO_ROOT / Path(*rel.split("/"))
-        dst = pack_root / Path(*rel.split("/"))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
-
-    _copy_into_pack("tiers/tier-packs.md")
-    _copy_into_pack("tiers/tier-packs.json")
-    for rel in [
-        "schemas/IntentSpec.schema.json",
-        "schemas/LockedSpec.schema.json",
-        "schemas/EvidenceManifest.schema.json",
-        "schemas/Waiver.schema.json",
-        "schemas/HOTLApproval.schema.json",
-        "schemas/ToolchainSet.schema.json",
-        "schemas/Tolerances.schema.json",
-        "schemas/GateVerdict.schema.json",
-    ]:
-        _copy_into_pack(rel)
-
-    (pack_root / "gates").mkdir(parents=True, exist_ok=True)
     (pack_root / "gates" / "failure-taxonomy.md").write_text(
         "# Fake taxonomy\n\n- category_id: `FQ-NOT-THE-ONE`\n",
         encoding="utf-8",
         errors="strict",
     )
     (pack_root / MANIFEST_FILENAME).write_bytes(build_manifest_bytes(pack_root=pack_root, pack_name="test-pack"))
-
-    # Minimal file set for Gate Q inputs (repo-relative to fake_root).
-    for rel in [
-        "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/IntentSpec.core.md",
-        "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json",
-        "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/EvidenceManifest.json",
-    ]:
-        src = REPO_ROOT / Path(*rel.split("/"))
-        dst = fake_root / Path(*rel.split("/"))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
+    builders.sync_locked_spec_protocol_identity(fake_root / paths["locked"], pack_root / MANIFEST_FILENAME)
+    (fake_root / paths["intent"]).write_text("# Intent\nNo YAML block here.\n", encoding="utf-8", errors="strict")
 
     # Note: out is repo-relative *to fake_root*, not REPO_ROOT.
     out_path = fake_root / "out" / "GateVerdict.json"
@@ -407,11 +288,11 @@ def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output() -> None:
             "--protocol-pack",
             "protocol_pack",
             "--intent-spec",
-            "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/IntentSpec.core.md",
+            paths["intent"],
             "--locked-spec",
-            "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/LockedSpec.json",
+            paths["locked"],
             "--evidence-manifest",
-            "policy/fixtures/public/gate_q/q_intent_001_no_yaml_block/EvidenceManifest.json",
+            paths["evidence"],
             "--out",
             "out/GateVerdict.json",
         ],
@@ -423,8 +304,8 @@ def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output() -> None:
     assert not out_path.exists()
 
 
-def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
-    fake_root = REPO_ROOT / "temp" / "pytest_gate_contracts" / "c3_bundle_repo"
+def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> None:
+    fake_root = tmp_path / "c3_bundle_repo"
     _clean_dir(fake_root)
 
     def _copy_rel(rel: str) -> None:
@@ -452,16 +333,13 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
     assert not (fake_root / ".belgi" / "engine" / "c3_canonicals").exists()
 
     # Inputs (in fake repo): LockedSpec, GateVerdicts, and snapshot EvidenceManifests.
-    locked_rel = "inputs/LockedSpec.json"
+    synthetic_r = builders.build_r_repo(fake_root, rel_root="inputs/r_pass_tier1", run_id="c3-bundle")
+    locked_rel = synthetic_r["locked"]
     q_rel = "inputs/GateVerdict.Q.json"
     r_rel = "inputs/GateVerdict.R.json"
     qsnap_rel = "inputs/EvidenceManifest.Q.json"
     rsnap_rel = "inputs/EvidenceManifest.R.json"
 
-    (fake_root / "inputs").mkdir(parents=True, exist_ok=True)
-    (fake_root / Path(*locked_rel.split("/"))).write_bytes(
-        (REPO_ROOT / "policy" / "fixtures" / "public" / "gate_r" / "r_pass_tier1" / "LockedSpec.json").read_bytes()
-    )
     run_id = _read_json(fake_root / Path(*locked_rel.split("/"))).get("run_id")
     assert isinstance(run_id, str) and run_id
 
@@ -497,7 +375,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
                 "produced_by": "R",
             }
         ],
-        "commands_executed": ["fixture"],
+        "commands_executed": ["synthetic"],
         "envelope_attestation": None,
     }
     _write_json(fake_root, qsnap_rel, qsnap_obj)
@@ -512,7 +390,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
         "failures": [],
         "evidence_manifest_ref": _object_ref(obj_id="evidence.q_snapshot", storage_ref=qsnap_rel, file_bytes=qsnap_bytes),
         "evaluated_at": "1970-01-01T00:00:00Z",
-        "evaluator": "fixture",
+        "evaluator": "synthetic",
     }
     _write_json(fake_root, q_rel, qv_obj)
     qv_bytes = (fake_root / Path(*q_rel.split("/"))).read_bytes()
@@ -539,7 +417,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
                 "produced_by": "R",
             },
         ],
-        "commands_executed": ["fixture"],
+        "commands_executed": ["synthetic"],
         "envelope_attestation": None,
     }
     _write_json(fake_root, rsnap_rel, rsnap_obj)
@@ -554,7 +432,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
         "failures": [],
         "evidence_manifest_ref": _object_ref(obj_id="evidence.r_snapshot", storage_ref=rsnap_rel, file_bytes=rsnap_bytes),
         "evaluated_at": "1970-01-01T00:00:00Z",
-        "evaluator": "fixture",
+        "evaluator": "synthetic",
     }
     _write_json(fake_root, r_rel, rv_obj)
 
@@ -836,7 +714,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped() -> None:
                 "produced_by": "R",
             }
         ],
-        "commands_executed": ["fixture"],
+        "commands_executed": ["synthetic"],
         "envelope_attestation": None,
     }
     _write_json(fake_root, rsnap_rel, rsnap_obj_missing_q)
@@ -870,8 +748,8 @@ def test_gate_r_snapshot_index_hash_mismatch_is_no_go(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -880,7 +758,7 @@ def test_gate_r_snapshot_index_hash_mismatch_is_no_go(tmp_path: Path) -> None:
     (tmp_path / "inputs").mkdir(parents=True, exist_ok=True)
     gate_q_rel = "inputs/GateVerdict.Q.json"
     (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "synthetic", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -945,23 +823,17 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
-    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
     )
 
-    # r_pass_tier1 references a shared consistency sweep artifact; copy it so Gate R does not fail
-    # earlier on missing/mismatched bytes in this write-failure test.
-    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
-
     (tmp_path / "inputs").mkdir(parents=True, exist_ok=True)
     gate_q_rel = "inputs/GateVerdict.Q.json"
     (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "synthetic", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -1017,69 +889,8 @@ def test_gate_r_snapshot_manifest_write_failure_is_no_go(tmp_path: Path) -> None
     assert failures[0].get("rule_id") == "R-SNAPSHOT-INDEX-001"
 
 
-def test_gate_r_fixture_allows_opaque_revision_without_git(tmp_path: Path) -> None:
-    """Gate R fixtures must be runnable without git history (.git absent).
-
-    In fixture context, a 40-hex evaluated revision may be treated as an opaque id,
-    and git-dependent checks must use fallbacks instead of raising tool errors.
-    """
-
-    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
-    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-
-    fixture_dir = "policy/fixtures/public/gate_r/r0_evidence_sufficiency_fail"
-    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
-    _sync_locked_spec_protocol_identity(
-        tmp_path / fixture_dir / "LockedSpec.json",
-        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
-    )
-
-    # Fixture EvidenceManifests may reference shared policy artifacts.
-    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
-
-    locked_rel = f"{fixture_dir}/LockedSpec.json"
-    evidence_rel = f"{fixture_dir}/EvidenceManifest.json"
-    gate_q_rel = f"{fixture_dir}/GateVerdict.Q.json"
-
-    locked_doc = _read_json(tmp_path / locked_rel)
-    commit_sha = str(locked_doc.get("upstream_state", {}).get("commit_sha", ""))
-    assert len(commit_sha) == 40
-
-    cp = _run_module(
-        "chain.gate_r_verify",
-        [
-            "--repo",
-            str(tmp_path),
-            "--protocol-pack",
-            "protocol_pack",
-            "--locked-spec",
-            locked_rel,
-            "--gate-q-verdict",
-            gate_q_rel,
-            "--evidence-manifest",
-            evidence_rel,
-            "--r-snapshot-manifest-out",
-            "out/EvidenceManifest.r_snapshot.json",
-            "--evaluated-revision",
-            commit_sha,
-            "--out",
-            "out/verify_report.json",
-            "--gate-verdict-out",
-            "out/GateVerdict.json",
-        ],
-        cwd=REPO_ROOT,
-    )
-
-    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
-    gv = _read_json(tmp_path / "out" / "GateVerdict.json")
-    failures = gv.get("failures")
-    assert isinstance(failures, list) and failures
-    assert failures[0].get("rule_id") == "R0.evidence_sufficiency"
-
-
-def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path) -> None:
-    """Outside fixture context, Gate R must remain strict about git commit resolution."""
+def test_gate_r_requires_git_for_revision_resolution(tmp_path: Path) -> None:
+    """Gate R must remain strict about git commit resolution."""
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
@@ -1090,13 +901,13 @@ def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path)
         json.dumps(
             {
                 "schema_version": "1.0.0",
-                "run_id": "test-non-fixture",
+                "run_id": "test-strict-git",
                 "tier": {"tier_id": "tier-1"},
-                "upstream_state": {"commit_sha": "a" * 40, "dirty_flag": False, "repo_ref": "fixture"},
+                "upstream_state": {"commit_sha": "a" * 40, "dirty_flag": False, "repo_ref": "synthetic"},
                 "protocol_pack": {
                     "pack_id": "0" * 64,
                     "manifest_sha256": "0" * 64,
-                    "pack_name": "fixture",
+                    "pack_name": "synthetic",
                     "source": "builtin",
                 },
             },
@@ -1110,7 +921,7 @@ def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path)
     )
 
     (tmp_path / "inputs" / "EvidenceManifest.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "test-non-fixture", "artifacts": []}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "test-strict-git", "artifacts": []}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -1118,7 +929,7 @@ def test_gate_r_non_fixture_requires_git_for_revision_resolution(tmp_path: Path)
     )
 
     (tmp_path / "inputs" / "GateVerdict.Q.json").write_text(
-        json.dumps({"schema_version": "1.0.0", "run_id": "test-non-fixture", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
+        json.dumps({"schema_version": "1.0.0", "run_id": "test-strict-git", "gate_id": "Q", "verdict": "GO"}, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
         errors="strict",
@@ -1165,27 +976,22 @@ def _setup_fake_repo_with_pack(tmp_path: Path, builtin_pack_root: Path) -> Path:
 
 
 def _init_git_repo(repo_root: Path) -> str:
-    import subprocess
+    return builders.init_git_repo(repo_root)
 
-    def _git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            cwd=str(repo_root),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
 
-    _git("init")
-    _git("config", "user.email", "ci@example.invalid")
-    _git("config", "user.name", "ci")
-    _git("config", "core.autocrlf", "false")
-    _git("add", "-A")
-    _git("commit", "--allow-empty", "-m", "init")
-    cp = _git("rev-parse", "HEAD")
-    sha = cp.stdout.strip()
-    assert sha and len(sha) >= 7
-    return sha
+def _git_head(repo_root: Path) -> str:
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
+
+def _git_status_porcelain(repo_root: Path) -> str:
+    result = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, check=True, capture_output=True, text=True)
+    return result.stdout
+
+
+def _assert_clean_head(repo_root: Path, evaluated_revision: str) -> None:
+    assert _git_head(repo_root) == evaluated_revision
+    assert _git_status_porcelain(repo_root) == ""
 
 
 
@@ -1346,452 +1152,6 @@ def test_cs_byte_001_tracked_only_fails_on_tracked_crlf(tmp_path: Path) -> None:
     assert paths == ["tracked_crlf.txt"]
 
 
-def test_cs_ev_006_fix_manifest_idempotent() -> None:
-    from tools.sweep import CANONICAL_SWEEP_OUT, _fix_cs_ev_006_manifest
-
-    expected = "0" * 64
-    em = {"artifacts": []}
-    assert _fix_cs_ev_006_manifest(em_obj=em, expected_hash=expected) is True
-    assert _fix_cs_ev_006_manifest(em_obj=em, expected_hash=expected) is False
-
-    arts = em["artifacts"]
-    assert isinstance(arts, list)
-    assert len([a for a in arts if a.get("id") == "policy.consistency_sweep"]) == 1
-    a0 = next(a for a in arts if a.get("id") == "policy.consistency_sweep")
-    assert a0["hash"] == expected
-    assert a0["storage_ref"] == CANONICAL_SWEEP_OUT
-
-
-def test_cs_ev_006_normalization_stable_missing_vs_present() -> None:
-    """Normalization used for fixed-point hash must not depend on whether the entry exists.
-
-    Daily-life analogy: we want the 'receipt calculation' to treat a missing line-item as if it
-    were present with a $0 placeholder, so adding it later doesn't change the total's hash.
-    """
-
-    from tools.sweep import (
-        CANONICAL_SWEEP_OUT,
-        ZERO_SHA256,
-        _ev006_normalized_manifest_bytes,
-    )
-
-    base = {
-        "schema_version": "1.0.0",
-        "run_id": "r",
-        "commands_executed": [],
-        "envelope_attestation": None,
-    }
-
-    em_missing = dict(base)
-    em_present = {
-        **base,
-        "artifacts": [
-            {
-                "kind": "policy_report",
-                "id": "policy.consistency_sweep",
-                "hash": "a" * 64,
-                "media_type": "application/json",
-                "storage_ref": CANONICAL_SWEEP_OUT,
-                "produced_by": "C1",
-            }
-        ],
-    }
-
-    b1 = _ev006_normalized_manifest_bytes(em_missing)
-    b2 = _ev006_normalized_manifest_bytes(em_present)
-
-    assert b1 == b2
-    assert ZERO_SHA256.encode("utf-8") in b1
-
-
-def _write_cases_json(repo_root: Path, *, rel: str, case_ids: list[str], expected_exit_code: int = 0) -> None:
-    path = repo_root / Path(*rel.split("/"))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "cases": [
-                    {
-                        "case_id": cid,
-                        "expected_exit_code": expected_exit_code,
-                    }
-                    for cid in case_ids
-                ]
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
-    )
-
-
-def _write_min_gate_s_fixture_case(repo_root: Path, *, case_id: str, seal_filename: str = "SealManifest.json") -> str:
-    case_dir = repo_root / "policy" / "fixtures" / "public" / "gate_s" / case_id
-    case_dir.mkdir(parents=True, exist_ok=True)
-    # Minimal on-disk shape for sweep's seal-related detection and command construction.
-    (case_dir / "LockedSpec.json").write_text("{}\n", encoding="utf-8", errors="strict", newline="\n")
-    (case_dir / "EvidenceManifest.json").write_text("{}\n", encoding="utf-8", errors="strict", newline="\n")
-    (case_dir / seal_filename).write_text("OLD\n", encoding="utf-8", errors="strict", newline="\n")
-    return case_dir.relative_to(repo_root).as_posix()
-
-
-def test_fix_fixtures_does_not_regen_without_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    from tools import sweep as sweep_mod
-
-    _write_cases_json(tmp_path, rel="policy/fixtures/public/gate_s/cases.json", case_ids=["case1"], expected_exit_code=0)
-    fixture_dir_rel = _write_min_gate_s_fixture_case(tmp_path, case_id="case1")
-    seal_path = tmp_path / "policy" / "fixtures" / "public" / "gate_s" / "case1" / "SealManifest.json"
-    before = seal_path.read_bytes()
-
-    calls: list[str] = []
-
-    def _fake_run_at(repo_root: Path, cmd: list[str]) -> tuple[int, str, str]:
-        assert repo_root == tmp_path
-        assert len(cmd) >= 3 and cmd[1] == "-m"
-        module = cmd[2]
-        calls.append(module)
-        if module == "chain.seal_bundle":
-            raise AssertionError("seal_bundle must not run unless --regen-seals is set")
-        if module == "chain.gate_s_verify":
-            # Simulate drift (mismatch vs expected_exit_code=0).
-            return 2, "", "gate_s_verify mismatch\n"
-        raise AssertionError(f"unexpected module: {module}")
-
-    monkeypatch.setattr(sweep_mod, "_run_at", _fake_run_at)
-
-    rc = sweep_mod._regen_and_verify_seal_related_fixtures(
-        repo_root=tmp_path,
-        fixture_dirs_rel=[fixture_dir_rel],
-        regen_seals=False,
-    )
-
-    out = capsys.readouterr()
-    assert rc == 2
-    assert "REGEN-SEALS NO-GO" in out.err
-    assert "Remediation: run `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`." in out.err
-    assert seal_path.read_bytes() == before
-    assert calls.count("chain.seal_bundle") == 0
-
-
-def test_fix_fixtures_regen_only_touched_seal_fixtures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from tools import sweep as sweep_mod
-
-    _write_cases_json(tmp_path, rel="policy/fixtures/public/gate_s/cases.json", case_ids=["case1", "case2"], expected_exit_code=0)
-    case1_rel = _write_min_gate_s_fixture_case(tmp_path, case_id="case1")
-    _write_min_gate_s_fixture_case(tmp_path, case_id="case2")
-
-    seal1 = tmp_path / "policy" / "fixtures" / "public" / "gate_s" / "case1" / "SealManifest.json"
-    seal2 = tmp_path / "policy" / "fixtures" / "public" / "gate_s" / "case2" / "SealManifest.json"
-    before1 = seal1.read_bytes()
-    before2 = seal2.read_bytes()
-
-    seal_bundle_outs: list[str] = []
-    gate_s_verify_outs: list[str] = []
-
-    def _fake_run_at(repo_root: Path, cmd: list[str]) -> tuple[int, str, str]:
-        assert repo_root == tmp_path
-        assert len(cmd) >= 3 and cmd[1] == "-m"
-        module = cmd[2]
-
-        if module == "chain.seal_bundle":
-            out_idx = cmd.index("--out") + 1
-            out_rel = cmd[out_idx]
-            seal_bundle_outs.append(out_rel)
-            out_path = repo_root / Path(*out_rel.split("/"))
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text("REGEN\n", encoding="utf-8", errors="strict", newline="\n")
-            return 0, "", ""
-
-        if module == "chain.gate_s_verify":
-            out_idx = cmd.index("--out") + 1
-            out_rel = cmd[out_idx]
-            gate_s_verify_outs.append(out_rel)
-            out_path = repo_root / Path(*out_rel.split("/"))
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text("{\"status\":\"PASS\"}\n", encoding="utf-8", errors="strict", newline="\n")
-            return 0, "", ""
-
-        raise AssertionError(f"unexpected module: {module}")
-
-    monkeypatch.setattr(sweep_mod, "_run_at", _fake_run_at)
-
-    rc = sweep_mod._regen_and_verify_seal_related_fixtures(
-        repo_root=tmp_path,
-        fixture_dirs_rel=[case1_rel],
-        regen_seals=True,
-    )
-    assert rc == 0
-
-    assert seal1.read_bytes() != before1
-    assert seal1.read_text(encoding="utf-8", errors="strict").startswith("REGEN")
-    assert seal2.read_bytes() == before2
-
-    assert len(seal_bundle_outs) == 1
-    assert "/case1/" in f"/{seal_bundle_outs[0]}"
-    assert all("/case2/" not in f"/{p}" for p in seal_bundle_outs)
-    assert len(gate_s_verify_outs) == 1
-    assert "S__postregen__case1.json" in gate_s_verify_outs[0]
-
-
-def test_post_regen_gate_s_verify_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from tools import sweep as sweep_mod
-
-    _write_cases_json(tmp_path, rel="policy/fixtures/public/gate_s/cases.json", case_ids=["case1"], expected_exit_code=0)
-    fixture_dir_rel = _write_min_gate_s_fixture_case(tmp_path, case_id="case1")
-
-    def _fake_run_at(repo_root: Path, cmd: list[str]) -> tuple[int, str, str]:
-        assert repo_root == tmp_path
-        assert len(cmd) >= 3 and cmd[1] == "-m"
-        module = cmd[2]
-
-        out_idx = cmd.index("--out") + 1
-        out_rel = cmd[out_idx]
-        out_path = repo_root / Path(*out_rel.split("/"))
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if module == "chain.seal_bundle":
-            out_path.write_text("REGEN\n", encoding="utf-8", errors="strict", newline="\n")
-            return 0, "", ""
-        if module == "chain.gate_s_verify":
-            out_path.write_text("{\"status\":\"PASS\"}\n", encoding="utf-8", errors="strict", newline="\n")
-            return 0, "", ""
-
-        raise AssertionError(f"unexpected module: {module}")
-
-    monkeypatch.setattr(sweep_mod, "_run_at", _fake_run_at)
-
-    rc = sweep_mod._regen_and_verify_seal_related_fixtures(
-        repo_root=tmp_path,
-        fixture_dirs_rel=[fixture_dir_rel],
-        regen_seals=True,
-    )
-    assert rc == 0
-
-
-def test_cs_ev_006_pass_omits_details_and_is_fixed_point_stable(tmp_path: Path) -> None:
-    from tools.sweep import (
-        InvariantResult,
-        _canonical_json_bytes,
-        _eval_cs_ev_006_expected_hash,
-    )
-
-    expected_hash = "a" * 64
-
-    cases_dir = tmp_path / "policy" / "fixtures" / "public" / "gate_r"
-    fixdir = tmp_path / "policy" / "fixtures" / "public" / "gate_r" / "fixtures" / "case1"
-    fixdir.mkdir(parents=True, exist_ok=True)
-
-    locked_rel = "policy/fixtures/public/gate_r/fixtures/case1/LockedSpec.json"
-    em_rel = "policy/fixtures/public/gate_r/fixtures/case1/EvidenceManifest.json"
-
-    (tmp_path / Path(*locked_rel.split("/"))).write_text(
-        json.dumps({"tier": {"tier_id": "tier-1"}}, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
-    )
-
-    (tmp_path / Path(*em_rel.split("/"))).write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0.0",
-                "run_id": "r",
-                "artifacts": [
-                    {
-                        "kind": "policy_report",
-                        "id": "policy.consistency_sweep",
-                        "hash": expected_hash,
-                        "media_type": "application/json",
-                        "storage_ref": "policy/consistency_sweep.json",
-                        "produced_by": "C1",
-                    }
-                ],
-                "commands_executed": [],
-                "envelope_attestation": None,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
-    )
-
-    (cases_dir / "cases.json").write_text(
-        json.dumps(
-            {
-                "cases": [
-                    {
-                        "case_id": "case1",
-                        "expected_exit_code": 0,
-                        "paths": {"locked_spec": locked_rel, "evidence_manifest": em_rel},
-                    }
-                ]
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
-    )
-
-    res, modified = _eval_cs_ev_006_expected_hash(tmp_path, expected_hash, fix_fixtures=False)
-    assert modified == []
-    assert res.invariant_id == "CS-EV-006"
-    assert res.status == "PASS"
-    assert res.details is None
-
-    # Serialize a minimal report containing only CS-EV-006 and ensure PASS has no details key.
-    def _render_one(inv: InvariantResult) -> tuple[bytes, str, dict]:
-        report = {
-            "artifact_id": "policy.consistency_sweep",
-            "generated_at": "1970-01-01T00:00:00Z",
-            "sweep_started_at": "1970-01-01T00:00:00Z",
-            "sweep_finished_at": "1970-01-01T00:00:00Z",
-            "tool": {"name": "consistency-sweep", "version": "1.0.0"},
-            "repo_revision": "0" * 40,
-            "inputs": [],
-            "invariants": [
-                {
-                    "invariant_id": inv.invariant_id,
-                    "status": inv.status,
-                    "evidence": inv.evidence,
-                    "remediation": "" if inv.status == "PASS" else inv.remediation,
-                    **({"details": inv.details} if isinstance(inv.details, dict) else {}),
-                }
-            ],
-            "summary": {
-                "total": 1,
-                "passed": 1 if inv.status == "PASS" else 0,
-                "failed": 0 if inv.status == "PASS" else 1,
-            },
-            "failures": [],
-        }
-        b = _canonical_json_bytes(report)
-        assert b.endswith(b"\n")
-        return b, _sha256_hex(b), report
-
-    cs_pass = InvariantResult("CS-EV-006", "PASS", ["policy/fixtures/public/gate_r/cases.json"], "")
-    b1, h1, _ = _render_one(cs_pass)
-    b2, h2, report2 = _render_one(res)
-    assert b2 == b1
-    assert h2 == h1
-    assert b2.endswith(b"\n")
-
-    inv_obj = report2["invariants"][0]
-    assert inv_obj["invariant_id"] == "CS-EV-006"
-    assert inv_obj["status"] == "PASS"
-    assert "details" not in inv_obj
-
-
-def test_consistency_sweep_bytes_deterministic_on_same_tree(tmp_path: Path) -> None:
-    import hashlib
-    import shutil
-    import sys
-
-    from tools.sweep import _canonical_inputs
-
-    repo_root = Path(__file__).resolve().parents[1]
-    tmp_repo = tmp_path / "repo"
-    tmp_repo.mkdir(parents=True, exist_ok=True)
-
-    # Copy the governed input surface into a throwaway repo so the test doesn't mutate the working tree.
-    canon = _canonical_inputs(repo_root)
-    for rel in canon:
-        src = repo_root / Path(*rel.split("/"))
-        dst = tmp_repo / Path(*rel.split("/"))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-
-    # CS-EV-006 evaluates governed Gate R fixtures; include those too.
-    src_gate_r = repo_root / "policy" / "fixtures" / "public" / "gate_r"
-    dst_gate_r = tmp_repo / "policy" / "fixtures" / "public" / "gate_r"
-    shutil.copytree(src_gate_r, dst_gate_r, dirs_exist_ok=True)
-
-    # Additional governed fixture sets (consistency sweep invariants): Gate S + SEAL.
-    src_gate_s = repo_root / "policy" / "fixtures" / "public" / "gate_s"
-    dst_gate_s = tmp_repo / "policy" / "fixtures" / "public" / "gate_s"
-    shutil.copytree(src_gate_s, dst_gate_s, dirs_exist_ok=True)
-
-    src_seal = repo_root / "policy" / "fixtures" / "public" / "seal"
-    dst_seal = tmp_repo / "policy" / "fixtures" / "public" / "seal"
-    shutil.copytree(src_seal, dst_seal, dirs_exist_ok=True)
-
-    _init_git_repo(tmp_repo)
-
-    cmd_fix = [sys.executable, "-m", "tools.sweep", "consistency", "--repo", str(tmp_repo), "--fix-fixtures"]
-    cmd = [sys.executable, "-m", "tools.sweep", "consistency", "--repo", str(tmp_repo)]
-
-    cp_fix = subprocess.run(cmd_fix, cwd=repo_root, check=False, capture_output=True, text=True)
-    assert cp_fix.returncode in {0, 1}
-    if cp_fix.returncode == 1:
-        assert "FIX-FIXTURES" in (cp_fix.stderr or "")
-    cp = subprocess.run(cmd, cwd=repo_root, check=False, capture_output=True, text=True)
-    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
-    p = tmp_repo / "policy" / "consistency_sweep.json"
-    b1 = p.read_bytes()
-    h1 = hashlib.sha256(b1).hexdigest()
-
-    cp2 = subprocess.run(cmd, cwd=repo_root, check=False, capture_output=True, text=True)
-    assert cp2.returncode == 0, (cp2.returncode, cp2.stdout, cp2.stderr)
-    b2 = p.read_bytes()
-    h2 = hashlib.sha256(b2).hexdigest()
-
-    assert b1 == b2
-    assert h1 == h2
-    assert b2.endswith(b"\n")
-
-
-def test_consistency_sweep_ev006_stable_after_fix_and_commit(tmp_path: Path) -> None:
-    import shutil
-    import sys
-
-    from tools.sweep import _canonical_inputs
-
-    repo_root = Path(__file__).resolve().parents[1]
-    tmp_repo = tmp_path / "repo"
-    tmp_repo.mkdir(parents=True, exist_ok=True)
-
-    canon = _canonical_inputs(repo_root)
-    for rel in canon:
-        src = repo_root / Path(*rel.split("/"))
-        dst = tmp_repo / Path(*rel.split("/"))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-
-    src_gate_r = repo_root / "policy" / "fixtures" / "public" / "gate_r"
-    dst_gate_r = tmp_repo / "policy" / "fixtures" / "public" / "gate_r"
-    shutil.copytree(src_gate_r, dst_gate_r, dirs_exist_ok=True)
-
-    src_gate_s = repo_root / "policy" / "fixtures" / "public" / "gate_s"
-    dst_gate_s = tmp_repo / "policy" / "fixtures" / "public" / "gate_s"
-    shutil.copytree(src_gate_s, dst_gate_s, dirs_exist_ok=True)
-
-    src_seal = repo_root / "policy" / "fixtures" / "public" / "seal"
-    dst_seal = tmp_repo / "policy" / "fixtures" / "public" / "seal"
-    shutil.copytree(src_seal, dst_seal, dirs_exist_ok=True)
-
-    _init_git_repo(tmp_repo)
-
-    cmd_fix = [sys.executable, "-m", "tools.sweep", "consistency", "--repo", str(tmp_repo), "--fix-fixtures"]
-    cmd = [sys.executable, "-m", "tools.sweep", "consistency", "--repo", str(tmp_repo)]
-
-    cp_fix = subprocess.run(cmd_fix, cwd=repo_root, check=False, capture_output=True, text=True)
-    assert cp_fix.returncode in {0, 1}
-
-    subprocess.run(["git", "add", "-A"], cwd=tmp_repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "--allow-empty", "-m", "fix fixtures"], cwd=tmp_repo, check=True, capture_output=True)
-
-    cp = subprocess.run(cmd, cwd=repo_root, check=False, capture_output=True, text=True)
-    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
-
-
 def test_byte_guard_reports_binary_extension_unsafe_hits(tmp_path: Path) -> None:
     """Binary-extension files are skipped from 'checked' but unsafe drift paths must be reported."""
 
@@ -1814,33 +1174,48 @@ def test_byte_guard_reports_binary_extension_unsafe_hits(tmp_path: Path) -> None
     assert paths == ["file.pdf"]
 
 
-def _copy_fixture_inputs(
-    fixture_root: Path, fake_root: Path, fixture_dir: str, include_locked: bool = True
+def _copy_synthetic_inputs(
+    _case_root: Path, fake_root: Path, case_dir: str, include_locked: bool = True
 ) -> dict[str, str]:
-    """Copy fixture inputs into fake_root, return relative paths dict."""
-    src_dir = fixture_root / fixture_dir
-    dst_dir = fake_root / fixture_dir
-    dst_dir.mkdir(parents=True, exist_ok=True)
+    """Generate synthetic case inputs under fake_root using the historical case id."""
 
-    out = {}
-    for name, key in [
-        ("IntentSpec.core.md", "intent"),
-        ("LockedSpec.json", "locked"),
-        ("EvidenceManifest.json", "evidence"),
-        ("SealManifest.json", "seal"),
-        ("GateVerdict.Q.json", "gate_q_verdict"),
-        ("GateVerdict.R.json", "gate_r_verdict"),
-    ]:
-        src = src_dir / name
-        if not src.exists():
-            continue
-        if name == "LockedSpec.json" and not include_locked:
-            continue
-        dst = dst_dir / name
-        dst.write_bytes(src.read_bytes())
-        out[key] = f"{fixture_dir}/{name}"
+    if case_dir.endswith("q_pass_tier0"):
+        paths = builders.build_q_repo(fake_root, rel_root=case_dir, run_id="q-pass-tier0")
+    elif case_dir.endswith("q_intent_001_no_yaml_block"):
+        paths = builders.build_q_repo(fake_root, rel_root=case_dir, run_id="q-intent-001")
+        (fake_root / paths["intent"]).write_text("# Intent\nNo YAML block here.\n", encoding="utf-8", errors="strict")
+    elif case_dir.endswith("r_pass_tier1"):
+        paths = builders.build_r_repo(fake_root, rel_root=case_dir, run_id="r-pass-tier1")
+    elif case_dir.endswith("r0_evidence_sufficiency_fail"):
+        paths = builders.build_r_repo(fake_root, rel_root=case_dir, run_id="r0-evidence-001")
+        evidence_path = fake_root / paths["evidence"]
+        evidence = _read_json(evidence_path)
+        artifacts = evidence.get("artifacts")
+        assert isinstance(artifacts, list)
+        evidence["artifacts"] = [
+            row
+            for row in artifacts
+            if not (
+                isinstance(row, dict)
+                and row.get("kind") in {"test_report", "env_attestation"}
+            )
+        ]
+        evidence["envelope_attestation"] = None
+        evidence_path.write_text(
+            json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            errors="strict",
+            newline="\n",
+        )
+    elif case_dir.endswith("s_pass_tier1_unsigned"):
+        paths = builders.build_s_repo(fake_root, rel_root=case_dir, run_id="s-pass-tier1")
+    else:
+        raise AssertionError(f"unsupported synthetic case request: {case_dir}")
 
-    return out
+    if not include_locked:
+        paths = dict(paths)
+        paths.pop("locked", None)
+    return paths
 
 
 def _tamper_locked_spec_pack_id(locked_path: Path, new_pack_id: str) -> None:
@@ -1893,20 +1268,12 @@ def _first_fail_result(results: list[dict[str, Any]]) -> dict[str, Any]:
     raise AssertionError("expected at least one FAIL result")
 
 
-def _prepare_r_pass_tier1_fixture_repo(tmp_path: Path) -> dict[str, str]:
-    fixture_dir = Path("policy/fixtures/public/gate_r/r_pass_tier1")
-    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
-    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
-    _sync_locked_spec_protocol_identity(
-        tmp_path / fixture_dir / "LockedSpec.json",
-        tmp_path / "protocol_pack" / MANIFEST_FILENAME,
+def _prepare_r_pass_tier1_repo(tmp_path: Path) -> dict[str, str]:
+    return builders.build_r_repo(
+        tmp_path,
+        rel_root="gate_r/r_pass_tier1",
+        run_id="r-pass-tier1",
     )
-    return {
-        "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
-        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
-        "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
-    }
 
 
 def _rewrite_required_report_payload_run_id(
@@ -1947,13 +1314,228 @@ def _rewrite_required_report_payload_run_id(
     )
 
 
+def _append_hotl_approval_artifact(repo_root: Path, *, evidence_rel: str, rel_root: str, run_id: str) -> None:
+    hotl_rel = f"{rel_root}/hotl_approval.json"
+    audit_rel = f"{rel_root}/hotl_approval.log"
+    locked_rel = f"{rel_root}/LockedSpec.json"
+    builders.write_text(repo_root / audit_rel, "synthetic HOTL audit trail\n")
+    hotl_payload = {
+        "schema_version": "1.0.0",
+        "run_id": run_id,
+        "approval_id": "hotl.synthetic",
+        "approver": "human:operator@example.com",
+        "approval_type": "pre-proposal",
+        "reviewed_artifacts": [
+            {
+                "id": "locked.synthetic",
+                "hash": _sha256_hex((repo_root / locked_rel).read_bytes()),
+                "storage_ref": locked_rel,
+            }
+        ],
+        "decision": "approved",
+        "approved_at": "1970-01-01T00:00:00Z",
+        "justification": "synthetic HOTL approval for tier-2 coverage",
+        "audit_trail_ref": {
+            "id": "audit.hotl.synthetic",
+            "storage_ref": audit_rel,
+        },
+    }
+    builders.write_json(repo_root / hotl_rel, hotl_payload)
+
+    evidence_path = repo_root / evidence_rel
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    artifacts.append(
+        {
+            "kind": "hotl_approval",
+            "id": "hotl.synthetic",
+            "hash": _sha256_hex((repo_root / hotl_rel).read_bytes()),
+            "media_type": "application/json",
+            "produced_by": "C1",
+            "storage_ref": hotl_rel,
+        }
+    )
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
+def test_gate_q_q3_duplicate_invariant_ids_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(
+        tmp_path,
+        rel_root="gate_q/q3_invariants_duplicate_ids",
+        run_id="q3-duplicate",
+        invariants=[
+            {"id": "INV-001", "description": "first", "severity": "policy"},
+            {"id": "INV-001", "description": "second", "severity": "policy"},
+        ],
+    )
+
+    cp = builders.run_gate_q(tmp_path, intent_rel=paths["intent"], locked_rel=paths["locked"], evidence_rel=paths["evidence"])
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-INVARIANTS-EMPTY"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q3"
+
+
+def test_gate_q_q5_missing_pinned_refs_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q5_envelope_missing_pinned_refs", run_id="q5-envelope")
+    locked_path = tmp_path / paths["locked"]
+    locked = _read_json(locked_path)
+    envelope = locked.get("environment_envelope")
+    assert isinstance(envelope, dict)
+    envelope["pinned_toolchain_refs"] = []
+    locked_path.write_text(json.dumps(locked, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
+    cp = builders.run_gate_q(tmp_path, intent_rel=paths["intent"], locked_rel=paths["locked"], evidence_rel=paths["evidence"])
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-ENVELOPE-MISSING"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q5"
+
+
+def test_gate_q_q7_unsupported_tier_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q7_tier_unsupported", run_id="q7-tier")
+
+    intent_path = tmp_path / paths["intent"]
+    locked_path = tmp_path / paths["locked"]
+    tiers = builders.builtin_tiers()
+    tiers["tiers"]["tier-99"] = json.loads(json.dumps(tiers["tiers"]["tier-0"]))
+    tiers_rel = builders.write_tiers_override(tmp_path, tiers)
+
+    locked = _read_json(locked_path)
+    tier = locked.get("tier")
+    assert isinstance(tier, dict)
+    tolerances_ref = tier.get("tolerances_ref")
+    assert isinstance(tolerances_ref, dict)
+    tolerances_storage_ref = tolerances_ref.get("storage_ref")
+    assert isinstance(tolerances_storage_ref, str) and tolerances_storage_ref
+    tolerances_path = tmp_path / tolerances_storage_ref
+    tolerances = _read_json(tolerances_path)
+    tolerances["tier_id"] = "tier-99"
+    tolerances_bytes = (json.dumps(tolerances, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    tolerances_path.write_bytes(tolerances_bytes)
+    tolerances_ref["hash"] = _sha256_hex(tolerances_bytes)
+    tier["tier_id"] = "tier-99"
+    tier["tier_name"] = "Tier 99"
+    locked_path.write_text(json.dumps(locked, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
+    intent_text = intent_path.read_text(encoding="utf-8", errors="strict").replace('tier_pack_id: "tier-0"', 'tier_pack_id: "tier-99"')
+    intent_path.write_text(intent_text, encoding="utf-8", errors="strict")
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+        tiers_rel=tiers_rel,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-TIER-UNKNOWN"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q7"
+
+
+def test_gate_q_prompt_001_unlisted_repo_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(
+        tmp_path,
+        rel_root="gate_q/q_prompt_001_unlisted_repo",
+        run_id="q-prompt-001",
+        allowed_repo_refs=["allowed/repo"],
+        prompt_storage_ref="blocked/repo/prompt_bundle.txt",
+    )
+
+    cp = builders.run_gate_q(tmp_path, intent_rel=paths["intent"], locked_rel=paths["locked"], evidence_rel=paths["evidence"])
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-PROMPT-SOURCE-INVALID"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q-PROMPT-001"
+
+
+def test_gate_q_doc_002_tier2_empty_required_paths_passes(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(
+        tmp_path,
+        rel_root="gate_q/q_doc_002_pass_tier2",
+        tier_id="tier-2",
+        run_id="q-doc-002",
+        doc_impact={
+            "required_paths": [],
+            "note_on_empty": "No documentation change is required for this synthetic tier-2 run.",
+        },
+        publication_intent={"publish": False, "profile": "internal"},
+    )
+    _append_hotl_approval_artifact(
+        tmp_path,
+        evidence_rel=paths["evidence"],
+        rel_root="gate_q/q_doc_002_pass_tier2",
+        run_id="q-doc-002",
+    )
+
+    cp = builders.run_gate_q(tmp_path, intent_rel=paths["intent"], locked_rel=paths["locked"], evidence_rel=paths["evidence"])
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["verdict"] == "GO"
+    assert verdict["failure_category"] is None
+
+
+def test_gate_r_doc_001_required_path_not_touched_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_r_repo(
+        tmp_path,
+        rel_root="gate_r/r_doc_001_required_path_not_touched",
+        run_id="r-doc-001",
+        doc_impact={"required_paths": ["docs/required.md"]},
+        diff_paths=["src/changed.py"],
+    )
+    tiers = builders.builtin_tiers()
+    tiers["tiers"]["tier-1"]["doc_impact_required"] = True
+    tiers_rel = builders.write_tiers_override(tmp_path, tiers)
+    commit_sha = builders.init_git_repo(tmp_path)
+
+    cp = builders.run_gate_r(
+        tmp_path,
+        locked_rel=paths["locked"],
+        gate_q_rel=paths["gate_q_verdict"],
+        evidence_rel=paths["evidence"],
+        evaluated_revision=commit_sha,
+        tiers_rel=tiers_rel,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    report = _read_json(tmp_path / "out" / "verify_report.json")
+    first_fail = _first_fail_result(_report_results(report))
+    assert first_fail["check_id"] == "R-DOC-001"
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.R.json")
+    assert verdict["failure_category"] == "FR-INVARIANT-FAILED"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "R-DOC-001"
+
+
 def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     """Gate Q MUST emit FQ-PROTOCOL-IDENTITY-MISMATCH on pack_id mismatch."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_q/q_pass_tier0"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_q/q_pass_tier0"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Tamper pack_id in LockedSpec.
     locked_path = tmp_path / paths["locked"]
@@ -1985,8 +1567,8 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -2006,14 +1588,14 @@ def test_gate_r_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
         json.dumps(
             {
                 "schema_version": "1.0.0",
-                "run_id": "fixture",
+                "run_id": "synthetic",
                 "gate_id": "Q",
                 "verdict": "GO",
                 "failure_category": None,
                 "failures": [],
                 "evidence_manifest_ref": {"id": "evidence", "hash": "0" * 64, "storage_ref": "inputs/EvidenceManifest.Q.json"},
                 "evaluated_at": "1970-01-01T00:00:00Z",
-                "evaluator": "fixture",
+                "evaluator": "synthetic",
             },
             indent=2,
             sort_keys=True,
@@ -2065,8 +1647,8 @@ def test_gate_r_ordered_results_snapshot_preflight_primary_cause(tmp_path: Path)
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -2133,9 +1715,10 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
     verify_rel = "out/verify_report.pass.json"
     verdict_rel = "out/GateVerdict.pass.json"
     snapshot_path = tmp_path / "out" / "EvidenceManifest.r_snapshot.json"
@@ -2181,6 +1764,23 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
     assert verdict.get("failure_category") is None
 
 
+def test_gate_r_positive_head_guard_detects_post_head_tracked_mutation(tmp_path: Path) -> None:
+    """Positive Gate R setup must stop looking clean after a tracked post-HEAD mutation."""
+
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+    _prepare_r_pass_tier1_repo(tmp_path)
+
+    commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
+
+    tracked_path = tmp_path / "src" / "changed.py"
+    tracked_path.write_text("dirty\n", encoding="utf-8", errors="strict", newline="\n")
+
+    with pytest.raises(AssertionError):
+        _assert_clean_head(tmp_path, commit_sha)
+
+
 @pytest.mark.parametrize(
     ("report_id", "semantic_owner"),
     [
@@ -2198,7 +1798,7 @@ def test_gate_r_foreign_run_required_policy_report_is_structurally_invalid(
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     _rewrite_required_report_payload_run_id(
         tmp_path,
@@ -2258,7 +1858,7 @@ def test_gate_r_foreign_run_required_test_report_is_structurally_invalid(tmp_pat
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     _rewrite_required_report_payload_run_id(
         tmp_path,
@@ -2332,7 +1932,7 @@ def test_gate_r_current_run_required_report_payloads_still_pass(
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
     locked = _read_json(tmp_path / paths["locked"])
     locked_run_id = str(locked.get("run_id"))
 
@@ -2345,6 +1945,7 @@ def test_gate_r_current_run_required_report_payloads_still_pass(
     )
 
     commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
     verify_rel = f"out/verify_report.{artifact_id.replace('.', '_')}.current_run.json"
     verdict_rel = f"out/GateVerdict.{artifact_id.replace('.', '_')}.current_run.json"
     cp = _run_module(
@@ -2381,7 +1982,7 @@ def test_gate_r_missing_policy_supplychain_is_owned_by_r7(tmp_path: Path) -> Non
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -2442,7 +2043,7 @@ def test_gate_r_missing_policy_adversarial_scan_is_owned_by_r8(tmp_path: Path) -
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -2514,7 +2115,7 @@ def test_gate_r_duplicate_required_policy_report_is_owned_by_dedicated_check(
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-    paths = _prepare_r_pass_tier1_fixture_repo(tmp_path)
+    paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     evidence_path = tmp_path / paths["evidence"]
     evidence = _read_json(evidence_path)
@@ -2581,17 +2182,7 @@ def test_gate_r_overlay_preflight_ordering_and_optional_presence(tmp_path: Path)
 
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-
-    fixture_dir = Path("policy/fixtures/public/gate_r/r_pass_tier1")
-    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
-    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
-
-    paths = {
-        "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
-        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
-        "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
-    }
+    paths = builders.build_r_repo(tmp_path, rel_root="gate_r/r_pass_tier1", run_id="r-pass-tier1")
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -2608,7 +2199,7 @@ def test_gate_r_overlay_preflight_ordering_and_optional_presence(tmp_path: Path)
         "summary": {"total_checks": 1, "passed": 1, "failed": 0},
         "checks": [{"check_id": "ADOPTER-POLICY-001", "passed": True}],
     }
-    overlay_rel = "policy/fixtures/public/gate_r/r_pass_tier1/policy.overlay_requirements.json"
+    overlay_rel = "gate_r/r_pass_tier1/policy.overlay_requirements.json"
     overlay_path = tmp_path / Path(*overlay_rel.split("/"))
     overlay_bytes = (json.dumps(overlay_payload, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
     overlay_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2732,17 +2323,7 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
     """Overlay enforcement must ignore non-PolicyReportPayload policy_report artifacts."""
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
-
-    fixture_dir = Path("policy/fixtures/public/gate_r/r_pass_tier1")
-    shutil.copytree(REPO_ROOT / fixture_dir, tmp_path / fixture_dir, dirs_exist_ok=True)
-    (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(REPO_ROOT / "policy" / "consistency_sweep.json", tmp_path / "policy" / "consistency_sweep.json")
-
-    paths = {
-        "locked": "policy/fixtures/public/gate_r/r_pass_tier1/LockedSpec.json",
-        "gate_q_verdict": "policy/fixtures/public/gate_r/r_pass_tier1/GateVerdict.Q.json",
-        "evidence": "policy/fixtures/public/gate_r/r_pass_tier1/EvidenceManifest.json",
-    }
+    paths = builders.build_r_repo(tmp_path, rel_root="gate_r/r_pass_tier1", run_id="r-pass-tier1")
     _sync_locked_spec_protocol_identity(
         tmp_path / paths["locked"],
         tmp_path / "protocol_pack" / MANIFEST_FILENAME,
@@ -2752,8 +2333,6 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
     evidence = _read_json(evidence_path)
     artifacts = evidence.get("artifacts")
     assert isinstance(artifacts, list)
-    ids = {a.get("id") for a in artifacts if isinstance(a, dict)}
-    assert "policy.consistency_sweep" in ids
 
     overlay_payload = {
         "schema_version": "1.0.0",
@@ -2762,7 +2341,7 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
         "summary": {"total_checks": 1, "passed": 1, "failed": 0},
         "checks": [{"check_id": "ADOPTER-POLICY-001", "passed": True}],
     }
-    overlay_rel = "policy/fixtures/public/gate_r/r_pass_tier1/policy.overlay_requirements.json"
+    overlay_rel = "gate_r/r_pass_tier1/policy.overlay_requirements.json"
     overlay_path = tmp_path / Path(*overlay_rel.split("/"))
     overlay_bytes = (json.dumps(overlay_payload, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
     overlay_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2811,6 +2390,7 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
     )
 
     commit_sha = _init_git_repo(tmp_path)
+    _assert_clean_head(tmp_path, commit_sha)
 
     verify_report_rel = "out/verify_report.overlay.json"
     gate_verdict_rel = "out/GateVerdict.R.overlay.json"
@@ -2841,8 +2421,8 @@ def test_gate_s_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_s/s_pass_tier1_unsigned"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_s/s_pass_tier1_unsigned"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Tamper pack_id in LockedSpec.
     locked_path = tmp_path / paths["locked"]
@@ -2960,8 +2540,8 @@ def test_gate_q_missing_protocol_pack_field(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_q/q_pass_tier0"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_q/q_pass_tier0"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Remove protocol_pack field entirely.
     locked_path = tmp_path / paths["locked"]
@@ -2994,8 +2574,8 @@ def test_gate_r_missing_protocol_pack_field(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_r/r_pass_tier1"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_r/r_pass_tier1"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Remove protocol_pack field entirely.
     locked_path = tmp_path / paths["locked"]
@@ -3010,14 +2590,14 @@ def test_gate_r_missing_protocol_pack_field(tmp_path: Path) -> None:
         json.dumps(
             {
                 "schema_version": "1.0.0",
-                "run_id": "fixture",
+                "run_id": "synthetic",
                 "gate_id": "Q",
                 "verdict": "GO",
                 "failure_category": None,
                 "failures": [],
                 "evidence_manifest_ref": {"id": "evidence", "hash": "0" * 64, "storage_ref": "inputs/EvidenceManifest.Q.json"},
                 "evaluated_at": "1970-01-01T00:00:00Z",
-                "evaluator": "fixture",
+                "evaluator": "synthetic",
             },
             indent=2,
             sort_keys=True,
@@ -3056,8 +2636,8 @@ def test_gate_s_missing_protocol_pack_field(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
 
-    fixture_dir = "policy/fixtures/public/gate_s/s_pass_tier1_unsigned"
-    paths = _copy_fixture_inputs(REPO_ROOT, tmp_path, fixture_dir)
+    case_dir = "gate_s/s_pass_tier1_unsigned"
+    paths = _copy_synthetic_inputs(REPO_ROOT, tmp_path, case_dir)
 
     # Remove protocol_pack field entirely.
     locked_path = tmp_path / paths["locked"]
@@ -3265,112 +2845,3 @@ def test_seal_bundle_tier2_accepts_private_key_from_env(tmp_path: Path, monkeypa
     manifest = _read_json(tmp_path / "out" / "SealManifest.json")
     assert manifest.get("signature_alg") == "ed25519"
     assert isinstance(manifest.get("signature"), str) and bool(str(manifest["signature"]).strip())
-
-
-def test_seal_bundle_fixture_mode_guard_contract(tmp_path: Path) -> None:
-    def _write_json_rel(rel: str, obj: dict) -> None:
-        p = tmp_path / Path(*rel.split("/"))
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
-
-    # Minimal repo layout
-    (tmp_path / "policy" / "fixtures").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "temp").mkdir(parents=True, exist_ok=True)
-
-    # A deterministic, parseable Ed25519 public key (32 bytes, hex-encoded). Any 32 bytes are accepted.
-    pub_rel = "temp/seal_pubkey.hex"
-    pub_bytes = (b"0" * 64) + b"\n"
-    (tmp_path / "temp" / "seal_pubkey.hex").write_bytes(pub_bytes)
-    seal_pubkey_ref = {"id": "seal-pubkey", "hash": _sha256_hex(pub_bytes), "storage_ref": pub_rel}
-
-    _write_json_rel("LockedSpec.json", {
-        "run_id": "test-run",
-        "belgi_version": "0.0.0",
-        "tier": {"tier_id": "tier-1"},
-        "waivers_applied": [],
-        "environment_envelope": {"seal_pubkey_ref": seal_pubkey_ref},
-    })
-    _write_json_rel("Q.json", {})
-    _write_json_rel("R.json", {})
-    _write_json_rel("Evidence.json", {})
-
-    # Fixture key (under policy/fixtures/)
-    fixture_key_rel = "policy/fixtures/dev_fixture_key.hex"
-    (tmp_path / "policy" / "fixtures" / "dev_fixture_key.hex").write_bytes(b"not-a-key\n")
-
-    # Non-fixture key
-    non_fixture_key_rel = "temp/non_fixture_key.hex"
-    (tmp_path / "temp" / "non_fixture_key.hex").write_bytes(b"not-a-key\n")
-
-    common_args = [
-        "--repo", str(tmp_path),
-        "--locked-spec", "LockedSpec.json",
-        "--gate-q-verdict", "Q.json",
-        "--gate-r-verdict", "R.json",
-        "--evidence-manifest", "Evidence.json",
-        "--final-commit-sha", "0" * 40,
-        "--sealed-at", "2020-01-01T00:00:00+00:00",
-        "--signer", "test",
-        "--out", "out/SealManifest.json",
-    ]
-
-    # Case 1: fixture key path requires --fixture-mode.
-    cp = _run_module(
-        "chain.seal_bundle",
-        [*common_args, "--seal-private-key", fixture_key_rel],
-        cwd=REPO_ROOT,
-    )
-    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
-    assert "FIXTURE-KEY NO-GO: --seal-private-key requires explicit --fixture-mode" in cp.stderr
-
-    # Case 2: --fixture-mode requires key under policy/fixtures/.
-    cp = _run_module(
-        "chain.seal_bundle",
-        [*common_args, "--fixture-mode", "--seal-private-key", non_fixture_key_rel],
-        cwd=REPO_ROOT,
-    )
-    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
-    assert "FIXTURE-KEY NO-GO: --seal-private-key must be under policy/fixtures/ when --fixture-mode is set" in cp.stderr
-
-    # Case 3: non-fixture key path allowed without --fixture-mode (should fail later, but not with fixture-mode guard).
-    cp = _run_module(
-        "chain.seal_bundle",
-        [*common_args, "--seal-private-key", non_fixture_key_rel],
-        cwd=REPO_ROOT,
-    )
-    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
-    assert "FIXTURE-KEY NO-GO" not in cp.stderr
-
-    # Case 4: fixture key allowed with --fixture-mode (should fail later, but not with fixture-mode guard).
-    cp = _run_module(
-        "chain.seal_bundle",
-        [*common_args, "--fixture-mode", "--seal-private-key", fixture_key_rel],
-        cwd=REPO_ROOT,
-    )
-    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
-    assert "FIXTURE-KEY NO-GO" not in cp.stderr
-
-
-def test_gate_s_fixture_layout_is_repo_canonical() -> None:
-    root = REPO_ROOT / "policy" / "fixtures" / "public" / "gate_s"
-    assert (root / "cases.json").exists()
-    assert not (root / "fixtures").exists(), "Gate S fixtures must not be nested under gate_s/fixtures/"
-
-    cases_doc = _read_json(root / "cases.json")
-    cases = cases_doc.get("cases")
-    assert isinstance(cases, list) and cases
-
-    for case in cases:
-        assert isinstance(case, dict)
-        case_id = case.get("case_id")
-        assert isinstance(case_id, str) and case_id
-        case_dir = root / case_id
-        assert case_dir.is_dir(), case_id
-
-        paths = case.get("paths")
-        assert isinstance(paths, dict)
-        for k in ["locked_spec", "evidence_manifest", "seal_manifest"]:
-            p = paths.get(k)
-            assert isinstance(p, str) and p
-            expected_prefix = f"policy/fixtures/public/gate_s/{case_id}/"
-            assert p.replace("\\", "/").startswith(expected_prefix)

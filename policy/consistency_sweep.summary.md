@@ -1,4 +1,4 @@
 ## Consistency sweep
-- total: **55**  passed: **55**  failed: **0**
+- total: **53**  passed: **53**  failed: **0**
 
 ✅ all checks passed

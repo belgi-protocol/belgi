@@ -36,6 +36,43 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _sample_evidence_manifest() -> dict[str, object]:
+    return {
+        "schema_version": "1.0.0",
+        "run_id": "sample-run",
+        "artifacts": [
+            {
+                "kind": "diff",
+                "id": "repo.diff",
+                "hash": "a" * 64,
+                "media_type": "text/x-diff",
+                "produced_by": "C2",
+                "storage_ref": "out/repo.diff.patch",
+            }
+        ],
+        "commands_executed": [],
+        "envelope_attestation": None,
+    }
+
+
+def _sample_gate_verdict() -> dict[str, object]:
+    return {
+        "schema_version": "1.0.0",
+        "run_id": "sample-run",
+        "gate_id": "R",
+        "verdict": "GO",
+        "failure_category": None,
+        "failures": [],
+        "evidence_manifest_ref": {
+            "id": "evidence",
+            "hash": "b" * 64,
+            "storage_ref": "out/EvidenceManifest.json",
+        },
+        "evaluated_at": "1970-01-01T00:00:00Z",
+        "evaluator": "chain/gate_r_verify.py",
+    }
+
+
 def test_protocol_pack_is_data_only_no_py() -> None:
     root = _repo_root()
     pack_root = root / "belgi" / "_protocol_packs"
@@ -178,11 +215,7 @@ def test_schema_strictness_additional_properties_rejected() -> None:
     _, (_parse_rfc3339, validate_schema) = _import_local_core()
 
     schema = json.loads((root / "schemas" / "EvidenceManifest.schema.json").read_text(encoding="utf-8"))
-    em = json.loads(
-        (root / "policy" / "fixtures" / "public" / "gate_r" / "r_pass_tier1" / "EvidenceManifest.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    em = _sample_evidence_manifest()
 
     assert validate_schema(em, schema, root_schema=schema, path="EvidenceManifest") == []
 
@@ -201,11 +234,7 @@ def test_schema_strictness_sha256_pattern_enforced() -> None:
     _, (_parse_rfc3339, validate_schema) = _import_local_core()
 
     schema = json.loads((root / "schemas" / "EvidenceManifest.schema.json").read_text(encoding="utf-8"))
-    em = json.loads(
-        (root / "policy" / "fixtures" / "public" / "gate_r" / "r_pass_tier1" / "EvidenceManifest.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    em = _sample_evidence_manifest()
 
     em_bad = copy.deepcopy(em)
     assert isinstance(em_bad, dict)
@@ -225,11 +254,7 @@ def test_schema_strictness_datetime_format_enforced() -> None:
     _, (_parse_rfc3339, validate_schema) = _import_local_core()
 
     schema = json.loads((root / "schemas" / "GateVerdict.schema.json").read_text(encoding="utf-8"))
-    gv = json.loads(
-        (root / "policy" / "fixtures" / "public" / "gate_s" / "s_pass_tier1_unsigned" / "GateVerdict.R.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    gv = _sample_gate_verdict()
     assert validate_schema(gv, schema, root_schema=schema, path="GateVerdict") == []
 
     gv_bad = copy.deepcopy(gv)
@@ -247,11 +272,7 @@ def test_schema_strictness_gate_verdict_additional_properties_rejected() -> None
     _, (_parse_rfc3339, validate_schema) = _import_local_core()
 
     schema = json.loads((root / "schemas" / "GateVerdict.schema.json").read_text(encoding="utf-8"))
-    gv = json.loads(
-        (root / "policy" / "fixtures" / "public" / "gate_s" / "s_pass_tier1_unsigned" / "GateVerdict.R.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    gv = _sample_gate_verdict()
 
     gv_extra = copy.deepcopy(gv)
     assert isinstance(gv_extra, dict)

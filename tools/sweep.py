@@ -5,11 +5,6 @@ This file is the canonical sweep CLI.
 
 Commands:
 - consistency: generate policy/consistency_sweep.json (canonical)
-- fixtures-q: run Gate Q fixtures only
-- fixtures-r: run Gate R fixtures only
-- fixtures-qr: run Gate Q+R fixtures
-- fixtures-s: run Gate S verifier fixtures
-- fixtures-seal: run Seal producer fixtures
 """
 
 # maintainer marker: bk_ycanary_7f3a9c2d
@@ -35,8 +30,6 @@ EVALUATED_AT = "1970-01-01T00:00:00Z"
 
 CANONICAL_SWEEP_OUT = "policy/consistency_sweep.json"
 CANONICAL_SWEEP_SUMMARY = "policy/consistency_sweep.summary.md"
-ZERO_SHA256 = "0" * 64
-
 CONSISTENCY_SPEC_DOC = "docs/operations/consistency-sweep.md"
 
 _C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
@@ -85,6 +78,13 @@ _PROTOCOL_IDENTITY_SOURCE_FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]],
         "source mismatch wording",
         re.compile(r"\bsource mismatch\b", flags=re.IGNORECASE),
     ),
+)
+
+_FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS: tuple[str, ...] = (
+    "policy/fixtures/public/gate_q/cases.json",
+    "policy/fixtures/public/gate_r/cases.json",
+    "policy/fixtures/public/gate_s/cases.json",
+    "policy/fixtures/public/seal/cases.json",
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -160,19 +160,6 @@ def _canonical_json_bytes(obj: object) -> bytes:
 
 def _atomic_write_canonical_json(path: Path, obj: object) -> None:
     _atomic_write_bytes(path, _canonical_json_bytes(obj))
-
-
-# Seal/Gate S fixture regen policy (centralized; deterministic)
-_SEAL_PAYLOAD_FILENAMES: tuple[str, ...] = (
-    "SealManifest.json",
-    "SealManifest.out.json",
-    "SealManifest.signed.json",
-)
-
-_REGEN_SEALS_REMEDIATION_TEXT = (
-    "Seal-related fixture SealManifest drift detected after --fix-fixtures. "
-    "Remediation: run `python -m tools.sweep consistency --repo . --fix-fixtures --regen-seals`."
-)
 
 
 # ----------------------------
@@ -405,97 +392,6 @@ def _git_tree_sha_excluding(
         if not re.fullmatch(r"[0-9a-f]{40}", s):
             raise _UserInputError(f"unexpected git tree sha: {s!r}")
         return s
-
-
-def _ev006_normalized_manifest_bytes(em_obj: dict[str, Any]) -> bytes:
-    # Deterministic fixed-point normalization for CS-EV-006.
-    # Treat policy.consistency_sweep as present with ZERO_SHA256, independent of whether fixtures
-    # include it (and independent of its original position/duplicates).
-    em_norm = json.loads(json.dumps(em_obj, ensure_ascii=False))
-    artifacts = em_norm.get("artifacts")
-    if not isinstance(artifacts, list):
-        artifacts = []
-
-    # Remove any existing entries to make output independent of presence/position/duplicates.
-    kept: list[Any] = []
-    for a in artifacts:
-        if isinstance(a, dict) and a.get("kind") == "policy_report" and a.get("id") == "policy.consistency_sweep":
-            continue
-        kept.append(a)
-
-    canonical = {
-        "kind": "policy_report",
-        "id": "policy.consistency_sweep",
-        "hash": ZERO_SHA256,
-        "media_type": "application/json",
-        "storage_ref": CANONICAL_SWEEP_OUT,
-        "produced_by": "C1",
-    }
-
-    # Stable insertion: after last policy_report, else at end.
-    insert_at = 0
-    for i, a in enumerate(kept):
-        if isinstance(a, dict) and a.get("kind") == "policy_report":
-            insert_at = i + 1
-    kept.insert(insert_at, canonical)
-
-    em_norm["artifacts"] = kept
-    return _canonical_json_bytes(em_norm)
-
-
-def _ev006_manifest_paths_for_normalization(root: Path) -> list[str]:
-    cases_path = _resolve_repo_path(root, "policy/fixtures/public/gate_r/cases.json", must_exist=True, must_be_file=True)
-    try:
-        cases_obj = load_json(cases_path)
-    except Exception as e:
-        raise _UserInputError(f"failed to load governed cases.json for EV-006 normalization: {e}") from e
-    if not isinstance(cases_obj, dict) or not isinstance(cases_obj.get("cases"), list):
-        raise _UserInputError("invalid governed cases.json shape for EV-006 normalization (expected object with cases: list)")
-
-    out: list[str] = []
-    cases = [c for c in cases_obj["cases"] if isinstance(c, dict)]
-    cases.sort(key=lambda c: str(c.get("case_id") or "").strip())
-    for c in cases:
-        if c.get("expected_exit_code") != 0:
-            continue
-        paths = c.get("paths")
-        if not isinstance(paths, dict):
-            raise _UserInputError(f"EV-006 normalization requires paths object for PASS case_id={c.get('case_id')!r}")
-        ls_rel = paths.get("locked_spec")
-        em_rel = paths.get("evidence_manifest")
-        if not isinstance(ls_rel, str) or not isinstance(em_rel, str):
-            raise _UserInputError(f"EV-006 normalization requires paths.locked_spec and paths.evidence_manifest strings for case_id={c.get('case_id')!r}")
-        try:
-            ls_path = _resolve_repo_path(root, ls_rel, must_exist=True, must_be_file=True)
-            em_path = _resolve_repo_path(root, em_rel, must_exist=True, must_be_file=True)
-        except _UserInputError as e:
-            raise _UserInputError(f"EV-006 normalization failed to resolve governed fixture paths for case_id={c.get('case_id')!r}: {e}") from e
-        try:
-            ls_obj = load_json(ls_path)
-            em_obj = load_json(em_path)
-        except Exception as e:
-            raise _UserInputError(f"EV-006 normalization failed to parse governed fixture JSON for case_id={c.get('case_id')!r}: {e}") from e
-        if not isinstance(ls_obj, dict) or not isinstance(em_obj, dict):
-            raise _UserInputError(f"EV-006 normalization requires LockedSpec/EvidenceManifest objects for case_id={c.get('case_id')!r}")
-        if not _manifest_claims_tier_ge_1(ls_obj, em_obj):
-            continue
-        out.append(em_rel)
-
-    return sorted(set(_validate_repo_rel(p) for p in out))
-
-
-def _ev006_blob_overrides_for_normalization(root: Path) -> dict[str, bytes]:
-    overrides: dict[str, bytes] = {}
-    for em_rel in _ev006_manifest_paths_for_normalization(root):
-        em_path = _resolve_repo_path(root, em_rel, must_exist=True, must_be_file=True)
-        try:
-            em_obj = load_json(em_path)
-        except Exception as e:
-            raise _UserInputError(f"EV-006 normalization failed to load EvidenceManifest JSON at {em_rel}: {e}") from e
-        if not isinstance(em_obj, dict):
-            raise _UserInputError(f"EV-006 normalization requires EvidenceManifest to be a JSON object: {em_rel}")
-        overrides[em_rel] = _ev006_normalized_manifest_bytes(em_obj)
-    return overrides
 
 
 @dataclass
@@ -3295,8 +3191,8 @@ def _iter_schema_files(repo_root: Path) -> list[str]:
 def _iter_builtin_protocol_pack_files(repo_root: Path) -> list[str]:
     """Deterministically enumerate builtin protocol pack files.
 
-    These are part of the governed surface because fixture pins depend on the
-    active builtin pack identity and the manifest is validated against its tree.
+    These are part of the governed surface because the active builtin pack
+    identity is authoritative and the manifest is validated against its tree.
     Fail-closed on symlinks.
     """
 
@@ -3424,11 +3320,6 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "tools/report.py",
         "tools/sweep.py",
         "tools/wheel_boundary.py",
-        # Fixture governance
-        "policy/fixtures/public/gate_q/cases.json",
-        "policy/fixtures/public/gate_r/cases.json",
-        "policy/fixtures/public/gate_s/cases.json",
-        "policy/fixtures/public/seal/cases.json",
         # R-check wiring governance
         "chain/logic/r_checks/context.py",
         "chain/logic/r_checks/registry.py",
@@ -3456,7 +3347,7 @@ def check_cs_byte_001(root: Path) -> InvariantResult:
     # CS-BYTE-001 MUST use the exact Byte Guard enumeration + detector to avoid drift.
     from tools.normalize import scan_byte_guard
 
-    # Exclude sweep outputs so CS-BYTE-001 cannot self-invalidate the consistency sweep fixed-point.
+    # Exclude sweep outputs so CS-BYTE-001 cannot self-invalidate the current sweep artifact write.
     report = scan_byte_guard(
         root,
         tracked_only=True,
@@ -3481,320 +3372,6 @@ def check_cs_byte_001(root: Path) -> InvariantResult:
             details,
         )
     return InvariantResult("CS-BYTE-001", "PASS", ["tools/normalize.py"], "", details)
-
-
-def _find_em_artifacts(em: dict[str, Any], *, kind: str, artifact_id: str) -> list[dict[str, Any]]:
-    arts = em.get("artifacts")
-    if not isinstance(arts, list):
-        return []
-    return [a for a in arts if isinstance(a, dict) and a.get("kind") == kind and a.get("id") == artifact_id]
-
-
-def _locked_spec_tier_id(ls: dict[str, Any]) -> str | None:
-    tier = ls.get("tier")
-    if not isinstance(tier, dict):
-        return None
-    tid = tier.get("tier_id")
-    return tid if isinstance(tid, str) and tid.strip() else None
-
-
-def _manifest_claims_tier_ge_1(ls: dict[str, Any] | None, em: dict[str, Any]) -> bool:
-    if ls is not None:
-        tid = _locked_spec_tier_id(ls)
-        return tid in ("tier-1", "tier-2", "tier-3")
-
-    # Fallback: treat presence of tier>=1-only evidence kinds as a tier>=1 claim.
-    arts = em.get("artifacts")
-    if not isinstance(arts, list):
-        return False
-    kinds = {a.get("kind") for a in arts if isinstance(a, dict)}
-    return ("env_attestation" in kinds) or ("test_report" in kinds)
-def _write_json_deterministic(path: Path, obj: Any) -> None:
-    _atomic_write_text(path, json.dumps(obj, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
-
-
-def _fix_cs_ev_006_manifest(*, em_obj: dict[str, Any], expected_hash: str) -> bool:
-    artifacts = em_obj.get("artifacts")
-    if not isinstance(artifacts, list):
-        artifacts = []
-        em_obj["artifacts"] = artifacts
-
-    matches = [
-        (idx, a)
-        for idx, a in enumerate(artifacts)
-        if isinstance(a, dict) and a.get("kind") == "policy_report" and a.get("id") == "policy.consistency_sweep"
-    ]
-
-    changed = False
-    if not matches:
-        new_art = {
-            "kind": "policy_report",
-            "id": "policy.consistency_sweep",
-            "hash": expected_hash,
-            "media_type": "application/json",
-            "storage_ref": CANONICAL_SWEEP_OUT,
-            "produced_by": "C1",
-        }
-        # Stable insertion: after last policy_report, else at end.
-        insert_at = 0
-        for i, a in enumerate(artifacts):
-            if isinstance(a, dict) and a.get("kind") == "policy_report":
-                insert_at = i + 1
-        artifacts.insert(insert_at, new_art)
-        return True
-
-    # De-duplicate deterministically: keep first occurrence by list order.
-    keep_idx, keep = matches[0]
-    for del_idx, _ in reversed(matches[1:]):
-        del artifacts[del_idx]
-        changed = True
-
-    # Normalize required fields deterministically.
-    if keep.get("hash") != expected_hash:
-        keep["hash"] = expected_hash
-        changed = True
-    if keep.get("storage_ref") != CANONICAL_SWEEP_OUT:
-        keep["storage_ref"] = CANONICAL_SWEEP_OUT
-        changed = True
-    if keep.get("media_type") != "application/json":
-        keep["media_type"] = "application/json"
-        changed = True
-    if keep.get("produced_by") != "C1":
-        keep["produced_by"] = "C1"
-        changed = True
-    if keep.get("kind") != "policy_report":
-        keep["kind"] = "policy_report"
-        changed = True
-    if keep.get("id") != "policy.consistency_sweep":
-        keep["id"] = "policy.consistency_sweep"
-        changed = True
-    return changed
-
-
-def _eval_cs_ev_006_expected_hash(root: Path, expected_hash: str, *, fix_fixtures: bool) -> tuple[InvariantResult, list[str]]:
-    """Evaluate CS-EV-006 against an expected sweep artifact hash.
-
-    This avoids circular dependence on reading policy/consistency_sweep.json while it is being generated.
-    """
-
-    # Primary enforcement surface: governed public Gate R fixtures.
-    cases_path = _resolve_repo_path(root, "policy/fixtures/public/gate_r/cases.json", must_exist=True, must_be_file=True)
-    cases_obj = load_json(cases_path)
-    if not isinstance(cases_obj, dict) or not isinstance(cases_obj.get("cases"), list):
-        return (
-            InvariantResult(
-                "CS-EV-006",
-                "FAIL",
-                ["policy/fixtures/public/gate_r/cases.json"],
-                "Fix cases.json shape, then rerun sweep.",
-            ),
-            [],
-        )
-
-    # Deterministic + bounded: details must never explode artifact size.
-    max_violations = 50
-
-    violations: list[dict[str, Any]] = []
-    modified: list[str] = []
-    checked_cases = 0
-
-    cases = [c for c in cases_obj["cases"] if isinstance(c, dict)]
-    cases.sort(key=lambda c: str(c.get("case_id") or "").strip())
-    for c in cases:
-        case_id = str(c.get("case_id") or "").strip()
-        paths = c.get("paths")
-        if not isinstance(paths, dict):
-            continue
-        ls_rel = paths.get("locked_spec")
-        em_rel = paths.get("evidence_manifest")
-        if not isinstance(ls_rel, str) or not isinstance(em_rel, str):
-            continue
-
-        # Only enforce strictly for fixtures expected to PASS.
-        expected_exit_code = c.get("expected_exit_code")
-        if expected_exit_code != 0:
-            continue
-
-        try:
-            ls_path = _resolve_repo_path(root, ls_rel, must_exist=True, must_be_file=True)
-            em_path = _resolve_repo_path(root, em_rel, must_exist=True, must_be_file=True)
-        except _UserInputError as e:
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "path_invalid",
-                    "message": str(e),
-                    "declared_hash": None,
-                    "declared_storage_ref": None,
-                }
-            )
-            continue
-
-        try:
-            ls_obj = load_json(ls_path)
-            em_obj = load_json(em_path)
-        except Exception as e:
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "invalid_json",
-                    "message": str(e),
-                    "declared_hash": None,
-                    "declared_storage_ref": None,
-                }
-            )
-            continue
-
-        if not isinstance(ls_obj, dict) or not isinstance(em_obj, dict):
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "invalid_json",
-                    "message": "LockedSpec/EvidenceManifest must be JSON objects",
-                    "declared_hash": None,
-                    "declared_storage_ref": None,
-                }
-            )
-            continue
-
-        if not _manifest_claims_tier_ge_1(ls_obj, em_obj):
-            continue
-
-        checked_cases += 1
-
-        if fix_fixtures:
-            changed = _fix_cs_ev_006_manifest(em_obj=em_obj, expected_hash=expected_hash)
-            if changed:
-                _write_json_deterministic(em_path, em_obj)
-                modified.append(em_rel)
-
-        matches = _find_em_artifacts(em_obj, kind="policy_report", artifact_id="policy.consistency_sweep")
-        if not matches:
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "missing_entry",
-                    "message": "missing policy_report:policy.consistency_sweep",
-                    "declared_hash": None,
-                    "declared_storage_ref": None,
-                }
-            )
-            continue
-
-        if len(matches) != 1:
-            first = matches[0]
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "ambiguous_entry",
-                    "message": f"ambiguous policy_report:policy.consistency_sweep (count={len(matches)})",
-                    "declared_hash": first.get("hash") if isinstance(first.get("hash"), str) else None,
-                    "declared_storage_ref": first.get("storage_ref") if isinstance(first.get("storage_ref"), str) else None,
-                }
-            )
-            continue
-
-        art = matches[0]
-
-        storage_ref = art.get("storage_ref")
-        if storage_ref != CANONICAL_SWEEP_OUT:
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "wrong_storage_ref",
-                    "message": f"storage_ref must be {CANONICAL_SWEEP_OUT}",
-                    "declared_hash": art.get("hash") if isinstance(art.get("hash"), str) else None,
-                    "declared_storage_ref": storage_ref if isinstance(storage_ref, str) else None,
-                }
-            )
-            continue
-
-        declared_hash = art.get("hash")
-        if not isinstance(declared_hash, str) or declared_hash != expected_hash:
-            violations.append(
-                {
-                    "case_id": case_id,
-                    "locked_spec": ls_rel,
-                    "evidence_manifest": em_rel,
-                    "code": "hash_mismatch",
-                    "message": "policy.consistency_sweep hash mismatch",
-                    "declared_hash": declared_hash if isinstance(declared_hash, str) else None,
-                    "declared_storage_ref": CANONICAL_SWEEP_OUT,
-                }
-            )
-            continue
-
-    violations.sort(
-        key=lambda v: (
-            str(v.get("case_id") or ""),
-            str(v.get("code") or ""),
-            str(v.get("evidence_manifest") or ""),
-            str(v.get("locked_spec") or ""),
-        )
-    )
-    modified = sorted(set(_validate_repo_rel(p) for p in modified))
-
-    if violations:
-        total = len(violations)
-        truncated = total > max_violations
-        vios_out = violations[:max_violations]
-        details = {
-            "expected_hash": expected_hash,
-            "cases_file": "policy/fixtures/public/gate_r/cases.json",
-            "checked_cases": checked_cases,
-            "violations_total": total,
-            "violations_truncated": truncated,
-            "violations": vios_out,
-        }
-        remediation = (
-            f"Index policy.consistency_sweep in every Tier>=1 PASS EvidenceManifest (fixtures) with hash={expected_hash}, then rerun the sweep."
-        )
-        if not fix_fixtures:
-            remediation += " (Tip: run python -m tools.sweep consistency --repo . --fix-fixtures)"
-        return (
-            InvariantResult(
-                "CS-EV-006",
-                "FAIL",
-                ["policy/fixtures/public/gate_r/cases.json", CANONICAL_SWEEP_OUT],
-                remediation,
-                details,
-            ),
-            modified,
-        )
-    # PASS: details MUST be absent (fixed-point hash stability).
-    return (InvariantResult("CS-EV-006", "PASS", ["policy/fixtures/public/gate_r/cases.json"], ""), modified)
-
-
-def check_cs_ev_006(root: Path) -> InvariantResult:
-    """CS-EV-006 — Manifest Completeness: Tier>=1 manifests must index policy.consistency_sweep.
-
-    The canonical consistency sweep command evaluates this invariant against the would-be report hash
-    (see _consistency_sweep_main). This shim is fail-closed for any other callers.
-    """
-
-    try:
-        p = _resolve_repo_path(root, CANONICAL_SWEEP_OUT, must_exist=True, must_be_file=True)
-    except _UserInputError:
-        return InvariantResult(
-            "CS-EV-006",
-            "FAIL",
-            ["policy/fixtures/public/gate_r/cases.json", CANONICAL_SWEEP_OUT],
-            "Missing policy/consistency_sweep.json; run the consistency sweep to generate it, then rerun.",
-        )
-    res, _ = _eval_cs_ev_006_expected_hash(root, sha256_file(p), fix_fixtures=False)
-    return res
 
 
 def check_cs_protocol_identity_001(root: Path) -> InvariantResult:
@@ -3855,260 +3432,30 @@ def check_cs_protocol_identity_001(root: Path) -> InvariantResult:
     )
 
 
-def _iter_fixture_locked_specs(repo_root: Path) -> list[Path]:
-    """Deterministically enumerate policy/fixtures/**/LockedSpec.json.
+def check_cs_fixture_zero_001(root: Path) -> InvariantResult:
+    """CS-FIXTURE-ZERO-001 — governed public fixture surface stays absent."""
 
-    Fail-closed on symlinks anywhere under policy/fixtures.
-    """
-
-    base = _resolve_repo_path(repo_root, "policy/fixtures", must_exist=True, must_be_file=False)
-    if not base.is_dir():
-        raise _UserInputError("policy/fixtures is not a directory")
-
-    out: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
-        d = Path(dirpath)
-        if d.is_symlink():
-            raise _UserInputError(f"symlink directory not allowed under policy/fixtures: {d}")
-        dirnames.sort()
-        filenames.sort()
-        for name in filenames:
-            p = d / name
-            if p.is_symlink():
-                raise _UserInputError(f"symlink file not allowed under policy/fixtures: {p}")
-            if name == "LockedSpec.json":
-                out.append(p)
-
-    out.sort(key=lambda p: p.relative_to(repo_root.resolve()).as_posix())
-    return out
-
-
-def check_cs_pack_identity_001(root: Path) -> InvariantResult:
-    """CS-PACK-IDENTITY-001 — Fixture LockedSpec protocol_pack pins match active builtin pack."""
-
-    from belgi.protocol.pack import MANIFEST_FILENAME, validate_manifest_bytes
-
-    pack_root = _resolve_repo_path(root, "belgi/_protocol_packs/v1", must_exist=True, must_be_file=False)
-    manifest_path = pack_root / MANIFEST_FILENAME
-    if not manifest_path.exists() or not manifest_path.is_file() or manifest_path.is_symlink():
+    reintroduced = [
+        rel
+        for rel in _FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS
+        if (root / Path(*rel.split("/"))).exists()
+    ]
+    evidence = [f"{CONSISTENCY_SPEC_DOC}#cs-fixture-zero-001--governed-public-fixture-surface-absent-in-belgi-main-repo"]
+    if reintroduced:
+        sample = ", ".join(reintroduced)
         return InvariantResult(
-            "CS-PACK-IDENTITY-001",
+            "CS-FIXTURE-ZERO-001",
             "FAIL",
-            [CONSISTENCY_SPEC_DOC],
-            "Missing or invalid builtin protocol pack manifest under belgi/_protocol_packs/v1; rebuild/restore it, then rerun sweep.",
+            evidence,
+            f"Remove reintroduced governed public fixture surface path(s): {sample}.",
+            {"reintroduced_paths": reintroduced},
         )
-
-    manifest_bytes = manifest_path.read_bytes()
-    try:
-        validate_manifest_bytes(pack_root=pack_root, manifest_bytes=manifest_bytes)
-    except Exception as e:
-        return InvariantResult(
-            "CS-PACK-IDENTITY-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC],
-            f"Builtin protocol pack manifest invalid: {e}. Fix manifest/tree binding, then rerun sweep.",
-        )
-
-    parsed = json.loads(manifest_bytes.decode("utf-8", errors="strict"))
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("pack_id"), str) or not str(parsed.get("pack_id") or "").strip():
-        return InvariantResult(
-            "CS-PACK-IDENTITY-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC],
-            "Builtin protocol pack manifest missing/invalid pack_id; fix it, then rerun sweep.",
-        )
-
-    pack_id = str(parsed.get("pack_id") or "").strip()
-    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
-
-    locked_specs = _iter_fixture_locked_specs(root)
-    if not locked_specs:
-        return InvariantResult(
-            "CS-PACK-IDENTITY-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC],
-            "NO-GO: no fixture LockedSpec targets found (checked 0).",
-        )
-
-    mismatches: list[str] = []
-    invalid: list[str] = []
-    for p in locked_specs:
-        rel = p.relative_to(root.resolve()).as_posix()
-        try:
-            doc = json.loads(read_text(p))
-        except Exception as e:
-            invalid.append(f"{rel}: JSON parse error: {e}")
-            continue
-        if not isinstance(doc, dict):
-            invalid.append(f"{rel}: LockedSpec is not an object")
-            continue
-        pp = doc.get("protocol_pack")
-        if not isinstance(pp, dict):
-            mismatches.append(f"{rel}: protocol_pack missing/invalid")
-            continue
-        if pp.get("pack_id") != pack_id or pp.get("manifest_sha256") != manifest_sha256:
-            mismatches.append(
-                f"{rel}: pin mismatch pack_id={str(pp.get('pack_id') or '')[:8]}.. manifest_sha256={str(pp.get('manifest_sha256') or '')[:8]}.."
-            )
-
-    if invalid or mismatches:
-        details: dict[str, Any] = {
-            "pack_id": pack_id,
-            "manifest_sha256": manifest_sha256,
-            "checked": len(locked_specs),
-            "invalid_total": len(invalid),
-            "mismatches_total": len(mismatches),
-            "invalid_sample": sorted(invalid)[:8],
-            "mismatches_sample": sorted(mismatches)[:8],
-        }
-        return InvariantResult(
-            "CS-PACK-IDENTITY-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC, "belgi/_protocol_packs/v1/ProtocolPackManifest.json"],
-            "Run `python -m tools.belgi fixtures sync-pack-identity --repo . --pack-dir belgi/_protocol_packs/v1`, then rerun the sweep.",
-            details,
-        )
-
     return InvariantResult(
-        "CS-PACK-IDENTITY-001",
+        "CS-FIXTURE-ZERO-001",
         "PASS",
-        [CONSISTENCY_SPEC_DOC, "belgi/_protocol_packs/v1/ProtocolPackManifest.json"],
+        evidence,
         "",
-    )
-
-
-def check_cs_seal_keypair_001(root: Path) -> InvariantResult:
-    """CS-SEAL-KEYPAIR-001 — SEAL fixture keypair and seal_pubkey_ref binding are correct."""
-
-    try:
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    except Exception as e:
-        return InvariantResult(
-            "CS-SEAL-KEYPAIR-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC],
-            f"Missing crypto dependency for Ed25519 checks ({e}); install 'cryptography' and rerun sweep.",
-        )
-
-    cases_path = _resolve_repo_path(root, "policy/fixtures/public/seal/cases.json", must_exist=True, must_be_file=True)
-    doc = json.loads(read_text(cases_path))
-    cases = doc.get("cases") if isinstance(doc, dict) else None
-    if not isinstance(cases, list):
-        return InvariantResult(
-            "CS-SEAL-KEYPAIR-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal/cases.json"],
-            "Fix policy/fixtures/public/seal/cases.json to be an object with cases[] list, then rerun sweep.",
-        )
-
-    case_ids: list[str] = []
-    for c in cases:
-        if isinstance(c, dict) and isinstance(c.get("case_id"), str) and str(c.get("case_id") or "").strip():
-            case_ids.append(str(c.get("case_id") or "").strip())
-    case_ids = sorted(set(case_ids))
-    if not case_ids:
-        return InvariantResult(
-            "CS-SEAL-KEYPAIR-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal/cases.json"],
-            "NO-GO: no SEAL fixture case_id targets found (checked 0).",
-        )
-
-    # Build a deterministic set of derived pubkeys from all available SEAL fixture private keys.
-    derived_pubkeys: set[str] = set()
-    for case_id in case_ids:
-        fixture_dir_rel = f"policy/fixtures/public/seal/{case_id}"
-        fixture_dir = _resolve_repo_path(root, fixture_dir_rel, must_exist=True, must_be_file=False)
-        priv_path = fixture_dir / "seal_private_key.hex"
-        if not priv_path.exists() or not priv_path.is_file() or priv_path.is_symlink():
-            continue
-        seed_hex = read_text(priv_path).strip()
-        if not re.fullmatch(r"[0-9a-fA-F]{64}", seed_hex):
-            continue
-        priv = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex))
-        pub_bytes = priv.public_key().public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
-        derived_pubkeys.add(pub_bytes.hex().lower())
-
-    if not derived_pubkeys:
-        return InvariantResult(
-            "CS-SEAL-KEYPAIR-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal/cases.json"],
-            "NO-GO: no valid seal_private_key.hex seeds found in SEAL fixtures (checked 0).",
-        )
-
-    violations: list[str] = []
-    for case_id in case_ids:
-        fixture_dir_rel = f"policy/fixtures/public/seal/{case_id}"
-        fixture_dir = _resolve_repo_path(root, fixture_dir_rel, must_exist=True, must_be_file=False)
-        priv_path = fixture_dir / "seal_private_key.hex"
-        pub_path = fixture_dir / "seal_pubkey.hex"
-        ls_path = fixture_dir / "LockedSpec.json"
-        if not pub_path.exists() or not pub_path.is_file() or pub_path.is_symlink():
-            violations.append(f"{fixture_dir_rel}: missing/invalid seal_pubkey.hex")
-            continue
-        if not ls_path.exists() or not ls_path.is_file() or ls_path.is_symlink():
-            violations.append(f"{fixture_dir_rel}: missing/invalid LockedSpec.json")
-            continue
-
-        actual_pub_hex = read_text(pub_path).strip().lower()
-        if not re.fullmatch(r"[0-9a-f]{64}", actual_pub_hex):
-            violations.append(f"{fixture_dir_rel}: seal_pubkey.hex must be 64 hex chars")
-        else:
-            if priv_path.exists() and priv_path.is_file() and not priv_path.is_symlink():
-                seed_hex = read_text(priv_path).strip()
-                if not re.fullmatch(r"[0-9a-fA-F]{64}", seed_hex):
-                    violations.append(f"{fixture_dir_rel}: seal_private_key.hex must be 64 hex chars")
-                else:
-                    priv = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex))
-                    pub_bytes = priv.public_key().public_bytes(
-                        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-                    )
-                    expected_pub_hex = pub_bytes.hex().lower()
-                    if actual_pub_hex != expected_pub_hex:
-                        violations.append(f"{fixture_dir_rel}: seal_pubkey.hex does not match derived public key")
-            else:
-                # If this fixture has no private key, its pubkey must still match an in-repo derived pubkey.
-                if actual_pub_hex not in derived_pubkeys:
-                    violations.append(f"{fixture_dir_rel}: seal_pubkey.hex not derived from any in-repo seal_private_key.hex")
-
-        locked = json.loads(read_text(ls_path))
-        env = locked.get("environment_envelope") if isinstance(locked, dict) else None
-        ref = env.get("seal_pubkey_ref") if isinstance(env, dict) else None
-        if not isinstance(ref, dict):
-            violations.append(f"{fixture_dir_rel}: LockedSpec.environment_envelope.seal_pubkey_ref missing/invalid")
-            continue
-
-        expected_storage_ref = f"{fixture_dir_rel}/seal_pubkey.hex"
-        if ref.get("storage_ref") != expected_storage_ref:
-            violations.append(f"{fixture_dir_rel}: seal_pubkey_ref.storage_ref must be {expected_storage_ref}")
-
-        declared_hash = str(ref.get("hash") or "").lower()
-        computed_hash = hashlib.sha256(pub_path.read_bytes()).hexdigest().lower()
-        if declared_hash != computed_hash:
-            violations.append(f"{fixture_dir_rel}: seal_pubkey_ref.hash mismatch")
-
-    violations = sorted(set(violations))
-    if violations:
-        details = {
-            "checked": len(case_ids),
-            "violations_total": len(violations),
-            "violations_sample": violations[:12],
-        }
-        return InvariantResult(
-            "CS-SEAL-KEYPAIR-001",
-            "FAIL",
-            [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal/cases.json"],
-            "Run `python -m tools.belgi fixtures fix-all --repo . --create-missing-private-keys`, then rerun the sweep.",
-            details,
-        )
-
-    return InvariantResult(
-        "CS-SEAL-KEYPAIR-001",
-        "PASS",
-        [CONSISTENCY_SPEC_DOC, "policy/fixtures/public/seal/cases.json"],
-        "",
+        {"checked_paths": list(_FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS)},
     )
 
 
@@ -4251,12 +3598,6 @@ def check_cs_sweep_002(root: Path) -> InvariantResult:
 def _remediation_for_message(msg: str) -> str:
     """Map failure message to human-readable remediation hint."""
     m = (msg or "").lower()
-    if "fixtures should declare" in m or ("fixtures" in m and "sha-256" in m) or "hash=" in m:
-        return (
-            "CS-EV-006 bootstrap: update fixture expected hash to the printed 'fixtures should declare' value "
-            "(or run `python -m tools.sweep consistency --repo . --fix-fixtures`) and add/update the "
-            "EvidenceManifest.artifacts[] entry for policy.consistency_sweep."
-        )
     if "run_id" in m and ("missing" in m or "empty" in m):
         return "Ensure all required artifacts include non-empty run_id; regenerate bundle."
     if "schema" in m and ("invalid" in m or "validation" in m):
@@ -4302,300 +3643,7 @@ def _write_consistency_summary_md(
                 ex = ", ".join(paths[:5])
                 lines.append(f"- details: drift_files={counts.get('drift_files')} examples={ex if ex else '<none>'}")
 
-            if r.invariant_id == "CS-EV-006" and isinstance(r.details, dict):
-                vios = r.details.get("violations") if isinstance(r.details.get("violations"), list) else []
-                case_ids = [v.get("case_id") for v in vios if isinstance(v, dict) and isinstance(v.get("case_id"), str)]
-                case_ids = sorted(set(case_ids))
-                ex = ", ".join(case_ids[:5])
-                lines.append(f"- details: violations={len(vios)} examples={ex if ex else '<none>'}")
-
     _atomic_write_text(path, "\n".join(lines) + "\n")
-
-
-def _run_at(repo_root: Path, cmd: list[str]) -> tuple[int, str, str]:
-    env = dict(os.environ)
-    env.setdefault("LANG", "C")
-    env.setdefault("LC_ALL", "C")
-    proc = subprocess.run(cmd, cwd=str(repo_root), env=env, stdin=subprocess.DEVNULL, text=True, capture_output=True)
-    return proc.returncode, proc.stdout, proc.stderr
-
-
-def _fixture_dir_from_repo_rel_written_file(repo_rel_file: str) -> str | None:
-    """Map a written fixture file path to its fixture case directory.
-
-    Deterministic policy: if the written file is under policy/fixtures/, the fixture dir is its parent directory.
-    """
-
-    rel = _validate_repo_rel(repo_rel_file)
-    if not rel.startswith("policy/fixtures/"):
-        return None
-    if "/" not in rel:
-        return None
-    return rel.rsplit("/", 1)[0]
-
-
-def _seal_payload_paths_in_fixture_dir(repo_root: Path, fixture_dir_rel: str) -> list[str]:
-    fixture_dir_rel = _validate_repo_rel(fixture_dir_rel)
-    fixture_dir = _resolve_repo_path(repo_root, fixture_dir_rel, must_exist=True, must_be_file=False)
-    if not fixture_dir.is_dir():
-        raise _UserInputError(f"fixture dir is not a directory: {fixture_dir_rel}")
-
-    present: list[str] = []
-    for name in _SEAL_PAYLOAD_FILENAMES:
-        p = fixture_dir / name
-        if p.exists() and p.is_file():
-            present.append((Path(fixture_dir_rel) / name).as_posix())
-    present.sort()
-    return present
-
-
-def _is_seal_related_fixture_dir(repo_root: Path, fixture_dir_rel: str) -> bool:
-    fixture_dir_rel = _validate_repo_rel(fixture_dir_rel)
-    if not fixture_dir_rel.startswith("policy/fixtures/"):
-        return False
-    if ("/gate_s/" not in fixture_dir_rel) and ("/seal/" not in fixture_dir_rel):
-        return False
-    payloads = _seal_payload_paths_in_fixture_dir(repo_root, fixture_dir_rel)
-    return len(payloads) > 0
-
-
-def _pick_primary_seal_payload(repo_root: Path, fixture_dir_rel: str) -> str:
-    payloads = _seal_payload_paths_in_fixture_dir(repo_root, fixture_dir_rel)
-    preferred = [
-        (Path(fixture_dir_rel) / "SealManifest.json").as_posix(),
-        (Path(fixture_dir_rel) / "SealManifest.signed.json").as_posix(),
-        (Path(fixture_dir_rel) / "SealManifest.out.json").as_posix(),
-    ]
-    for p in preferred:
-        if p in payloads:
-            return p
-    raise _UserInputError(f"seal-related fixture dir missing known payload files: {fixture_dir_rel}")
-
-
-def _load_cases_by_id(repo_root: Path, cases_rel: str) -> dict[str, dict[str, object]]:
-    cases_path = _resolve_repo_path(repo_root, cases_rel, must_exist=True, must_be_file=True)
-    doc = load_json(cases_path)
-    cases = doc.get("cases") if isinstance(doc, dict) else None
-    if not isinstance(cases, list):
-        raise _UserInputError(f"Invalid cases.json shape at {cases_rel}")
-    out: dict[str, dict[str, object]] = {}
-    for c in cases:
-        if not isinstance(c, dict):
-            continue
-        case_id = str(c.get("case_id") or "").strip()
-        if not case_id:
-            continue
-        out[case_id] = dict(c)
-    return out
-
-
-def _build_seal_bundle_cmd_for_fixture_dir(repo_root: Path, fixture_dir_rel: str, out_rel: str) -> list[str]:
-    fixture_dir_rel = _validate_repo_rel(fixture_dir_rel)
-    out_rel = _validate_repo_rel(out_rel)
-
-    # Seal producer fixtures use cases.json params (final_commit_sha, sealed_at, signer) and optional signature file.
-    if "/policy/fixtures/public/seal/" in f"/{fixture_dir_rel}":
-        cases = _load_cases_by_id(repo_root, "policy/fixtures/public/seal/cases.json")
-        case_id = Path(fixture_dir_rel).name
-        entry = cases.get(case_id)
-        if entry is None:
-            raise _UserInputError(f"Unknown seal fixture case_id '{case_id}' (missing in seal/cases.json)")
-        paths = entry.get("paths")
-        if not isinstance(paths, dict):
-            raise _UserInputError(f"Invalid seal fixture entry paths for '{case_id}'")
-        params = entry.get("params")
-        if not isinstance(params, dict):
-            params = {}
-
-        final_commit_sha = str(params.get("final_commit_sha") or "0" * 40)
-        sealed_at = str(params.get("sealed_at") or "2000-01-01T00:30:00Z")
-        signer = str(params.get("signer") or "human:fixture")
-
-        cmd = [
-            sys.executable,
-            "-m",
-            "chain.seal_bundle",
-            "--repo",
-            ".",
-            "--locked-spec",
-            str(paths.get("locked_spec")),
-            "--gate-q-verdict",
-            str(paths.get("gate_q_verdict")),
-            "--gate-r-verdict",
-            str(paths.get("gate_r_verdict")),
-            "--evidence-manifest",
-            str(paths.get("evidence_manifest")),
-            "--final-commit-sha",
-            final_commit_sha,
-            "--sealed-at",
-            sealed_at,
-            "--signer",
-            signer,
-            "--out",
-            out_rel,
-        ]
-        sig_path = paths.get("seal_signature_b64")
-        if isinstance(sig_path, str) and sig_path.strip():
-            cmd.extend(["--seal-signature-file", sig_path.strip()])
-        return cmd
-
-    # Gate S fixtures (and other seal-related dirs) use standard in-dir inputs.
-    fixture_dir = _resolve_repo_path(repo_root, fixture_dir_rel, must_exist=True, must_be_file=False)
-    if not fixture_dir.is_dir():
-        raise _UserInputError(f"fixture dir is not a directory: {fixture_dir_rel}")
-
-    locked_spec = (fixture_dir / "LockedSpec.json").relative_to(repo_root).as_posix()
-    gate_q_verdict = (fixture_dir / "GateVerdict.Q.json").relative_to(repo_root).as_posix()
-    gate_r_verdict = (fixture_dir / "GateVerdict.R.json").relative_to(repo_root).as_posix()
-    evidence_manifest = (fixture_dir / "EvidenceManifest.json").relative_to(repo_root).as_posix()
-    sig_file = fixture_dir / "seal_signature.b64"
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "chain.seal_bundle",
-        "--repo",
-        ".",
-        "--locked-spec",
-        locked_spec,
-        "--gate-q-verdict",
-        gate_q_verdict,
-        "--gate-r-verdict",
-        gate_r_verdict,
-        "--evidence-manifest",
-        evidence_manifest,
-        "--final-commit-sha",
-        "0" * 40,
-        "--sealed-at",
-        "2000-01-01T00:30:00Z",
-        "--signer",
-        "human:fixture",
-        "--out",
-        out_rel,
-    ]
-    if sig_file.exists() and sig_file.is_file():
-        cmd.extend(["--seal-signature-file", sig_file.relative_to(repo_root).as_posix()])
-    return cmd
-
-
-def _build_gate_s_verify_cmd_for_fixture_dir(
-    repo_root: Path,
-    fixture_dir_rel: str,
-    seal_manifest_rel: str,
-    out_rel: str,
-) -> list[str]:
-    fixture_dir = _resolve_repo_path(repo_root, fixture_dir_rel, must_exist=True, must_be_file=False)
-    if not fixture_dir.is_dir():
-        raise _UserInputError(f"fixture dir is not a directory: {fixture_dir_rel}")
-
-    locked_spec = (fixture_dir / "LockedSpec.json").relative_to(repo_root).as_posix()
-    evidence_manifest = (fixture_dir / "EvidenceManifest.json").relative_to(repo_root).as_posix()
-
-    return [
-        sys.executable,
-        "-m",
-        "chain.gate_s_verify",
-        "--repo",
-        ".",
-        "--locked-spec",
-        locked_spec,
-        "--seal-manifest",
-        _validate_repo_rel(seal_manifest_rel),
-        "--evidence-manifest",
-        evidence_manifest,
-        "--out",
-        _validate_repo_rel(out_rel),
-    ]
-
-
-def _expected_gate_s_rc_for_fixture_dir(repo_root: Path, fixture_dir_rel: str) -> int | None:
-    fixture_dir_rel = _validate_repo_rel(fixture_dir_rel)
-    if "/policy/fixtures/public/gate_s/" not in f"/{fixture_dir_rel}":
-        return None
-    cases = _load_cases_by_id(repo_root, "policy/fixtures/public/gate_s/cases.json")
-    case_id = Path(fixture_dir_rel).name
-    entry = cases.get(case_id)
-    if entry is None:
-        raise _UserInputError(f"Unknown gate_s fixture case_id '{case_id}' (missing in gate_s/cases.json)")
-    return int(entry.get("expected_exit_code", 2))
-
-
-def _regen_and_verify_seal_related_fixtures(
-    *,
-    repo_root: Path,
-    fixture_dirs_rel: Sequence[str],
-    regen_seals: bool,
-) -> int:
-    """Regenerate SealManifests for touched seal-related fixture dirs (and verify via Gate S).
-
-    Fail-closed behavior:
-    - If regen_seals is False: Gate S precheck; on mismatch, emit deterministic remediation and return 2.
-    - If regen_seals is True: seal_bundle outputs in-place (only known payload files), then Gate S verify; return 2 on mismatch.
-    """
-
-    dirs = sorted(set(_validate_repo_rel(d) for d in fixture_dirs_rel))
-    seal_dirs = [d for d in dirs if _is_seal_related_fixture_dir(repo_root, d)]
-    if not seal_dirs:
-        return 0
-
-    verify_out_root = _resolve_repo_path(repo_root, "temp/regen_seals_verify", must_exist=False)
-    verify_out_root.mkdir(parents=True, exist_ok=True)
-
-    if not regen_seals:
-        drifted: list[str] = []
-        for d in seal_dirs:
-            seal_manifest_rel = _pick_primary_seal_payload(repo_root, d)
-            out_rel = (verify_out_root / f"S__precheck__{Path(d).name}.json").relative_to(repo_root).as_posix()
-            cmd = _build_gate_s_verify_cmd_for_fixture_dir(repo_root, d, seal_manifest_rel, out_rel)
-            rc, _, _ = _run_at(repo_root, cmd)
-            expected_rc = _expected_gate_s_rc_for_fixture_dir(repo_root, d)
-            if expected_rc is None:
-                expected_rc = 0
-            if rc != expected_rc:
-                drifted.append(d)
-        if drifted:
-            drifted.sort()
-            joined = ", ".join(drifted)
-            print(f"REGEN-SEALS NO-GO: drifted_fixture_dirs: {joined}", file=sys.stderr)
-            print(_REGEN_SEALS_REMEDIATION_TEXT, file=sys.stderr)
-            return 2
-        return 0
-
-    for d in seal_dirs:
-        payloads = _seal_payload_paths_in_fixture_dir(repo_root, d)
-        if len(payloads) == 0:
-            raise _UserInputError(f"seal-related fixture dir missing known payload files: {d}")
-
-        for out_rel in payloads:
-            cmd = _build_seal_bundle_cmd_for_fixture_dir(repo_root, d, out_rel)
-            rc, stdout, stderr = _run_at(repo_root, cmd)
-            if rc != 0:
-                if stdout:
-                    print(stdout, file=sys.stderr)
-                if stderr:
-                    print(stderr, file=sys.stderr)
-                print(f"REGEN-SEALS NO-GO: seal_bundle failed for {d} (rc={rc})", file=sys.stderr)
-                return 2
-
-        seal_manifest_rel = _pick_primary_seal_payload(repo_root, d)
-        out_rel = (verify_out_root / f"S__postregen__{Path(d).name}.json").relative_to(repo_root).as_posix()
-        verify_cmd = _build_gate_s_verify_cmd_for_fixture_dir(repo_root, d, seal_manifest_rel, out_rel)
-        rc, stdout, stderr = _run_at(repo_root, verify_cmd)
-        expected_rc = _expected_gate_s_rc_for_fixture_dir(repo_root, d)
-        if expected_rc is None:
-            expected_rc = 0
-        if rc != expected_rc:
-            if stdout:
-                print(stdout, file=sys.stderr)
-            if stderr:
-                print(stderr, file=sys.stderr)
-            print(
-                f"REGEN-SEALS NO-GO: gate_s_verify mismatch for {d} (rc={rc} expected={expected_rc})",
-                file=sys.stderr,
-            )
-            return 2
-
-    return 0
 
 
 def _consistency_sweep_main(argv: list[str] | None = None) -> int:
@@ -4614,21 +3662,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         default=[],
         help="Additional repo-relative input files to include (canonical core inputs are always included)",
     )
-    ap.add_argument(
-        "--fix-fixtures",
-        action="store_true",
-        help="Deterministically patch governed Gate R fixture EvidenceManifest.json files for CS-EV-006 (default: no changes)",
-    )
-    ap.add_argument(
-        "--regen-seals",
-        action="store_true",
-        help="When used with --fix-fixtures, regenerate SealManifests for touched seal-related fixtures (policy/fixtures/**/(gate_s|seal)/**) and verify via Gate S (default: no regen)",
-    )
     args = ap.parse_args(argv)
-
-    if bool(args.regen_seals) and not bool(args.fix_fixtures):
-        print("NO-GO: --regen-seals requires --fix-fixtures", file=sys.stderr)
-        raise SystemExit(2)
 
     # Deterministic contract: the consistency sweep artifact location is fixed and
     # is consumed as evidence by downstream verification. Fail closed if asked to
@@ -4703,10 +3737,8 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001": check_cs_verify_bundle_gateverdict_binding_001,
         # Orchestration invariants
         "CS-BYTE-001": check_cs_byte_001,
-        "CS-EV-006": check_cs_ev_006,
+        "CS-FIXTURE-ZERO-001": check_cs_fixture_zero_001,
         "CS-PROTOCOL-IDENTITY-001": check_cs_protocol_identity_001,
-        "CS-PACK-IDENTITY-001": check_cs_pack_identity_001,
-        "CS-SEAL-KEYPAIR-001": check_cs_seal_keypair_001,
         "CS-SWEEP-001": check_cs_sweep_001,
         "CS-SWEEP-002": check_cs_sweep_002,
         "CS-GV-001": check_cs_gv_001,
@@ -4733,13 +3765,8 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
                 print(f"  - {inv}", file=sys.stderr)
         return 2
 
-    # Evaluate all invariants except CS-EV-006 first. CS-EV-006 binds fixtures to the
-    # hash of this sweep's output artifact, so it must be evaluated against the
-    # would-be report hash via a deterministic fixed-point stabilization.
-    base_results: List[InvariantResult] = []
+    results: List[InvariantResult] = []
     for inv_id in spec_ids:
-        if inv_id == "CS-EV-006":
-            continue
         fn = registry[inv_id]
         try:
             res = fn(root)
@@ -4757,7 +3784,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        base_results.append(res)
+        results.append(res)
 
     finished = utc_now_rfc3339()
     out_path = _resolve_repo_path(root, args.out, must_exist=False)
@@ -4766,13 +3793,11 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     canon_inputs = _canonical_inputs(root)
     extra_inputs = [_validate_repo_rel(p) for p in (args.inputs or [])]
     all_inputs = sorted(set(canon_inputs + extra_inputs))
-    
+
     # Exclude the sweep output and summary from the inputs list.
     excluded = {"policy/consistency_sweep.json", "policy/consistency_sweep.summary.md"}
     filtered = [p for p in all_inputs if _validate_repo_rel(p) not in excluded]
-    ev006_overrides = _ev006_blob_overrides_for_normalization(root)
-    inputs = build_inputs(root, filtered, blob_overrides=ev006_overrides)
-
+    inputs = build_inputs(root, filtered)
 
     report_base = {
         "artifact_id": "policy.consistency_sweep",
@@ -4780,13 +3805,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         "sweep_started_at": started,
         "sweep_finished_at": finished,
         "tool": {"name": args.tool_name, "version": args.tool_version},
-        # Deterministic binding: use tree SHA for evaluated inputs, excluding sweep outputs and
-        # normalizing CS-EV-006 self-reference in fixture EvidenceManifests.
-        "repo_revision": _git_tree_sha_excluding(
-            root,
-            [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY],
-            blob_overrides=_ev006_blob_overrides_for_normalization(root),
-        ),
+        "repo_revision": _git_tree_sha_excluding(root, [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY]),
         "inputs": inputs,
     }
 
@@ -4820,38 +3839,7 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
         h = hashlib.sha256(b).hexdigest()
         return report, b, h, passed_count, failed_count, ordered
 
-    # CS-EV-006 is self-referential: fixtures declare the sweep artifact hash, and CS-EV-006
-    # checks those declarations. Compute the PASS-target artifact hash (i.e., the hash of the
-    # report where CS-EV-006 is PASS) and evaluate CS-EV-006 against that target.
-    cs_pass = InvariantResult("CS-EV-006", "PASS", ["policy/fixtures/public/gate_r/cases.json"], "")
-    _, _, fixture_target_hash, _, _, _ = _render_report(list(base_results) + [cs_pass])
-
-    cs_eval, modified = _eval_cs_ev_006_expected_hash(root, fixture_target_hash, fix_fixtures=bool(args.fix_fixtures))
-    if args.fix_fixtures and modified:
-        max_paths = 25
-        shown = modified[:max_paths]
-        suffix = "" if len(modified) <= max_paths else f" ... (+{len(modified) - max_paths} more)"
-        joined = ", ".join(shown)
-        print(f"FIX-FIXTURES modified_files: {joined}{suffix}", file=sys.stderr)
-
-    # If fix-fixtures touched any seal-related fixture dirs, optionally regenerate seals (scoped)
-    # or fail-closed with deterministic remediation if Gate S indicates drift.
-    touched_fixture_dirs: list[str] = []
-    if bool(args.fix_fixtures) and modified:
-        for p in modified:
-            d = _fixture_dir_from_repo_rel_written_file(p)
-            if d is not None:
-                touched_fixture_dirs.append(d)
-    if bool(args.fix_fixtures) and touched_fixture_dirs:
-        rc = _regen_and_verify_seal_related_fixtures(
-            repo_root=root,
-            fixture_dirs_rel=touched_fixture_dirs,
-            regen_seals=bool(args.regen_seals),
-        )
-        if rc != 0:
-            return rc
-
-    report_obj, _, report_hash, passed, failed, results = _render_report(list(base_results) + [cs_eval])
+    report_obj, _, report_hash, passed, failed, results = _render_report(results)
     _write_json(out_path, report_obj, canonical=True)
 
     # Write human-readable summary markdown for CI step summary
@@ -4860,63 +3848,15 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
 
     print(f"Wrote: {args.out}")
     print(f"SHA-256 (report): {report_hash}")
-    print(f"SHA-256 (fixtures should declare): {fixture_target_hash}")
     print(f"Summary: total={len(results)} passed={passed} failed={failed}")
 
-    failed_ids = [r.invariant_id for r in results if r.status == "FAIL"]
-    if failed_ids:
+    if failed > 0:
         primary = next((r for r in results if r.status == "FAIL"), None)
         if primary is not None:
             primary_msg = str(primary.remediation or "").replace("\n", " ").strip()
             print(f"PRIMARY_CAUSE: {primary.invariant_id}: {primary_msg}", file=sys.stderr)
 
-    if not args.fix_fixtures and failed_ids == ["CS-EV-006"]:
-        print(
-            "\nNote: CS-EV-006 is intentionally self-referential (fixtures pin the sweep artifact hash; the sweep also reports CS-EV-006). "
-            "Until fixtures are updated, the written report hash will differ from the PASS-target hash printed as 'fixtures should declare'.\n"
-            "Fix: run `python -m tools.sweep consistency --repo . --fix-fixtures` to deterministically patch governed fixtures and converge in one pass.",
-            file=sys.stderr,
-        )
-
-    print("\nEvidenceManifest.artifacts[] entry you must include (example):")
-    print(
-        json.dumps(
-            {
-                "kind": "policy_report",
-                "id": "policy.consistency_sweep",
-                "hash": fixture_target_hash,
-                "media_type": "application/json",
-                "storage_ref": CANONICAL_SWEEP_OUT,
-                "produced_by": "C1",
-            },
-            indent=2,
-        )
-    )
-
     return 1 if failed > 0 else 0
-
-
-# ----------------------------
-# Fixture sweeps (embedded)
-# ----------------------------
-
-
-def _run(cmd: list[str]) -> tuple[int, str, str]:
-    env = dict(os.environ)
-    env.setdefault("LANG", "C")
-    env.setdefault("LC_ALL", "C")
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env, stdin=subprocess.DEVNULL, text=True, capture_output=True)
-    return proc.returncode, proc.stdout, proc.stderr
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_text(path, text)
-
 
 def _write_json(path: Path, obj: object, *, canonical: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -4926,808 +3866,11 @@ def _write_json(path: Path, obj: object, *, canonical: bool = False) -> None:
         _atomic_write_json(path, obj)
 
 
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except Exception:
-        return False
-
-
-def _load_cases_expected(cases_path: Path) -> dict[str, dict[str, object]]:
-    if not cases_path.exists():
-        raise ValueError(f"Missing cases.json at {cases_path.as_posix()}")
-
-    doc = json.loads(cases_path.read_text(encoding="utf-8", errors="strict"))
-    cases = doc.get("cases")
-    if not isinstance(cases, list):
-        raise ValueError(f"Invalid cases.json (expected cases: list) at {cases_path.as_posix()}")
-
-    out: dict[str, dict[str, object]] = {}
-    for c in cases:
-        if not isinstance(c, dict):
-            raise ValueError(f"Invalid cases.json (case not object) at {cases_path.as_posix()}")
-        case_id = str(c.get("case_id") or "").strip()
-        if not case_id:
-            raise ValueError(f"Invalid cases.json (missing case_id) at {cases_path.as_posix()}")
-        if case_id in out:
-            raise ValueError(f"Duplicate case_id '{case_id}' in {cases_path.as_posix()}")
-        out[case_id] = dict(c)
-    return out
-
-
-def _list_fixture_dirs(fixtures_root: Path) -> list[Path]:
-    return sorted([p for p in fixtures_root.iterdir() if p.is_dir()], key=lambda p: p.name)
-
-
-def _validate_cases_warn_missing_paths(
-    *,
-    gate: str,
-    fixtures_root: Path,
-    cases_expected: dict[str, dict[str, object]],
-) -> tuple[list[str], list[str], dict[str, list[str]]]:
-    """Validate expectation contract.
-
-    Missing files referenced in case "paths" are warnings (non-fatal) so the
-    underlying gate/seal tool remains the mechanical-truth authority.
-    """
-
-    errors: list[str] = []
-    warnings: list[str] = []
-    missing_paths_by_fixture: dict[str, list[str]] = {}
-
-    fixture_dirs = _list_fixture_dirs(fixtures_root)
-    fixture_names = {p.name for p in fixture_dirs}
-    case_names = set(cases_expected.keys())
-
-    missing_in_cases = sorted(fixture_names - case_names)
-    extra_in_cases = sorted(case_names - fixture_names)
-    for name in missing_in_cases:
-        errors.append(f"{gate}: fixture directory missing from cases.json: {name}")
-    for name in extra_in_cases:
-        errors.append(f"{gate}: cases.json entry has no fixture directory: {name}")
-
-    for name in sorted(case_names):
-        entry = cases_expected[name]
-
-        exp_rc = entry.get("expected_exit_code")
-        if not isinstance(exp_rc, int):
-            errors.append(f"{gate}:{name}: expected_exit_code must be int")
-
-        allow_missing_paths_raw = entry.get("allow_missing_paths")
-        allow_missing_keys: set[str] = set()
-        if allow_missing_paths_raw is not None:
-            if not isinstance(allow_missing_paths_raw, list):
-                errors.append(f"{gate}:{name}: allow_missing_paths must be a list if present")
-            else:
-                for v in allow_missing_paths_raw:
-                    if not isinstance(v, str) or not v.strip():
-                        errors.append(f"{gate}:{name}: allow_missing_paths entries must be non-empty strings")
-                        continue
-                    allow_missing_keys.add(v.strip())
-
-        paths = entry.get("paths")
-        if paths is None:
-            continue
-        if not isinstance(paths, dict):
-            errors.append(f"{gate}:{name}: paths must be an object if present")
-            continue
-
-        if allow_missing_keys:
-            if isinstance(exp_rc, int) and exp_rc == 0:
-                errors.append(f"{gate}:{name}: allow_missing_paths not allowed when expected_exit_code is 0")
-            unknown = sorted(allow_missing_keys - set(paths.keys()))
-            for k in unknown:
-                errors.append(f"{gate}:{name}: allow_missing_paths contains unknown key: {k}")
-
-        fixdir = fixtures_root / name
-        for key, rel_str in sorted(paths.items(), key=lambda kv: str(kv[0])):
-            if not isinstance(rel_str, str) or not rel_str.strip():
-                errors.append(f"{gate}:{name}: paths.{key} must be a non-empty string")
-                continue
-
-            rel_path = Path(rel_str)
-            if rel_path.is_absolute():
-                errors.append(f"{gate}:{name}: paths.{key} must be repo-relative, got absolute")
-                continue
-
-            resolved = (REPO_ROOT / rel_path).resolve()
-
-            if not _is_relative_to(resolved, fixdir.resolve()):
-                errors.append(
-                    f"{gate}:{name}: paths.{key} must be under its fixture dir {fixdir.as_posix()}, got {rel_str}"
-                )
-                continue
-
-            if not resolved.exists():
-                if key in allow_missing_keys:
-                    missing_paths_by_fixture.setdefault(name, []).append(rel_str)
-                else:
-                    warnings.append(f"{gate}:{name}: paths.{key} missing on disk (allowed): {rel_str}")
-                    missing_paths_by_fixture.setdefault(name, []).append(rel_str)
-
-    return errors, warnings, missing_paths_by_fixture
-
-
-def _validate_cases_fail_closed_on_missing_paths(
-    *,
-    fixtures_root: Path,
-    cases_expected: dict[str, dict[str, object]],
-) -> list[str]:
-    """Gate S verifier fixtures are strict: referenced paths MUST exist."""
-
-    errors: list[str] = []
-
-    fixture_dirs = _list_fixture_dirs(fixtures_root)
-    fixture_names = {p.name for p in fixture_dirs}
-    case_names = set(cases_expected.keys())
-
-    missing_in_cases = sorted(fixture_names - case_names)
-    extra_in_cases = sorted(case_names - fixture_names)
-    for name in missing_in_cases:
-        errors.append(f"S: fixture directory missing from cases.json: {name}")
-    for name in extra_in_cases:
-        errors.append(f"S: cases.json entry has no fixture directory: {name}")
-
-    for name in sorted(case_names):
-        entry = cases_expected[name]
-
-        exp_rc = entry.get("expected_exit_code")
-        if not isinstance(exp_rc, int):
-            errors.append(f"S:{name}: expected_exit_code must be int")
-
-        paths = entry.get("paths")
-        if not isinstance(paths, dict):
-            errors.append(f"S:{name}: paths must be an object")
-            continue
-
-        required_keys = {"locked_spec", "seal_manifest", "evidence_manifest"}
-        missing_keys = sorted([k for k in required_keys if k not in paths])
-        if missing_keys:
-            errors.append(f"S:{name}: missing required paths keys: {missing_keys}")
-
-        fixdir = fixtures_root / name
-        for key, rel_str in sorted(paths.items(), key=lambda kv: str(kv[0])):
-            if not isinstance(rel_str, str) or not rel_str.strip():
-                errors.append(f"S:{name}: paths.{key} must be a non-empty string")
-                continue
-
-            rel_path = Path(rel_str)
-            if rel_path.is_absolute():
-                errors.append(f"S:{name}: paths.{key} must be repo-relative, got absolute")
-                continue
-
-            resolved = (REPO_ROOT / rel_path).resolve()
-            if not _is_relative_to(resolved, fixdir.resolve()):
-                errors.append(
-                    f"S:{name}: paths.{key} must be under its fixture dir {fixdir.as_posix()}, got {rel_str}"
-                )
-                continue
-
-            if not resolved.exists():
-                errors.append(f"S:{name}: paths.{key} missing on disk: {rel_str}")
-
-    return errors
-
-
-def _load_json_if_exists(path: Path) -> object | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8", errors="strict"))
-    except Exception:
-        return None
-
-
-def _primary_from_gate_q_verdict(verdict_path: Path) -> tuple[str | None, str | None]:
-    obj = _load_json_if_exists(verdict_path)
-    if not isinstance(obj, dict):
-        return (None, None)
-
-    fc = obj.get("failure_category")
-    failure_category = fc if isinstance(fc, str) and fc.strip() else None
-
-    verdict = obj.get("verdict")
-    if isinstance(verdict, str) and verdict.strip().upper() == "GO":
-        return (None, None)
-
-    failures = obj.get("failures")
-    if not isinstance(failures, list) or not failures:
-        return (None, failure_category)
-    first = failures[0]
-    if not isinstance(first, dict):
-        return (None, failure_category)
-    rid = first.get("rule_id")
-    primary = rid if isinstance(rid, str) and rid.strip() else None
-    return (primary, failure_category)
-
-
-def _primary_from_gate_r_report(report_path: Path) -> tuple[str | None, str | None]:
-    obj = _load_json_if_exists(report_path)
-    if not isinstance(obj, dict):
-        return (None, None)
-
-    results = obj.get("results")
-    if not isinstance(results, list):
-        return (None, None)
-
-    for r in results:
-        if not isinstance(r, dict):
-            continue
-        status = r.get("status")
-        if not (isinstance(status, str) and status.strip().upper() == "FAIL"):
-            continue
-        cid = r.get("check_id")
-        primary = cid if isinstance(cid, str) and cid.strip() else None
-        return (primary, None)
-    return (None, None)
-
-
-def _fixtures_qr_main(argv: list[str] | None = None) -> int:
-    """Sweep Gate Q/R fixtures (policy/fixtures/public/gate_{q,r})."""
-
-    parser = argparse.ArgumentParser(description="Run Gate Q/R verifiers across fixtures and record results.")
-    parser.add_argument(
-        "--repo",
-        default=str(REPO_ROOT),
-        help="Compatibility flag (must resolve to this repo root).",
-    )
-    parser.add_argument(
-        "--fixtures-root",
-        default="policy/fixtures/public",
-        help=(
-            "Repo-relative path to a fixtures root that contains gate_q/ and/or gate_r/. "
-            "Defaults to policy/fixtures/public."
-        ),
-    )
-    parser.add_argument(
-        "--out-dir",
-        default="temp/fixture_sweep",
-        help="Directory to write sweep outputs (report + per-case logs). Defaults to temp/fixture_sweep/.",
-    )
-    parser.add_argument(
-        "--gate",
-        choices=["Q", "R", "QR"],
-        default="QR",
-        help="Which gate fixtures to sweep (default: QR).",
-    )
-    args = parser.parse_args(argv)
-
-    repo_arg = Path(str(args.repo)).resolve()
-    if repo_arg != REPO_ROOT:
-        raise _UserInputError(f"--repo must resolve to repo root {REPO_ROOT}, got {repo_arg}")
-
-    fixtures_root_rel = _validate_repo_rel(str(args.fixtures_root))
-    fixtures_root = _resolve_repo_path(REPO_ROOT, fixtures_root_rel, must_exist=True, must_be_file=False)
-    if not fixtures_root.is_dir():
-        print("ERROR: fixtures-root must be a directory")
-        return 3
-
-    want_q = str(args.gate).upper() in ("Q", "QR")
-    want_r = str(args.gate).upper() in ("R", "QR")
-
-    fix_q = fixtures_root / "gate_q"
-    fix_r = fixtures_root / "gate_r"
-
-    out_dir_rel = _validate_repo_rel(str(args.out_dir))
-    out_dir = _resolve_repo_path(REPO_ROOT, out_dir_rel, must_exist=False)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir = out_dir / "logs"
-    verifier_out_dir = out_dir / "verifier_out"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    verifier_out_dir.mkdir(parents=True, exist_ok=True)
-
-    validation_errors: list[str] = []
-    validation_warnings: list[str] = []
-    q_missing_paths: dict[str, list[str]] = {}
-    r_missing_paths: dict[str, list[str]] = {}
-
-    try:
-        q_cases_expected = _load_cases_expected(fix_q / "cases.json") if want_q else {}
-        r_cases_expected = _load_cases_expected(fix_r / "cases.json") if want_r else {}
-    except Exception as e:
-        print(f"ERROR: Failed to load cases.json: {e}")
-        return 3
-
-    if want_q:
-        q_errs, q_warns, q_missing_paths = _validate_cases_warn_missing_paths(
-            gate="Q", fixtures_root=fix_q, cases_expected=q_cases_expected
-        )
-        validation_errors.extend(q_errs)
-        validation_warnings.extend(q_warns)
-    if want_r:
-        r_errs, r_warns, r_missing_paths = _validate_cases_warn_missing_paths(
-            gate="R", fixtures_root=fix_r, cases_expected=r_cases_expected
-        )
-        validation_errors.extend(r_errs)
-        validation_warnings.extend(r_warns)
-
-    if validation_errors:
-        print("ERROR: Fixture expectation contract violated (fail-closed).")
-        for msg in validation_errors:
-            print(f"- {msg}")
-        return 2
-
-    if validation_warnings:
-        print("WARN: Fixture physical reality notes (non-fatal).")
-        for msg in validation_warnings:
-            print(f"- {msg}")
-
-    results: list[dict[str, object]] = []
-
-    if want_q:
-        for fixture_dir in _list_fixture_dirs(fix_q):
-            name = fixture_dir.name
-            entry = q_cases_expected.get(name)
-            if not isinstance(entry, dict):
-                continue
-            expected_rc = entry.get("expected_exit_code")
-            expected_primary = entry.get("expected_primary")
-            paths = entry.get("paths")
-            if not isinstance(expected_rc, int) or not isinstance(paths, dict):
-                continue
-
-            out_path = verifier_out_dir / f"Q__{name}.json"
-            out_path_rel = out_path.relative_to(REPO_ROOT).as_posix()
-            cmd = [
-                sys.executable,
-                "-m",
-                "chain.gate_q_verify",
-                "--repo",
-                ".",
-                "--intent-spec",
-                str(paths.get("intent_spec")),
-                "--locked-spec",
-                str(paths.get("locked_spec")),
-                "--evidence-manifest",
-                str(paths.get("evidence_manifest")),
-                "--out",
-                out_path_rel,
-            ]
-
-            rc, stdout, stderr = _run(cmd)
-            primary, failure_category = _primary_from_gate_q_verdict(out_path)
-
-            stdout_path = logs_dir / f"Q__{name}.stdout.txt"
-            stderr_path = logs_dir / f"Q__{name}.stderr.txt"
-            _write_text(stdout_path, stdout)
-            _write_text(stderr_path, stderr)
-
-            results.append(
-                {
-                    "gate": "Q",
-                    "fixture": name,
-                    "expected_exit_code": expected_rc,
-                    "expected_primary": expected_primary,
-                    "actual_exit_code": rc,
-                    "primary": primary,
-                    "failure_category": failure_category,
-                    "physical_missing_paths": sorted(q_missing_paths.get(name, [])),
-                    "cmd": cmd,
-                    "verifier_out_path": str(out_path.as_posix()),
-                    "stdout_path": str(stdout_path.as_posix()),
-                    "stderr_path": str(stderr_path.as_posix()),
-                    "stdout_sha256": _sha256_text(stdout),
-                    "stderr_sha256": _sha256_text(stderr),
-                }
-            )
-
-    if want_r:
-        for fixture_dir in _list_fixture_dirs(fix_r):
-            name = fixture_dir.name
-            entry = r_cases_expected.get(name)
-            if not isinstance(entry, dict):
-                continue
-            expected_rc = entry.get("expected_exit_code")
-            expected_primary = entry.get("expected_primary")
-            paths = entry.get("paths")
-            if not isinstance(expected_rc, int) or not isinstance(paths, dict):
-                continue
-
-            out_path = verifier_out_dir / f"R__{name}.json"
-            gate_verdict_out = verifier_out_dir / f"R__{name}.GateVerdict.json"
-            r_snapshot_out = verifier_out_dir / f"R__{name}.EvidenceManifest.r_snapshot.json"
-            out_path_rel = out_path.relative_to(REPO_ROOT).as_posix()
-            gate_verdict_out_rel = gate_verdict_out.relative_to(REPO_ROOT).as_posix()
-            r_snapshot_out_rel = r_snapshot_out.relative_to(REPO_ROOT).as_posix()
-
-            fixture_error: str | None = None
-            evaluated_revision: str | None = None
-            locked_spec_rel = str(paths.get("locked_spec") or "").strip()
-            try:
-                if not locked_spec_rel:
-                    fixture_error = "paths.locked_spec missing/empty"
-                else:
-                    locked_spec_path = repo_path(REPO_ROOT, locked_spec_rel)
-                    locked_spec_doc = load_json(locked_spec_path)
-                    if not isinstance(locked_spec_doc, dict):
-                        fixture_error = "LockedSpec must be a JSON object"
-                    else:
-                        upstream_state = locked_spec_doc.get("upstream_state")
-                        if not isinstance(upstream_state, dict):
-                            fixture_error = "LockedSpec.upstream_state missing/invalid"
-                        else:
-                            base_sha = upstream_state.get("commit_sha")
-                            if not isinstance(base_sha, str):
-                                fixture_error = "LockedSpec.upstream_state.commit_sha missing/invalid"
-                            else:
-                                base_sha = base_sha.strip()
-                                if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
-                                    fixture_error = f"LockedSpec.upstream_state.commit_sha must be 40 lowercase hex, got {base_sha!r}"
-                                elif base_sha == "0" * 40:
-                                    fixture_error = "LockedSpec.upstream_state.commit_sha cannot be all-zero"
-                                else:
-                                    evaluated_revision = base_sha
-            except Exception as e:
-                fixture_error = f"Failed to load/parse LockedSpec for evaluated_revision ({locked_spec_rel}): {e}"
-
-            cmd: list[str] = []
-            if fixture_error is None and evaluated_revision is not None:
-                cmd = [
-                    sys.executable,
-                    "-m",
-                    "chain.gate_r_verify",
-                    "--repo",
-                    ".",
-                    "--locked-spec",
-                    str(paths.get("locked_spec")),
-                    "--gate-q-verdict",
-                    str(paths.get("gate_q_verdict")),
-                    "--evidence-manifest",
-                    str(paths.get("evidence_manifest")),
-                    "--r-snapshot-manifest-out",
-                    r_snapshot_out_rel,
-                    "--evaluated-revision",
-                    evaluated_revision,
-                    "--out",
-                    out_path_rel,
-                    "--gate-verdict-out",
-                    gate_verdict_out_rel,
-                ]
-
-                rc, stdout, stderr = _run(cmd)
-                primary, failure_category = _primary_from_gate_r_report(out_path)
-            else:
-                rc, stdout, stderr = 3, "", f"FIXTURE INVALID: {fixture_error}\n"
-                primary, failure_category = (None, None)
-
-            stdout_path = logs_dir / f"R__{name}.stdout.txt"
-            stderr_path = logs_dir / f"R__{name}.stderr.txt"
-            _write_text(stdout_path, stdout)
-            _write_text(stderr_path, stderr)
-
-            results.append(
-                {
-                    "gate": "R",
-                    "fixture": name,
-                    "expected_exit_code": expected_rc,
-                    "expected_primary": expected_primary,
-                    "actual_exit_code": rc,
-                    "primary": primary,
-                    "failure_category": failure_category,
-                    "physical_missing_paths": sorted(r_missing_paths.get(name, [])),
-                    "cmd": cmd,
-                    "verifier_out_path": str(out_path.as_posix()),
-                    "stdout_path": str(stdout_path.as_posix()),
-                    "stderr_path": str(stderr_path.as_posix()),
-                    "stdout_sha256": _sha256_text(stdout),
-                    "stderr_sha256": _sha256_text(stderr),
-                }
-            )
-
-    unexpected_rc = [r for r in results if int(r.get("actual_exit_code", -999)) != int(r.get("expected_exit_code", -998))]
-    unexpected_primary = [
-        r
-        for r in results
-        if (r.get("expected_primary") is not None)
-        and (r.get("expected_primary") != r.get("primary"))
-        and not (int(r.get("expected_exit_code", -1)) == 0 and r.get("expected_primary") is None)
-    ]
-
-    print(
-        f"Ran {len(results)} fixtures ("
-        f"{len([r for r in results if r.get('gate')=='Q'])} Q, {len([r for r in results if r.get('gate')=='R'])} R)."
-    )
-    if unexpected_rc or unexpected_primary:
-        print(f"UNEXPECTED: rc={len(unexpected_rc)}, primary={len(unexpected_primary)}")
-        for r in unexpected_rc:
-            print(
-                f"- Gate {r.get('gate')} {r.get('fixture')}: expected rc {r.get('expected_exit_code')}, got {r.get('actual_exit_code')}"
-            )
-        for r in unexpected_primary:
-            print(
-                f"- Gate {r.get('gate')} {r.get('fixture')}: expected primary {r.get('expected_primary')}, got {r.get('primary')}"
-            )
-    else:
-        print("All fixtures matched expected rc and expected_primary (when provided).")
-
-    report = {
-        "generated_at": EVALUATED_AT,
-        "repo_root": str(REPO_ROOT),
-        "out_dir": str(out_dir),
-        "gate": str(args.gate).upper(),
-        "validation_warnings": validation_warnings,
-        "results": results,
-    }
-    _write_json(out_dir / "fixture_sweep_report.json", report)
-
-    return 1 if (unexpected_rc or unexpected_primary) else 0
-
-
-def _fixtures_seal_main(argv: list[str] | None = None) -> int:
-    """Sweep Seal producer fixtures (policy/fixtures/public/seal) through chain/seal_bundle.py."""
-
-    default_fixtures_root = "policy/fixtures/public/seal"
-    ap = argparse.ArgumentParser(description="Run Seal producer fixtures sweep")
-    ap.add_argument(
-        "--repo",
-        default=str(REPO_ROOT),
-        help="Compatibility flag (must resolve to this repo root).",
-    )
-    ap.add_argument("--fixtures-root", default=default_fixtures_root)
-    ap.add_argument("--out-dir", default="temp/seal_fixture_sweep")
-    args = ap.parse_args(argv)
-
-    repo_arg = Path(str(args.repo)).resolve()
-    if repo_arg != REPO_ROOT:
-        raise _UserInputError(f"--repo must resolve to repo root {REPO_ROOT}, got {repo_arg}")
-
-    fixtures_root_rel = _validate_repo_rel(str(args.fixtures_root))
-    fixtures_root = _resolve_repo_path(REPO_ROOT, fixtures_root_rel, must_exist=True, must_be_file=False)
-    if not fixtures_root.is_dir():
-        print("ERROR: fixtures-root must be a directory", file=sys.stderr)
-        return 3
-
-    out_dir_rel = _validate_repo_rel(str(args.out_dir))
-    out_dir = _resolve_repo_path(REPO_ROOT, out_dir_rel, must_exist=False)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    manifests_out_dir = out_dir / "manifests"
-    manifests_out_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        cases_expected = _load_cases_expected(fixtures_root / "cases.json")
-    except Exception as e:
-        print(f"ERROR: Failed to load cases.json: {e}", file=sys.stderr)
-        return 3
-
-    errors, warnings, missing_by_fixture = _validate_cases_warn_missing_paths(
-        gate="SEAL", fixtures_root=fixtures_root, cases_expected=cases_expected
-    )
-    for w in warnings:
-        print(f"WARNING: {w}", file=sys.stderr)
-
-    if errors:
-        for e in errors:
-            print(f"ERROR: {e}", file=sys.stderr)
-        return 2
-
-    results: list[dict[str, object]] = []
-    all_ok = True
-
-    for fixture_dir in _list_fixture_dirs(fixtures_root):
-        name = fixture_dir.name
-        entry = cases_expected[name]
-        expected_rc = int(entry["expected_exit_code"])
-
-        paths = entry.get("paths")
-        assert isinstance(paths, dict)
-
-        params = entry.get("params")
-        if not isinstance(params, dict):
-            params = {}
-
-        final_commit_sha = str(params.get("final_commit_sha") or "0" * 40)
-        sealed_at = str(params.get("sealed_at") or "2000-01-01T00:30:00Z")
-        signer = str(params.get("signer") or "human:fixture")
-
-        out_manifest = paths.get("out_manifest")
-        if isinstance(out_manifest, str) and out_manifest.strip():
-            out_path = out_manifest.strip()
-        else:
-            out_path = (manifests_out_dir / f"SealManifest__{name}.json").relative_to(REPO_ROOT).as_posix()
-
-        cmd = [
-            sys.executable,
-            "-m",
-            "chain.seal_bundle",
-            "--repo",
-            ".",
-            "--locked-spec",
-            str(paths["locked_spec"]),
-            "--gate-q-verdict",
-            str(paths["gate_q_verdict"]),
-            "--gate-r-verdict",
-            str(paths["gate_r_verdict"]),
-            "--evidence-manifest",
-            str(paths["evidence_manifest"]),
-            "--final-commit-sha",
-            final_commit_sha,
-            "--sealed-at",
-            sealed_at,
-            "--signer",
-            signer,
-            "--out",
-            out_path,
-        ]
-
-        sig_path = paths.get("seal_signature_b64")
-        if isinstance(sig_path, str) and sig_path.strip():
-            cmd.extend(["--seal-signature-file", sig_path.strip()])
-
-        rc, stdout, stderr = _run(cmd)
-        ok = rc == expected_rc
-        all_ok = all_ok and ok
-
-        stdout_path = out_dir / f"{name}.stdout.txt"
-        stderr_path = out_dir / f"{name}.stderr.txt"
-        _write_text(stdout_path, stdout)
-        _write_text(stderr_path, stderr)
-
-        results.append(
-            {
-                "fixture": name,
-                "expected_exit_code": expected_rc,
-                "exit_code": rc,
-                "physical_missing_paths": sorted(missing_by_fixture.get(name, [])),
-                "cmd": cmd,
-                "out_path": out_path,
-                "stdout_sha256": _sha256_text(stdout),
-                "stderr_sha256": _sha256_text(stderr),
-            }
-        )
-
-        status = "OK" if ok else "MISMATCH"
-        print(f"SEAL {name}: rc={rc} expected={expected_rc} => {status}")
-
-    report = {
-        "generated_at": EVALUATED_AT,
-        "tool": "fixtures-seal",
-        "fixtures_root": fixtures_root.as_posix(),
-        "results": results,
-        "summary": {
-            "total": len(results),
-            "matched": sum(1 for r in results if int(r.get("exit_code", -1)) == int(r.get("expected_exit_code", -2))),
-            "mismatched": sum(
-                1 for r in results if int(r.get("exit_code", -1)) != int(r.get("expected_exit_code", -2))
-            ),
-        },
-    }
-
-    report_path = out_dir / "seal_fixture_sweep_report.json"
-    _write_json(report_path, report)
-    print(f"Wrote: {report_path.as_posix()}")
-
-    return 0 if all_ok else 2
-
-
-def _fixtures_s_main(argv: list[str] | None = None) -> int:
-    """Sweep Gate S verifier fixtures (policy/fixtures/public/gate_s) through chain/gate_s_verify.py."""
-
-    default_fixtures_root = "policy/fixtures/public/gate_s"
-    ap = argparse.ArgumentParser(description="Run Gate S verifier fixtures sweep")
-    ap.add_argument(
-        "--repo",
-        default=str(REPO_ROOT),
-        help="Compatibility flag (must resolve to this repo root).",
-    )
-    ap.add_argument("--fixtures-root", default=default_fixtures_root)
-    ap.add_argument("--out-dir", default="temp/gate_s_fixture_sweep")
-    args = ap.parse_args(argv)
-
-    repo_arg = Path(str(args.repo)).resolve()
-    if repo_arg != REPO_ROOT:
-        raise _UserInputError(f"--repo must resolve to repo root {REPO_ROOT}, got {repo_arg}")
-
-    fixtures_root_rel = _validate_repo_rel(str(args.fixtures_root))
-    fixtures_root = _resolve_repo_path(REPO_ROOT, fixtures_root_rel, must_exist=True, must_be_file=False)
-    if not fixtures_root.is_dir():
-        print("ERROR: fixtures-root must be a directory", file=sys.stderr)
-        return 3
-
-    out_dir_rel = _validate_repo_rel(str(args.out_dir))
-    out_dir = _resolve_repo_path(REPO_ROOT, out_dir_rel, must_exist=False)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        cases_expected = _load_cases_expected(fixtures_root / "cases.json")
-    except Exception as e:
-        print(f"ERROR: Failed to load cases.json: {e}", file=sys.stderr)
-        return 3
-
-    validation_errors = _validate_cases_fail_closed_on_missing_paths(fixtures_root=fixtures_root, cases_expected=cases_expected)
-    if validation_errors:
-        print("ERROR: Fixture expectation contract violated (fail-closed).", file=sys.stderr)
-        for msg in validation_errors:
-            print(f"- {msg}", file=sys.stderr)
-        return 2
-
-    verifier_out_dir = out_dir / "verifier_out"
-    verifier_out_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir = out_dir / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    results: list[dict[str, object]] = []
-    for fixture_dir in _list_fixture_dirs(fixtures_root):
-        name = fixture_dir.name
-        entry = cases_expected[name]
-        expected_rc = int(entry["expected_exit_code"])
-
-        paths = entry.get("paths")
-        assert isinstance(paths, dict)
-
-        out_path = verifier_out_dir / f"S__{name}.json"
-        out_path_rel = out_path.relative_to(REPO_ROOT).as_posix()
-
-        cmd = [
-            sys.executable,
-            "-m",
-            "chain.gate_s_verify",
-            "--repo",
-            ".",
-            "--locked-spec",
-            str(paths["locked_spec"]),
-            "--seal-manifest",
-            str(paths["seal_manifest"]),
-            "--evidence-manifest",
-            str(paths["evidence_manifest"]),
-            "--out",
-            out_path_rel,
-        ]
-
-        rc, stdout, stderr = _run(cmd)
-
-        stdout_path = logs_dir / f"S__{name}.stdout.txt"
-        stderr_path = logs_dir / f"S__{name}.stderr.txt"
-        _write_text(stdout_path, stdout)
-        _write_text(stderr_path, stderr)
-
-        results.append(
-            {
-                "fixture": name,
-                "expected_exit_code": expected_rc,
-                "actual_exit_code": rc,
-                "ok": rc == expected_rc,
-                "cmd": cmd,
-                "verifier_out_path": str(out_path.as_posix()),
-                "stdout_sha256": _sha256_text(stdout),
-                "stderr_sha256": _sha256_text(stderr),
-            }
-        )
-
-    unexpected_rc = [r for r in results if int(r.get("actual_exit_code", -1)) != int(r.get("expected_exit_code", -2))]
-
-    print(f"Ran {len(results)} Gate S fixtures.")
-    if unexpected_rc:
-        print(f"UNEXPECTED: rc={len(unexpected_rc)}")
-        for r in unexpected_rc:
-            print(
-                f"- Gate S {r.get('fixture')}: expected rc {r.get('expected_exit_code')}, got {r.get('actual_exit_code')}"
-            )
-    else:
-        print("All fixtures matched expected exit code.")
-
-    report = {
-        "generated_at": EVALUATED_AT,
-        "repo_root": str(REPO_ROOT),
-        "out_dir": str(out_dir),
-        "fixtures_root": str(fixtures_root),
-        "results": results,
-    }
-    _write_json(out_dir / "gate_s_fixture_sweep_report.json", report)
-
-    return 1 if unexpected_rc else 0
-
-
-# ----------------------------
-# Unified CLI
-# ----------------------------
-
-
 def _parse_args(argv: Sequence[str] | None) -> tuple[argparse.Namespace, list[str]]:
     ap = argparse.ArgumentParser(description="Unified sweeper entrypoint")
     ap.add_argument(
         "cmd",
-        choices=["consistency", "fixtures-q", "fixtures-r", "fixtures-qr", "fixtures-s", "fixtures-seal"],
+        choices=["consistency"],
         help="Subcommand",
     )
     ap.add_argument("args", nargs=argparse.REMAINDER, help="Subcommand args (optional leading '--' accepted)")
@@ -5742,21 +3885,6 @@ def main(argv: list[str] | None = None) -> int:
 
         if ns.cmd == "consistency":
             return int(_consistency_sweep_main(rest))
-
-        if ns.cmd in ("fixtures-q", "fixtures-r", "fixtures-qr"):
-            gate = "QR"
-            if ns.cmd == "fixtures-q":
-                gate = "Q"
-            elif ns.cmd == "fixtures-r":
-                gate = "R"
-
-            return int(_fixtures_qr_main(["--gate", gate] + rest))
-
-        if ns.cmd == "fixtures-s":
-            return int(_fixtures_s_main(rest))
-
-        if ns.cmd == "fixtures-seal":
-            return int(_fixtures_seal_main(rest))
 
         raise _UserInputError(f"Unknown command: {ns.cmd}")
     except _UserInputError as e:
