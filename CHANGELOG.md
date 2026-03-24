@@ -11,6 +11,7 @@ Patch release finalizing BELGI main-repo fixture-zero closure and tightening the
 - BELGI main repo no longer maintains in-repo Q/R/S/Seal fixtures; the scoped regression coverage for this surface is programmatic and pytest-based.
 - Removed the remaining scoped fixture-path dependencies from BELGI main-repo tests and filled the programmatic Q/R coverage gaps for `Q3`, `Q5`, `Q7`, `Q-PROMPT-001`, `Q-DOC-002`, and `R-DOC-001`.
 - Removed BELGI main-repo fixture sweep and regen burden, kept only the vault-only placeholders under `policy/fixtures/internal/`, and left legacy fixture-maintenance command surfaces fail-closed with explicit maintainer guidance.
+- Removed the last embedded fixture sweep and self-referential fixture-hash logic from `tools.sweep`, aligned `dev_sync` to the fixture-zero main-repo sweep path only, and cleaned the consistency/tool docs to remove stale retired-surface wording.
 - Moved the repo-local synthetic payload builder out of `tests/` into top-level `builders.py` and added explicit builder meta-tests guarding determinism, invalid-path preservation, and absence of hidden authority-bearing defaults.
 - Narrowed public docs so BELGI main repo makes no run or completeness claim about any separate maintainer-private fixture workspace.
 

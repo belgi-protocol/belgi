@@ -913,34 +913,18 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 
 ### CS-EV-006 — Manifest Completeness (Tier>=1)
 - invariant_id: CS-EV-006
-- statement: If BELGI main repo still carries governed Tier 1+ PASS Gate R fixtures, each such fixture EvidenceManifest MUST index the sweep policy report (`policy.consistency_sweep`) as a `policy_report` artifact. Under BELGI fixture-zero, this invariant PASSes vacuously.
+- statement: BELGI main repo no longer maintains governed Gate R fixtures. This invariant PASSes when no governed Gate R fixture surface exists under `policy/fixtures/public/gate_r/` and FAILs closed if that removed surface reappears.
 - source-of-truth (file/section):
   - docs/operations/consistency-sweep.md#d11-evidence-pointer-format-mechanically-checkable
   - docs/operations/consistency-sweep.md#d12-sweep-report-artifact-mandatory-machine-readable
 - check procedure (deterministic):
-  1) Check whether BELGI main repo still has a governed Gate R fixture surface under `policy/fixtures/public/gate_r/`.
-  2) If that surface is absent, PASS vacuously.
-  3) Otherwise enumerate governed public Gate R fixtures from `policy/fixtures/public/gate_r/cases.json`.
-  4) For each case with `expected_exit_code == 0`:
-     - Load `LockedSpec.json` and read `tier.tier_id`.
-     - If `tier_id` is `tier-1`, `tier-2`, or `tier-3`, then the case’s `EvidenceManifest.json` MUST include exactly one artifact entry with:
-       - `kind: "policy_report"`
-       - `id: "policy.consistency_sweep"`
-       - `storage_ref: "policy/consistency_sweep.json"`
-       - `hash` equal to the sweep artifact hash.
-  5) FAIL on any missing/ambiguous entry or hash mismatch.
-- required evidence/artifacts (schema kinds): EvidenceManifest.json; LockedSpec.json
+  1) Check whether BELGI main repo has a governed Gate R fixture surface under `policy/fixtures/public/gate_r/`.
+  2) If that surface is absent, PASS.
+  3) If that surface is present, FAIL closed because BELGI main repo is fixture-zero and any migrated fixture maintenance belongs outside BELGI main repo.
+- required evidence/artifacts (schema kinds): none (repo-path presence check)
 - pass/fail criteria:
-  - PASS if BELGI main repo has no governed Gate R fixture surface, or if every Tier>=1 PASS case’s EvidenceManifest indexes `policy.consistency_sweep` correctly.
+  - PASS if `policy/fixtures/public/gate_r/` is absent from BELGI main repo.
   - FAIL otherwise.
-
-Implementation note (deterministic fixed-point):
-- On PASS, the CS-EV-006 result SHOULD omit `details` to avoid self-referential hash drift when a governed fixture surface exists.
-
-Operational note (avoids CS-EV-006 “hash ping-pong”):
-- If BELGI main repo has no governed fixture surface, the sweep no longer emits fixture-pin guidance.
-- If a private migrated fixture workspace still uses CS-EV-006 pinning, maintain that binding there; BELGI main repo no longer mutates or repairs fixture manifests.
-- Normalization rule (deterministic): when evaluating CS-EV-006 against a governed fixture surface, any EvidenceManifest artifact entry with `id == policy.consistency_sweep` is treated as if its `hash` were `000...000` for purposes of computing the expected hash. If the entry is missing, it is treated as present with that zero hash. Verifier mode MUST NOT mutate fixture files.
 
 ### CS-PROTOCOL-IDENTITY-001 — Protocol identity language excludes source from identity tuple
 - invariant_id: CS-PROTOCOL-IDENTITY-001
@@ -966,50 +950,33 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
   - PASS if all managed files keep source out of identity semantics.
   - FAIL otherwise.
 
-### CS-PACK-IDENTITY-001 — Fixture protocol pack pins match builtin
+### CS-PACK-IDENTITY-001 — Fixture protocol pack pinning stays out of BELGI main repo
 - invariant_id: CS-PACK-IDENTITY-001
-- statement: Every BELGI main-repo fixture `LockedSpec.json`, if any remain under `policy/fixtures/**`, MUST pin the active builtin protocol pack identity. Under BELGI fixture-zero, this invariant PASSes vacuously.
+- statement: BELGI main repo no longer maintains fixture LockedSpecs. This invariant PASSes when no governed fixture surface remains under `policy/fixtures/public/` and FAILs closed if that removed surface reappears.
 - source-of-truth (file/section):
-  - `belgi/_protocol_packs/v1/ProtocolPackManifest.json` (pack_id + manifest bytes hash)
+  - `docs/operations/consistency-sweep.md` (fixture-zero main-repo policy)
 - check procedure (deterministic):
-  1) Load and verify `belgi/_protocol_packs/v1/ProtocolPackManifest.json` against its pack tree.
-  2) Compute `manifest_sha256 = sha256(bytes(manifest))`.
-  3) Enumerate all `policy/fixtures/**/LockedSpec.json` (fail-closed on symlinks).
-  4) If none exist, PASS vacuously.
-  5) Otherwise, for each LockedSpec, require `protocol_pack.pack_id == manifest.pack_id` and `protocol_pack.manifest_sha256 == manifest_sha256`.
-  6) FAIL on any mismatch or missing protocol_pack.
-- required evidence/artifacts (schema kinds): LockedSpec.json
+  1) Check whether BELGI main repo has any governed fixture surface under `policy/fixtures/public/`.
+  2) If that surface is absent, PASS.
+  3) If that surface is present, FAIL closed because BELGI main repo is fixture-zero and fixture protocol-pack maintenance is out of scope here.
+- required evidence/artifacts (schema kinds): none (repo-path presence check)
 - pass/fail criteria:
-  - PASS if no BELGI main-repo fixture LockedSpecs remain, or if every fixture pin matches the active builtin pack.
+  - PASS if `policy/fixtures/public/` is absent from BELGI main repo.
   - FAIL otherwise.
-- remediation (single-command):
-  - Update migrated fixture pins only in a separate maintainer-private workspace if you maintain one; BELGI main repo runs no fixture pin repair and makes no run or completeness claim about that follow-up.
 
-### CS-SEAL-KEYPAIR-001 — SEAL fixture keypair + pubkey ref binding
+### CS-SEAL-KEYPAIR-001 — SEAL fixture key material stays out of BELGI main repo
 - invariant_id: CS-SEAL-KEYPAIR-001
-- statement: For every BELGI main-repo SEAL fixture under `policy/fixtures/public/seal/*`, if any remain, `seal_pubkey.hex` MUST be an Ed25519 public key derived from an in-repo `seal_private_key.hex` (preferably the fixture’s own, if present), and `LockedSpec.environment_envelope.seal_pubkey_ref` MUST bind to that pubkey’s bytes hash. Under BELGI fixture-zero, this invariant PASSes vacuously.
+- statement: BELGI main repo no longer maintains SEAL fixture key material. This invariant PASSes when no governed SEAL fixture surface exists under `policy/fixtures/public/seal/` and FAILs closed if that removed surface reappears.
 - source-of-truth (file/section):
-  - `policy/fixtures/public/seal/cases.json` (fixture set)
-  - `chain/seal_bundle.py` (Ed25519 signing/verification)
+  - `docs/operations/consistency-sweep.md` (fixture-zero main-repo policy)
 - check procedure (deterministic):
-  1) Check whether `policy/fixtures/public/seal/cases.json` still exists in BELGI main repo.
-  2) If it does not exist, PASS vacuously.
-  3) Otherwise enumerate SEAL fixture case_ids from `policy/fixtures/public/seal/cases.json`.
-  4) Build a set of derived pubkeys from any present, valid `policy/fixtures/public/seal/*/seal_private_key.hex` (64 hex chars).
-  5) For each fixture dir, require files:
-    - `seal_pubkey.hex`
-    - `LockedSpec.json`
-    If `seal_private_key.hex` is present and valid, derive the Ed25519 public key bytes from it and require it matches `seal_pubkey.hex`.
-    If `seal_private_key.hex` is absent, require `seal_pubkey.hex` still matches one of the derived pubkeys from step 2.
-  6) Require `LockedSpec.environment_envelope.seal_pubkey_ref.storage_ref` equals `policy/fixtures/public/seal/<case_id>/seal_pubkey.hex`.
-  7) Require `LockedSpec.environment_envelope.seal_pubkey_ref.hash == sha256(bytes(seal_pubkey.hex))`.
-  8) FAIL on any mismatch.
-- required evidence/artifacts (schema kinds): LockedSpec.json
+  1) Check whether BELGI main repo has a governed SEAL fixture surface under `policy/fixtures/public/seal/`.
+  2) If that surface is absent, PASS.
+  3) If that surface is present, FAIL closed because BELGI main repo is fixture-zero and SEAL fixture key maintenance is out of scope here.
+- required evidence/artifacts (schema kinds): none (repo-path presence check)
 - pass/fail criteria:
-  - PASS if no BELGI main-repo SEAL fixtures remain, or if every SEAL fixture is internally consistent.
+  - PASS if `policy/fixtures/public/seal/` is absent from BELGI main repo.
   - FAIL otherwise.
-- remediation (single-command):
-  - Repair migrated seal fixtures only in a separate maintainer-private workspace if you maintain one; BELGI main repo runs no in-repo seal fixture repair and makes no run or completeness claim about that follow-up.
 
 ### CS-SWEEP-001 — Input Authority
 - invariant_id: CS-SWEEP-001
@@ -1175,7 +1142,7 @@ Operational note (avoids CS-EV-006 “hash ping-pong”):
 - [ ] CS-EV-003: Gate R evidence sufficiency is tier-driven (no hardcoded extras).
 - [ ] CS-EV-004: R-Snapshot immutability + append-only final manifest is consistent.
 - [ ] CS-EV-005: Seal binds core replay set + waivers via ObjectRefs.
-- [ ] CS-EV-006: Tier>=1 PASS manifests index policy.consistency_sweep.
+- [ ] CS-EV-006: BELGI main repo remains fixture-zero for governed Gate R sweep bindings.
 - [ ] CS-PROTOCOL-IDENTITY-001: identity wording excludes source from the identity tuple.
 - [ ] CS-TIER-001: tier IDs are exactly tier-0..tier-3 everywhere.
 - [ ] CS-TIER-002: tier required_evidence_kinds match across tier-packs/evidence-bundles/running-belgi.
@@ -1263,7 +1230,7 @@ The JSON document at `policy/consistency_sweep.json` MUST be a single JSON objec
 - `tool`: object with:
   - `name`: string (operator tool identity; MAY be a repo-local script name)
   - `version`: string (tool version; MAY be a git describe string)
-- `repo_revision`: string (git tree hash for the evaluated inputs). For determinism, the sweep outputs themselves are excluded from the evaluated tree (currently: `policy/consistency_sweep.json`, `policy/consistency_sweep.summary.md`). When BELGI main repo still has a governed Gate R fixture surface, fixture EvidenceManifest entries for `policy.consistency_sweep` are normalized to a zero hash during the repo revision computation so self-referential pinning does not alter the revision. Implementation uses a temporary git index (read-tree/update-index/write-tree), not tree construction commands.
+- `repo_revision`: string (git tree hash for the evaluated inputs). For determinism, the sweep outputs themselves are excluded from the evaluated tree (currently: `policy/consistency_sweep.json`, `policy/consistency_sweep.summary.md`). BELGI main repo does not normalize any fixture manifests here; removed fixture surfaces fail closed instead. Implementation uses a temporary git index (read-tree/update-index/write-tree), not tree construction commands.
 - `inputs`: array of objects, each with:
   - `path`: string, repository-relative, using `/` separators
   - `sha256`: string, 64 hex chars, SHA-256 over the file bytes

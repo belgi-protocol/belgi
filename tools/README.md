@@ -21,12 +21,6 @@ Note: `manifest-init` creates a schema-valid manifest binding current governed b
 
 See docs/operations/evidence-ownership.md for the canonical chain ownership story and Gate Q wrapper commands.
 
-### CS-EV-006 after fixture-zero
-
-BELGI main repo no longer maintains governed Gate R fixtures, so `CS-EV-006` now PASSes vacuously here once the fixture surface is absent.
-
-If you are maintaining migrated fixtures, that work is maintainer-private follow-up outside BELGI main-repo scope here. BELGI main repo makes no run or completeness claim about that separate workspace and no longer supports `tools.sweep consistency --fix-fixtures` or `--regen-seals`.
-
 ## github_vars_sanitize.py
 
 Purpose: deterministic workflow helper for repository variable ingestion (`BELGI_VARS_JSON`) in GitHub Actions.
@@ -122,9 +116,6 @@ Exit codes:
 
 Notes:
 - `--out` is fixed by contract and MUST remain `policy/consistency_sweep.json`.
-
-CS-EV-006 note:
-- BELGI main repo no longer prints fixture pin guidance because the maintained fixture surface moved to the private audit workspace.
 
 ## report.py
 
