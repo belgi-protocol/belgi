@@ -130,7 +130,10 @@ def test_build_q_repo_does_not_repair_a_q3_invalid_request(tmp_path: Path) -> No
         repo_root,
         rel_root="synthetic/q-q3-invalid",
         run_id="q-q3-invalid",
-        invariants=[],
+        invariants=[
+            {"id": "INV-001", "description": "first", "severity": "policy"},
+            {"id": "INV-001", "description": "second", "severity": "policy"},
+        ],
     )
 
     cp = builders.run_gate_q(

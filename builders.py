@@ -115,6 +115,22 @@ def write_tiers_override(repo_root: Path, tiers_obj: dict[str, Any]) -> str:
     return rel
 
 
+def _sync_repo_locked_specs_upstream_commit(repo_root: Path, commit_sha: str) -> None:
+    for locked_path in sorted(repo_root.rglob("LockedSpec.json"), key=lambda path: path.as_posix()):
+        try:
+            locked = read_json(locked_path)
+        except Exception:
+            continue
+        upstream_state = locked.get("upstream_state")
+        if upstream_state is None:
+            upstream_state = {}
+        if not isinstance(upstream_state, dict):
+            continue
+        upstream_state["commit_sha"] = commit_sha
+        locked["upstream_state"] = upstream_state
+        write_json(locked_path, locked)
+
+
 def structured_command(subcommand: str, *, exit_code: int = 0) -> dict[str, Any]:
     return {
         "argv": ["belgi", subcommand],
@@ -654,6 +670,9 @@ def build_s_repo(
     evidence_rel = r_paths["evidence"]
     gate_q_rel = r_paths["gate_q_verdict"]
     gate_r_rel = f"{rel_root}/GateVerdict.R.json"
+    snapshot_rel = "out/EvidenceManifest.r_snapshot.json"
+    snapshot_bytes = (repo_root / evidence_rel).read_bytes()
+    write_bytes(repo_root / snapshot_rel, snapshot_bytes)
     write_json(
         repo_root / gate_r_rel,
         {
@@ -663,7 +682,7 @@ def build_s_repo(
             "verdict": "GO",
             "failure_category": None,
             "failures": [],
-            "evidence_manifest_ref": object_ref("out/EvidenceManifest.r_snapshot.json", b"{}\n", "evidence.r"),
+            "evidence_manifest_ref": object_ref(snapshot_rel, snapshot_bytes, "evidence.r"),
             "evaluated_at": "1970-01-01T00:00:00Z",
             "evaluator": "synthetic",
         },
@@ -675,8 +694,6 @@ def build_s_repo(
         "chain.seal_bundle",
         "--repo",
         str(repo_root),
-        "--protocol-pack",
-        "protocol_pack",
         "--locked-spec",
         locked_rel,
         "--gate-q-verdict",
@@ -699,7 +716,8 @@ def build_s_repo(
         write_text(repo_root / sig_rel, ("AA==" if signature is None else signature) + "\n")
         cmd.extend(["--seal-signature-ref", sig_rel])
     cp = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False, capture_output=True, text=True)
-    assert cp.returncode in {0, 2}, (cp.returncode, cp.stdout, cp.stderr)
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+    assert (repo_root / seal_rel).exists(), seal_rel
     sync_locked_spec_protocol_identity(repo_root / locked_rel, pack_root / MANIFEST_FILENAME)
     return {
         "locked": locked_rel,
@@ -809,4 +827,6 @@ def init_git_repo(repo_root: Path) -> str:
     git("config", "core.autocrlf", "false")
     git("add", "-A")
     git("commit", "--allow-empty", "-m", "init")
-    return git("rev-parse", "HEAD").stdout.strip()
+    commit_sha = git("rev-parse", "HEAD").stdout.strip()
+    _sync_repo_locked_specs_upstream_commit(repo_root, commit_sha)
+    return commit_sha

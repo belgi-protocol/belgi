@@ -15,6 +15,7 @@ Patch release finalizing BELGI main-repo fixture-zero closure and tightening the
 - Removed retired fixture references from repository-verification and CODEOWNERS so proof surfaces no longer target deleted BELGI main-repo fixture files.
 - Moved the repo-local synthetic payload builder out of `tests/` into top-level `builders.py` and added explicit builder meta-tests guarding determinism, invalid-path preservation, and absence of hidden authority-bearing defaults.
 - Removed the stale tests that still targeted deleted fixture-hash repair helpers, and dropped the last dead `ZERO_SHA256` carryover from `tools.sweep`.
+- Repaired the synthetic Q/R/S test helper path so builder/meta-tests reach their intended ownership points, synthetic R repos bind `upstream_state.commit_sha` to the initialized commit, and synthetic S repos emit a real `SealManifest.json` instead of depending on a broken helper call shape.
 - Narrowed public docs so BELGI main repo makes no run or completeness claim about any separate maintainer-private fixture workspace.
 
 ### Notes

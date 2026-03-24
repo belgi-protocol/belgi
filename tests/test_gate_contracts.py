@@ -262,44 +262,19 @@ def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output(tmp_path: Path
     fake_root = tmp_path / "fake_repo"
     _clean_dir(fake_root)
 
-    # Under pack-truth, Gate Q loads taxonomy/schemas/tiers from the active protocol pack.
-    # Build a minimal valid protocol pack with an incomplete taxonomy so category validation fails.
+    paths = builders.build_q_repo(
+        fake_root,
+        rel_root="gate_q/q_intent_001_no_yaml_block",
+        run_id="q-taxonomy-mismatch",
+    )
     pack_root = fake_root / "protocol_pack"
-    pack_root.mkdir(parents=True, exist_ok=True)
-
-    def _copy_into_pack(rel: str) -> None:
-        src = REPO_ROOT / Path(*rel.split("/"))
-        dst = pack_root / Path(*rel.split("/"))
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
-
-    _copy_into_pack("tiers/tier-packs.md")
-    _copy_into_pack("tiers/tier-packs.json")
-    for rel in [
-        "schemas/IntentSpec.schema.json",
-        "schemas/LockedSpec.schema.json",
-        "schemas/EvidenceManifest.schema.json",
-        "schemas/Waiver.schema.json",
-        "schemas/HOTLApproval.schema.json",
-        "schemas/ToolchainSet.schema.json",
-        "schemas/Tolerances.schema.json",
-        "schemas/GateVerdict.schema.json",
-    ]:
-        _copy_into_pack(rel)
-
-    (pack_root / "gates").mkdir(parents=True, exist_ok=True)
     (pack_root / "gates" / "failure-taxonomy.md").write_text(
         "# Fake taxonomy\n\n- category_id: `FQ-NOT-THE-ONE`\n",
         encoding="utf-8",
         errors="strict",
     )
     (pack_root / MANIFEST_FILENAME).write_bytes(build_manifest_bytes(pack_root=pack_root, pack_name="test-pack"))
-
-    paths = builders.build_q_repo(
-        fake_root,
-        rel_root="gate_q/q_intent_001_no_yaml_block",
-        run_id="q-taxonomy-mismatch",
-    )
+    builders.sync_locked_spec_protocol_identity(fake_root / paths["locked"], pack_root / MANIFEST_FILENAME)
     (fake_root / paths["intent"]).write_text("# Intent\nNo YAML block here.\n", encoding="utf-8", errors="strict")
 
     # Note: out is repo-relative *to fake_root*, not REPO_ROOT.
@@ -1001,27 +976,7 @@ def _setup_fake_repo_with_pack(tmp_path: Path, builtin_pack_root: Path) -> Path:
 
 
 def _init_git_repo(repo_root: Path) -> str:
-    import subprocess
-
-    def _git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            cwd=str(repo_root),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-
-    _git("init")
-    _git("config", "user.email", "ci@example.invalid")
-    _git("config", "user.name", "ci")
-    _git("config", "core.autocrlf", "false")
-    _git("add", "-A")
-    _git("commit", "--allow-empty", "-m", "init")
-    cp = _git("rev-parse", "HEAD")
-    sha = cp.stdout.strip()
-    assert sha and len(sha) >= 7
-    return sha
+    return builders.init_git_repo(repo_root)
 
 
 
@@ -1439,10 +1394,23 @@ def test_gate_q_q7_unsupported_tier_is_primary(tmp_path: Path) -> None:
 
     intent_path = tmp_path / paths["intent"]
     locked_path = tmp_path / paths["locked"]
+    tiers = builders.builtin_tiers()
+    tiers["tiers"]["tier-99"] = json.loads(json.dumps(tiers["tiers"]["tier-0"]))
+    tiers_rel = builders.write_tiers_override(tmp_path, tiers)
 
     locked = _read_json(locked_path)
     tier = locked.get("tier")
     assert isinstance(tier, dict)
+    tolerances_ref = tier.get("tolerances_ref")
+    assert isinstance(tolerances_ref, dict)
+    tolerances_storage_ref = tolerances_ref.get("storage_ref")
+    assert isinstance(tolerances_storage_ref, str) and tolerances_storage_ref
+    tolerances_path = tmp_path / tolerances_storage_ref
+    tolerances = _read_json(tolerances_path)
+    tolerances["tier_id"] = "tier-99"
+    tolerances_bytes = (json.dumps(tolerances, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    tolerances_path.write_bytes(tolerances_bytes)
+    tolerances_ref["hash"] = _sha256_hex(tolerances_bytes)
     tier["tier_id"] = "tier-99"
     tier["tier_name"] = "Tier 99"
     locked_path.write_text(json.dumps(locked, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
@@ -1450,7 +1418,13 @@ def test_gate_q_q7_unsupported_tier_is_primary(tmp_path: Path) -> None:
     intent_text = intent_path.read_text(encoding="utf-8", errors="strict").replace('tier_pack_id: "tier-0"', 'tier_pack_id: "tier-99"')
     intent_path.write_text(intent_text, encoding="utf-8", errors="strict")
 
-    cp = builders.run_gate_q(tmp_path, intent_rel=paths["intent"], locked_rel=paths["locked"], evidence_rel=paths["evidence"])
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+        tiers_rel=tiers_rel,
+    )
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
 
     verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
