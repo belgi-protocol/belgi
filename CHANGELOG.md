@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.2 — 2026-03-24
+
+### Summary
+Patch release closing two bounded test-governance debts, tightening repo-local helper/import hygiene, and keeping the heavyweight isolation debt open without changing shipped BELGI semantics.
+
+### Changed
+- Replaced the Tier-0 R7 run-test dependence on literal `allowed_dirs` template-text replacement with a more robust helper-based rewrite that survives harmless template formatting changes.
+- Centralized fresh BELGI import hygiene for the heavyweight CLI/gate/SSOT test modules in `tests/helpers/repo_imports.py`, removing ad hoc per-module `sys.modules` / `sys.path` surgery and materially narrowing the remaining parallel-safe isolation debt surface without claiming the broader isolation debt is fully closed.
+- Moved the repo-local synthetic helpers under `tests/helpers/`, narrowed the public `tests/helpers/builders.py` export surface to explicit builder entrypoints only, restored that builder to current LockedSpec / ToolchainSet / Tolerances / EvidenceManifest truth after the move, aligned synthetic `LockedSpec.belgi_version` to the same version authority source used by live C1, and kept the direct meta-test guards on determinism, invalid-path preservation, current synthetic object shapes, and clean-HEAD synthetic Gate R fidelity.
+- Tightened the moved test-local helper surface further by replacing the synthetic diff closure in `tests/helpers/builders.py` with an explicit helper and by keeping repo-root resolution anchored to the real BELGI repo root.
+
+### Notes
+- This patch is maintenance and trust-surface tightening only; shipped CLI, gate, schema, tier, and runtime semantics are unchanged.
+
 ## 1.6.1 — 2026-03-23
 
 ### Summary

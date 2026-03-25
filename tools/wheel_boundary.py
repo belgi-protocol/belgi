@@ -29,7 +29,6 @@ FORBIDDEN_MODULE_PREFIXES: tuple[str, ...] = (
     "belgi_pack/",
 )
 
-
 def list_wheel_entries(wheel_path: Path) -> list[str]:
     with zipfile.ZipFile(wheel_path) as zf:
         return sorted(zf.namelist())

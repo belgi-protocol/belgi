@@ -5,7 +5,10 @@ import os
 import subprocess
 from pathlib import Path
 
-import builders
+from belgi.core.schema import validate_schema
+from tests.helpers import builders
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read_json(path: Path) -> dict:
@@ -52,6 +55,22 @@ def _git_head(repo_root: Path) -> str:
 
 def _git_status_porcelain(repo_root: Path) -> str:
     return _git(repo_root, "status", "--porcelain")
+
+
+def test_builders_public_api_is_explicit_and_narrow() -> None:
+    assert builders.__all__ == [
+        "build_q_repo",
+        "build_r_repo",
+        "build_s_repo",
+        "builtin_tiers",
+        "init_git_repo",
+        "run_gate_q",
+        "run_gate_r",
+        "sync_locked_spec_protocol_identity",
+        "write_json",
+        "write_text",
+        "write_tiers_override",
+    ]
 
 
 def test_build_q_repo_is_deterministic_for_same_explicit_inputs(tmp_path: Path) -> None:
@@ -144,6 +163,57 @@ def test_build_q_repo_only_adds_optional_authority_fields_when_requested(tmp_pat
     assert explicit_locked["publication_intent"] == {"publish": True, "profile": "public"}
 
 
+def test_build_q_repo_emits_current_lockedspec_and_evidence_shapes(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    paths = builders.build_q_repo(repo_root, rel_root="synthetic/q-contract", run_id="q-contract")
+
+    locked = _read_json(repo_root / paths["locked"])
+    toolchain_set = _read_json(repo_root / paths["toolchain_set"])
+    tolerances = _read_json(repo_root / paths["tolerances"])
+    evidence = _read_json(repo_root / paths["evidence"])
+
+    assert locked["belgi_version"] == builders._current_belgi_version()
+    assert locked["tier"]["tolerances_ref"]["id"] == "tier.tolerances"
+    assert "toolchain_set_ref" not in locked["tier"]
+    assert locked["environment_envelope"]["toolchain_set_ref"]["id"] == "env.toolchains"
+    assert locked["environment_envelope"]["pinned_toolchain_refs"] == [
+        {
+            "id": "toolchain.main",
+            "hash": "0" * 64,
+            "storage_ref": "out/inputs/toolchain.json",
+        }
+    ]
+    assert locked["upstream_state"] == {
+        "commit_sha": "0" * 40,
+        "dirty_flag": False,
+        "repo_ref": "synthetic",
+    }
+
+    assert toolchain_set == {
+        "schema_version": "1.0.0",
+        "toolchain_set_id": "env.toolchains",
+        "refs": [],
+    }
+    assert tolerances["schema_version"] == "1.0.0"
+    assert tolerances["tier_id"] == "tier-0"
+    assert set(tolerances) == {"schema_version", "tier_id", "scope_budgets"}
+
+    artifact_kinds = [artifact["kind"] for artifact in evidence["artifacts"]]
+    assert artifact_kinds == ["command_log", "policy_report", "schema_validation"]
+    assert "prompt_bundle" not in artifact_kinds
+    assert "repo_diff" not in artifact_kinds
+
+    locked_schema = _read_json(REPO_ROOT / "schemas" / "LockedSpec.schema.json")
+    evidence_schema = _read_json(REPO_ROOT / "schemas" / "EvidenceManifest.schema.json")
+    toolchain_schema = _read_json(REPO_ROOT / "schemas" / "ToolchainSet.schema.json")
+    tolerances_schema = _read_json(REPO_ROOT / "schemas" / "Tolerances.schema.json")
+
+    assert validate_schema(locked, locked_schema, root_schema=locked_schema, path="LockedSpec") == []
+    assert validate_schema(evidence, evidence_schema, root_schema=evidence_schema, path="EvidenceManifest") == []
+    assert validate_schema(toolchain_set, toolchain_schema, root_schema=toolchain_schema, path="ToolchainSet") == []
+    assert validate_schema(tolerances, tolerances_schema, root_schema=tolerances_schema, path="Tolerances") == []
+
+
 def test_build_q_repo_does_not_repair_a_q3_invalid_request(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     paths = builders.build_q_repo(
@@ -200,6 +270,29 @@ def test_build_r_repo_does_not_mask_r_doc_001_ownership(tmp_path: Path) -> None:
 
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
     assert _first_failure_rule_id(repo_root / "out" / "GateVerdict.R.json") == "R-DOC-001"
+
+
+def test_build_r_repo_uses_current_evidence_kinds_only(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    paths = builders.build_r_repo(repo_root, rel_root="synthetic/r-contract", run_id="r-contract")
+
+    evidence = _read_json(repo_root / paths["evidence"])
+    artifact_kinds = [artifact["kind"] for artifact in evidence["artifacts"]]
+
+    assert artifact_kinds == [
+        "diff",
+        "policy_report",
+        "policy_report",
+        "policy_report",
+        "test_report",
+        "command_log",
+        "schema_validation",
+        "env_attestation",
+    ]
+    assert "repo_diff" not in artifact_kinds
+    assert "prompt_bundle" not in artifact_kinds
+    assert evidence["envelope_attestation"]["id"] == "env.attestation"
+    assert evidence["envelope_attestation"]["storage_ref"].endswith("env_attestation.json")
 
 
 def test_init_git_repo_returns_final_clean_head_for_positive_r_setup(tmp_path: Path) -> None:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from builders import build_q_repo
+from tests.helpers.builders import build_q_repo
 
 pytestmark = pytest.mark.repo_local
 
