@@ -93,6 +93,7 @@ The proof-carrying jobs are label-gated by `proof:full`.
 `pull-request-proof-gate` is the stable hosted required context for this surface.
 Without `proof:full`, that gate remains NO-GO and the exact PR-head proof is not satisfied.
 This avoids permanently pending required contexts while keeping the governance story explicit.
+This surface fits the main-only tracked workflow where short-lived work branches open pull requests directly to `main`.
 
 ## Pinned Install Proof
 
@@ -124,7 +125,9 @@ It does not rely on `--no-build-isolation` as an ambient runner shortcut.
 
 ## Hosted Governance Settings
 
-- Protect `main` and `dev` with required status checks before merge.
+- Protect `main` with required status checks before merge.
+- Use short-lived work branches for tracked work and open pull requests directly to `main`.
+- Name work branches as `work/<lisp-case-description>` so the branch still reads like the patch objective.
 - Enable required pull-request reviews and require review from Code Owners.
 - After this patch, select only these hosted required contexts:
   - `repository-verification-gate`

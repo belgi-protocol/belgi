@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.3 — 2026-03-25
+
+### Summary
+Patch release repairing the shipped ToolchainSet/Tolerances run-local operator contract on the shared `belgi run` spine, including tighter-but-not-wider explicit tolerances under the selected tier.
+
+### Changed
+- Repaired shipped `belgi run` ingress so explicit `--toolchain-set-ref` and `--tolerances-ref` accept only the current run's canonical run-local operator inputs under `.belgi/runs/<run_id>/inputs/environment/`, while leaving shorthand `--toolchain-ref` on evaluated-revision declaration surfaces.
+- Repaired the orchestrator/C1 handoff so accepted run-local ToolchainSet/Tolerances inputs are staged into `out/inputs/environment/` before lock, and later stages consume the locked/store copy rather than ambient workspace bytes.
+- Repaired explicit current-run Tolerances semantics so `scope_budgets.max_touched_files` and `scope_budgets.max_loc_delta` may equal or tighten the selected tier ceilings, but fail closed when either value widens the selected tier; `Tolerances.tier_id` must still match the selected tier.
+- Removed the stale C1 tolerances precheck that rejected explicit run-local Tolerances before Gate Q, keeping selected-tier `Tolerances` enforcement on the repaired Gate Q path and aligning the high-level C1 compiler doc with the current manual-versus-shipped surface split.
+- Narrowed shipped operator docs and generated run guidance so `docs/operations/cli.md` owns the exact shipped CLI contract, `docs/operations/running-belgi.md` keeps execution-truth/manual-reference wording, and the explicit ingress story no longer contradicts runtime.
+- Added regression coverage for accepted run-local ToolchainSet/Tolerances ingress, fail-closed foreign-run and wrong-leaf rejection, malformed/missing/invalid run-local refs, and the staged-orchestrator binding path that feeds R7/C1.
+
+### Notes
+- This patch repairs shipped ingress truth only; `LockedSpec` schema, Tier-2/Tier-3 anchor semantics, and broader docs-authority convergence remain unchanged.
+
 ## 1.6.2 — 2026-03-24
 
 ### Summary

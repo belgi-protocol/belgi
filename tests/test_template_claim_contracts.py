@@ -60,6 +60,7 @@ def test_running_belgi_manual_c1_example_matches_current_object_contract() -> No
         assert "--toolchain-ref tc-001=bundle/toolchains/toolchain-001.json" not in text
         assert "--tolerances tol-001=bundle/tolerances/tol-001.json" not in text
         assert "do not pass them as extra shorthand `--toolchain-ref` values" in text
+        assert "The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location." not in text
 
 
 def test_schema_readmes_claim_published_schema_backed_locked_objects() -> None:
@@ -351,6 +352,8 @@ def test_r8_public_docs_match_runtime_contract() -> None:
 
 
 def test_r2_public_docs_match_locked_tolerances_contract() -> None:
+    gate_q = _read_text("gates/GATE_Q.md")
+    gate_q_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_Q.md")
     gate_r = _read_text("gates/GATE_R.md")
     gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     cli_docs = _read_text("docs/operations/cli.md")
@@ -367,8 +370,22 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
     gate_r_no_hotl = "adjust tier/constraints with HOTL"
     cli_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>` (singular)"
     cli_tolerances_binding = "binds a real locked tolerances object into `LockedSpec.tier.tolerances_ref`"
-    running_tolerances_flag = "use `--tolerances-ref <object_id>=<repo-relative-path>` to bind a real locked tolerances object"
+    cli_tolerances_pre_lock = "the referenced Tolerances file is a pre-lock operator input"
+    cli_tolerances_tier_match = "`Tolerances.tier_id` must match the selected tier"
+    cli_tolerances_tighten = (
+        "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
+    )
+    running_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>`"
     running_tolerances_default = "if omitted, orchestration generates the canonical tolerances object from the selected tier pack"
+    running_tolerances_pre_lock = "explicit Tolerances refs on `belgi run` are pre-lock operator inputs"
+    running_tolerances_tier_match = "`Tolerances.tier_id` must match the selected tier"
+    running_tolerances_tighten = (
+        "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
+    )
+    gate_q_tighten = "to be equal to or stricter than the selected tier ceilings; reject any wider value"
+    gate_q_remediation = (
+        "Do lock a valid tier.tolerances_ref object for the selected tier that stays within the selected tier ceilings, then re-run Q."
+    )
     running_numeric_retired = (
         "Numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy "
         "`IntentSpec.scope.max_*` fields with migration guidance."
@@ -377,6 +394,11 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
         "`Do reduce scope to within the locked tolerances ceilings or change the locked Tolerances object / "
         "selected tier and re-run Q, then re-run R.`"
     )
+
+    for text in (gate_q, gate_q_pack):
+        assert "Resolve `LockedSpec.tier.tolerances_ref`" in text
+        assert gate_q_tighten in text
+        assert gate_q_remediation in text
 
     for text in (gate_r, gate_r_pack):
         assert gate_r_locked_object in text
@@ -388,12 +410,19 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
     for text in (cli_docs, cli_docs_mirror):
         assert cli_tolerances_flag in text
         assert cli_tolerances_binding in text
+        assert cli_tolerances_pre_lock in text
+        assert cli_tolerances_tier_match in text
+        assert cli_tolerances_tighten in text
         assert "materializes the canonical tolerances object from the selected tier pack" in text
         assert "numeric scope budgets no longer live in `IntentSpec`" in text
 
     for text in (running_docs, running_docs_mirror):
         assert running_tolerances_flag in text
         assert running_tolerances_default in text
+        assert running_tolerances_pre_lock in text
+        assert running_tolerances_tier_match in text
+        assert running_tolerances_tighten in text
+        assert "stages the referenced Tolerances object into locked/store authority before C1" in text
         assert running_numeric_retired in text
         assert "R2 semantic budget ceilings come from the locked `LockedSpec.tier.tolerances_ref` object" in text
 
@@ -449,24 +478,45 @@ def test_r7_public_docs_match_runtime_contract() -> None:
         "`LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` set derived from the locked ToolchainSet "
         "plus built-in `toolchain.main`."
     )
-    shipped_run_binding_explicit = (
-        "On the shipped CLI, use `belgi run --toolchain-set-ref <object_id>=<repo-relative-path>` "
-        "for explicit ToolchainSet authority"
-    )
-    shipped_run_binding_shorthand = (
-        "or repeat shorthand `belgi run --toolchain-ref <object_id>=<repo-relative-path>` when you want "
-        "`belgi run` to generate that ToolchainSet authority before lock."
-    )
     cli_binding = (
         "binds an authoritative ToolchainSet object into `LockedSpec.environment_envelope.toolchain_set_ref`"
     )
-    evaluated_revision_guard = "must already exist in the evaluated revision truth envelope"
+    cli_pre_lock = "the referenced ToolchainSet file is a pre-lock operator input"
+    cli_member_guard = (
+        "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain "
+        "declaration surfaces in the evaluated revision truth envelope"
+    )
+    running_owner_note = (
+        "`docs/operations/cli.md` owns the exact shipped `belgi run` flag syntax and examples for "
+        "ToolchainSet/Tolerances ingress"
+    )
+    running_ingress = (
+        "on the shipped `belgi run` spine, explicit ToolchainSet/Tolerances refs are pre-lock operator "
+        "inputs accepted only at the matching current-run paths under `.belgi/runs/<run_id>/inputs/environment/`, "
+        "and BELGI stages them into locked/store authority before C1"
+    )
+    running_manual_boundary = (
+        "Exact shipped `belgi run` flag syntax for this surface lives in `docs/operations/cli.md`; this "
+        "manual keeps only the execution-truth boundary between explicit ToolchainSet/Tolerances refs and "
+        "manual C1 `--toolchain-set` / `--tolerances` inputs."
+    )
+    running_member_guard = (
+        "Shorthand `--toolchain-ref` declaration paths, and ToolchainSet member declaration paths inside "
+        "the locked object, must still exist in the evaluated revision truth envelope."
+    )
+    running_toolchain_only_path = "this is the only accepted explicit `belgi run` ingress path for ToolchainSet"
+    running_tolerances_only_path = "this is the only accepted explicit `belgi run` ingress path for Tolerances"
+    gate_r_shipped_ingress = (
+        "explicit ToolchainSet refs are pre-lock operator inputs accepted only at "
+        "`.belgi/runs/<run_id>/inputs/environment/toolchain-set.json` for the current run"
+    )
     reserved_main = "`toolchain.main` is reserved for the built-in generated run toolchain input"
 
     for text in (gate_r, gate_r_pack):
         assert bounded_meaning in text
         assert declaration_surface_line in text
         assert accounting_context_line in text
+        assert gate_r_shipped_ingress in text
         assert "ToolchainSet" in text
 
     for text in (cli_docs, cli_docs_mirror):
@@ -474,7 +524,8 @@ def test_r7_public_docs_match_runtime_contract() -> None:
         assert "`--toolchain-ref <object_id>=<repo-relative-path>` (repeatable)" in text
         assert cli_binding in text
         assert "normalizes these refs into authoritative ToolchainSet object authority before lock" in text
-        assert evaluated_revision_guard in text
+        assert cli_pre_lock in text
+        assert cli_member_guard in text
         assert reserved_main in text
         assert "this is not an Operator Anchor" in text
 
@@ -482,9 +533,12 @@ def test_r7_public_docs_match_runtime_contract() -> None:
         assert "R7 semantic verdicting is driven by the accepted `policy.supplychain` report after `R4` structural acceptance." in text
         assert running_docs_meaning in text
         assert running_docs_accounting in text
-        assert shipped_run_binding_explicit in text
-        assert shipped_run_binding_shorthand in text
-        assert evaluated_revision_guard in text
+        assert running_owner_note in text
+        assert running_ingress in text
+        assert running_manual_boundary in text
+        assert running_member_guard in text
+        assert running_toolchain_only_path in text
+        assert running_tolerances_only_path in text
         assert reserved_main in text
 
 

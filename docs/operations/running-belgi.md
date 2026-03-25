@@ -44,14 +44,16 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
   1. CI env (`BELGI_BASE_SHA`, then `GITHUB_BASE_SHA`)
   2. upstream merge-base (`merge-base(HEAD, @{u})`)
   3. explicit `--base-revision <40-hex SHA>`
-- use `--toolchain-set-ref <object_id>=<repo-relative-path>` to bind an authoritative ToolchainSet object into `LockedSpec.environment_envelope.toolchain_set_ref` on the same shipped run spine
+- `docs/operations/cli.md` owns the exact shipped `belgi run` flag syntax and examples for ToolchainSet/Tolerances ingress
+- on the shipped `belgi run` spine, explicit ToolchainSet/Tolerances refs are pre-lock operator inputs accepted only at the matching current-run paths under `.belgi/runs/<run_id>/inputs/environment/`, and BELGI stages them into locked/store authority before C1
 - repeat `--toolchain-ref <object_id>=<repo-relative-path>` only as shorthand when you want `belgi run` to generate that ToolchainSet authority for you
 - do not mix `--toolchain-set-ref` with shorthand `--toolchain-ref` values
-- ToolchainSet refs and shorthand declaration paths must already exist in the evaluated revision truth envelope, and are not Operator Anchors
+- shorthand declaration paths, and ToolchainSet member declaration paths inside the referenced object, must still exist in the evaluated revision truth envelope
 - `toolchain.main` is reserved for the built-in generated run toolchain input
-- use `--tolerances-ref <object_id>=<repo-relative-path>` to bind a real locked tolerances object into `LockedSpec.tier.tolerances_ref` on the same shipped run spine
 - recommended object id: `tier.tolerances`
-- explicit tolerances refs must already exist in the evaluated revision truth envelope, are not Operator Anchors, and if omitted are replaced by a canonically generated tolerances object from the selected tier pack
+- explicit tolerances refs are not Operator Anchors, and if omitted are replaced by a canonically generated tolerances object from the selected tier pack
+- `Tolerances.tier_id` must match the selected tier
+- for the selected tier, explicit tolerances `scope_budgets.max_touched_files` and `scope_budgets.max_loc_delta` values may equal or tighten the selected tier ceilings, but BELGI rejects wider values
 - numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy `IntentSpec.scope.max_*` fields with migration guidance to move them into Tolerances
 - If none of the above can resolve a valid base revision, `belgi run` fails closed with `USER_ERROR (20)`.
 
@@ -121,20 +123,21 @@ Recommended shared-control examples:
   - `.belgi/runs/<run_id>/inputs/anchors/signing/seal_private_key.hex`
   - `.belgi/runs/<run_id>/inputs/anchors/signing/seal_signature.b64`
 
-These are recommended operator paths only. The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location.
-
 ### 0.3 ToolchainSet (shared run object, not an Operator Anchor)
-Use the authoritative shipped `belgi run` object ref:
+Shipped CLI ref (owner: `docs/operations/cli.md`):
 - `--toolchain-set-ref <object_id>=<repo-relative-path>`
 
-Recommended run-local target:
+Accepted current-run target:
 - `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json`
+- this is the only accepted explicit `belgi run` ingress path for ToolchainSet
 
 ToolchainSet meaning:
+- explicit ToolchainSet refs on `belgi run` are pre-lock operator inputs
+- BELGI stages the referenced ToolchainSet into locked/store authority before C1; later stages consume the locked/store copy, not ambient workspace bytes
 - this binds into `LockedSpec.environment_envelope.toolchain_set_ref`
 - it is the first-class operator declaration object for dependency/toolchain accounting refs
 - `LockedSpec.environment_envelope.pinned_toolchain_refs[]` remains the normalized execution ref list derived from that ToolchainSet plus built-in `toolchain.main`
-- the referenced ToolchainSet file must already exist at the evaluated revision
+- ToolchainSet member declaration paths inside the referenced object must still exist at the evaluated revision
 - `toolchain.main` is reserved for the built-in generated run toolchain input and is never operator-declared inside ToolchainSet
 - this is not an Operator Anchor
 
@@ -145,18 +148,22 @@ Shorthand still available:
 - shorthand paths must already exist at the evaluated revision
 
 ### 0.4 Tolerances (shared run object, not an Operator Anchor)
-Use singular shipped `belgi run` input:
+Shipped CLI ref (owner: `docs/operations/cli.md`):
 - `--tolerances-ref <object_id>=<repo-relative-path>`
 
 Recommended object id:
 - `tier.tolerances`
 
-Recommended run-local target:
+Accepted current-run target:
 - `.belgi/runs/<run_id>/inputs/environment/tolerances.json`
+- this is the only accepted explicit `belgi run` ingress path for Tolerances
 
 Boundary:
+- explicit Tolerances refs on `belgi run` are pre-lock operator inputs
+- BELGI stages the referenced Tolerances object into locked/store authority before C1; later stages consume the locked/store copy, not ambient workspace bytes
 - this binds into `LockedSpec.tier.tolerances_ref`
-- the referenced file must already exist at the evaluated revision
+- `Tolerances.tier_id` must match the selected tier
+- for the selected tier, `scope_budgets.max_touched_files` and `scope_budgets.max_loc_delta` may equal or tighten the selected tier ceilings, but BELGI rejects wider values
 - if omitted, orchestration generates the canonical tolerances object from the selected tier pack and locks that generated object automatically
 - tier-pack scope budgets remain the authoritative ceilings
 - numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy `IntentSpec.scope.max_*` fields with migration guidance
@@ -553,8 +560,9 @@ Deterministic verifier (MUST-level enforcement):
 - R7 semantic verdicting is driven by the accepted `policy.supplychain` report after `R4` structural acceptance.
 - Current shipped R7 producer uses the actual `base_revision -> evaluated_revision` diff and limits `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED` to bounded dependency/toolchain declaration paths plus declared ToolchainSet paths.
 - The current R7 accounting context is the declared `LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` set derived from the locked ToolchainSet plus built-in `toolchain.main`.
-- On the shipped CLI, use `belgi run --toolchain-set-ref <object_id>=<repo-relative-path>` for explicit ToolchainSet authority, or repeat shorthand `belgi run --toolchain-ref <object_id>=<repo-relative-path>` when you want `belgi run` to generate that ToolchainSet authority before lock.
-- Those explicit shipped-run refs must already exist in the evaluated revision truth envelope; local-only extras are rejected fail-closed.
+- Exact shipped `belgi run` flag syntax for this surface lives in `docs/operations/cli.md`; this manual keeps only the execution-truth boundary between explicit ToolchainSet/Tolerances refs and manual C1 `--toolchain-set` / `--tolerances` inputs.
+- On the shipped CLI, explicit ToolchainSet/Tolerances refs are pre-lock operator inputs accepted only at the matching current-run `.belgi/runs/<run_id>/inputs/environment/{toolchain-set.json,tolerances.json}` paths; BELGI stages them into locked/store authority before C1.
+- Shorthand `--toolchain-ref` declaration paths, and ToolchainSet member declaration paths inside the locked object, must still exist in the evaluated revision truth envelope.
 - R8 command success is satisfied only by a `belgi adversarial-scan` command record with `exit_code == 0`.
 - R8 semantic verdicting is driven by `adversarial_policy.findings_mode` after `R4` structural acceptance of `policy.adversarial_scan`.
 - Current shipped R8 producer uses changed Python lines from the actual `base_revision -> evaluated_revision` diff as the primary scan subject.

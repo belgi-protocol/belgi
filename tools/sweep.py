@@ -1119,11 +1119,21 @@ def check_cs_run_001(root: Path) -> InvariantResult:
             "--toolchain-set-ref <object_id>=<repo-relative-path>",
             "--toolchain-ref <object_id>=<repo-relative-path>",
             "--tolerances-ref <object_id>=<repo-relative-path>",
+            "the referenced ToolchainSet file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json`",
+            "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain declaration surfaces in the evaluated revision truth envelope",
+            "the referenced Tolerances file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/tolerances.json`",
+            "`Tolerances.tier_id` must match the selected tier",
+            "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
             "do not mix `--toolchain-set-ref` with shorthand `--toolchain-ref` values",
             "`toolchain.main` is reserved for the built-in generated run toolchain input",
         ],
         "belgi/cli_app/parser/run.py": ['"--toolchain-set-ref"', '"--toolchain-ref"', '"--tolerances-ref"'],
         "belgi/cli_app/commands/run.py": [
+            "def _resolve_run_environment_object_ref(",
+            "must point to the current run canonical input:",
+            "`Tolerances.tier_id` must match the selected tier",
+            "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
+            "stays within that selected tier",
             "do not mix --toolchain-set-ref with shorthand --toolchain-ref values",
             "--toolchain-ref id `toolchain.main` is reserved for the built-in run toolchain input",
             "--toolchain-set-ref id `toolchain.main` is reserved for the built-in run toolchain input",
@@ -1179,6 +1189,8 @@ def check_cs_run_002(root: Path) -> InvariantResult:
                     "--toolchain-set-ref env.toolchains=.belgi/runs/run-001/inputs/environment/toolchain-set.json",
                     "--tolerances-ref tier.tolerances=.belgi/runs/run-001/inputs/environment/tolerances.json",
                     "Optional shared run object inputs:",
+                    "`Tolerances.tier_id` must match the selected tier.",
+                    "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
                 ],
             ),
             "belgi/cli_app/commands/run.py::RUN.md(run-001)": (
@@ -1187,6 +1199,13 @@ def check_cs_run_002(root: Path) -> InvariantResult:
                     ".belgi/runs/run-001/inputs/environment/toolchain-set.json",
                     ".belgi/runs/run-001/inputs/environment/tolerances.json",
                     "Optional shared environment objects:",
+                    "cat > .belgi/runs/run-001/inputs/environment/toolchain-set.json <<'JSON'",
+                    "cat > .belgi/runs/run-001/inputs/environment/tolerances.json <<'JSON'",
+                    "--toolchain-set-ref env.toolchains=.belgi/runs/run-001/inputs/environment/toolchain-set.json",
+                    "--tolerances-ref tier.tolerances=.belgi/runs/run-001/inputs/environment/tolerances.json",
+                    "`Tolerances.tier_id` must match the selected tier.",
+                    "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
+                    "stays within that selected tier",
                 ],
             ),
         }
@@ -1215,12 +1234,15 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             ".belgi/runs/<run_id>/inputs/environment/toolchain-set.json",
             ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
             "`belgi run new`",
+            "this is the only accepted explicit `belgi run` ingress path for ToolchainSet",
+            "this is the only accepted explicit `belgi run` ingress path for Tolerances",
         ],
     }
     forbidden_docs = {
         "docs/operations/running-belgi.md": [
             ".belgi/runs/<run_id>/toolchain.json",
             ".belgi/runs/<run_id>/tolerances.json",
+            "The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location.",
         ]
     }
     for rel, needles in doc_targets.items():
@@ -2896,11 +2918,32 @@ def check_cs_ls_002(root: Path) -> InvariantResult:
         ),
         ("chain/logic/locked_object_schema.py", ["def load_locked_schema_object(", "resolve_storage_ref", "validate_schema("]),
         ("chain/logic/toolchain_set.py", ["load_locked_schema_object", "schemas/ToolchainSet.schema.json"]),
-        ("chain/logic/tolerances.py", ["load_locked_schema_object", "schemas/Tolerances.schema.json"]),
-        ("chain/logic/q_checks/q4_constraints_present.py", ["load_locked_tolerances"]),
+        (
+            "chain/logic/tolerances.py",
+            [
+                "load_locked_schema_object",
+                "schemas/Tolerances.schema.json",
+                "find_scope_budget_widening_against_selected_tier",
+            ],
+        ),
+        (
+            "chain/logic/q_checks/q4_constraints_present.py",
+            [
+                "load_locked_tolerances",
+                "find_scope_budget_widening_against_selected_tier",
+                "widens selected tier ceilings",
+            ],
+        ),
         ("chain/logic/q_checks/q5_environment_envelope.py", ["load_locked_toolchain_set"]),
         ("chain/logic/r_checks/r2_scope_budgets.py", ["load_locked_tolerances", "locked Tolerances object only"]),
-        ("docs/operations/running-belgi.md", ["--toolchain-set-ref", "--tolerances-ref"]),
+        (
+            "docs/operations/running-belgi.md",
+            [
+                "--toolchain-set-ref",
+                "--tolerances-ref",
+                "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
+            ],
+        ),
     ]
     for rel, needles in string_expectations:
         path = repo_path(root, rel)

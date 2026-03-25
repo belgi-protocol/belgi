@@ -69,6 +69,16 @@ def test_workflow_docs_define_stable_required_gate_contexts() -> None:
     assert "Without `proof:full`, that gate remains NO-GO and the exact PR-head proof is not satisfied." in text
 
 
+def test_workflow_docs_state_current_tracked_branch_model() -> None:
+    text = _read_text("docs/operations/workflows.md")
+
+    assert "This surface fits the main-only tracked workflow where short-lived work branches open pull requests directly to `main`." in text
+    assert "- Protect `main` with required status checks before merge." in text
+    assert "- Use short-lived work branches for tracked work and open pull requests directly to `main`." in text
+    assert "- Name work branches as `work/<lisp-case-description>` so the branch still reads like the patch objective." in text
+    assert "Protect `main` and `dev` with required status checks before merge." not in text
+
+
 def test_workflow_files_define_gate_jobs_and_current_topology() -> None:
     repo_text = _read_text(".github/workflows/repository-verification.yml")
     pr_text = _read_text(".github/workflows/pull-request-proof.yml")

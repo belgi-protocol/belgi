@@ -32,8 +32,8 @@ def add_run_parsers(subparsers: Any) -> RunRegistry:
         "--toolchain-set-ref",
         default=None,
         help=(
-            "Optional authoritative ToolchainSet object ref in "
-            "<object_id>=<repo-relative-path> form on the shared run spine."
+            "Optional pre-lock ToolchainSet object ref in <object_id>=<repo-relative-path> form; "
+            "accepted only as the current run's canonical inputs/environment/toolchain-set.json path."
         ),
     )
     p_run.add_argument(
@@ -49,8 +49,8 @@ def add_run_parsers(subparsers: Any) -> RunRegistry:
         "--tolerances-ref",
         default=None,
         help=(
-            "Optional locked tolerances object ref in "
-            "<object_id>=<repo-relative-path> form on the shared run spine."
+            "Optional pre-lock Tolerances object ref in <object_id>=<repo-relative-path> form; "
+            "accepted only as the current run's canonical inputs/environment/tolerances.json path."
         ),
     )
     p_run.add_argument(

@@ -327,16 +327,16 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
 - deterministic procedure:
   1) Verify `constraints.allowed_paths` is non-empty.
   2) Verify `constraints.forbidden_paths` is present (may be empty).
-  3) Resolve `LockedSpec.tier.tolerances_ref` and verify the locked tolerances object is schema-valid, hash-bound, and aligned to the selected tier ceilings.
+  3) Resolve `LockedSpec.tier.tolerances_ref` and verify the locked tolerances object is schema-valid, hash-bound, and aligned to the selected tier.
   4) Require `Tolerances.tier_id == LockedSpec.tier.tier_id`.
-  5) Require `Tolerances.scope_budgets.max_touched_files` and `Tolerances.scope_budgets.max_loc_delta` to match the selected tier ceilings.
+  5) Require `Tolerances.scope_budgets.max_touched_files` and `Tolerances.scope_budgets.max_loc_delta` to be equal to or stricter than the selected tier ceilings; reject any wider value.
 - failure category:
   - `FQ-CONSTRAINTS-MISSING` when required path constraints are absent.
   - `FQ-SCHEMA-LOCKEDSPEC-INVALID` when the locked Tolerances object is invalid.
 - required evidence kinds: `policy_report`, `schema_validation`
 - remediation.next_instruction template:
   - `Do add required constraints (missing_field) to LockedSpec then re-run Q.`
-  - `Do lock a valid tier.tolerances_ref object for the selected tier ceilings, then re-run Q.`
+  - `Do lock a valid tier.tolerances_ref object for the selected tier that stays within the selected tier ceilings, then re-run Q.`
 
 ### Q-CONSTRAINT-001 — Constraints path prefixes are normalized (repo-relative)
 - check_id: `Q-CONSTRAINT-001`
