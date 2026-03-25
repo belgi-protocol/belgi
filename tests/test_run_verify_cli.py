@@ -2739,6 +2739,12 @@ def test_tier0_run_accepts_run_local_tolerances_ref_on_shipped_spine(tmp_path: P
     run_id = "run-local-tolerances-001"
     assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic run-local tolerances ingress test.",
+        tier_id="tier-0",
+    )
 
     tolerances_rel = f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
     _write_local_json_object(
@@ -2763,7 +2769,7 @@ def test_tier0_run_accepts_run_local_tolerances_ref_on_shipped_spine(tmp_path: P
             "--tier",
             "tier-0",
             "--intent-spec",
-            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            intent_path.relative_to(repo).as_posix(),
             "--base-revision",
             base_sha,
             "--tolerances-ref",
@@ -2815,6 +2821,12 @@ def test_tier0_run_accepts_stricter_run_local_tolerances_ref_on_shipped_spine(tm
     run_id = "run-local-tolerances-tighten-001"
     assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic stricter tolerances ingress test.",
+        tier_id="tier-0",
+    )
 
     tolerances_rel = f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
     _write_local_json_object(
@@ -2839,7 +2851,7 @@ def test_tier0_run_accepts_stricter_run_local_tolerances_ref_on_shipped_spine(tm
             "--tier",
             "tier-0",
             "--intent-spec",
-            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            intent_path.relative_to(repo).as_posix(),
             "--base-revision",
             base_sha,
             "--tolerances-ref",
@@ -3071,6 +3083,12 @@ def test_tier0_run_accepts_run_local_toolchain_set_ref_on_shipped_spine(tmp_path
     run_id = "run-local-toolchain-set-001"
     assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic run-local ToolchainSet ingress test.",
+        tier_id="tier-0",
+    )
 
     toolchain_set_rel = f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json"
     _write_local_json_object(
@@ -3092,7 +3110,7 @@ def test_tier0_run_accepts_run_local_toolchain_set_ref_on_shipped_spine(tmp_path
             "--tier",
             "tier-0",
             "--intent-spec",
-            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            intent_path.relative_to(repo).as_posix(),
             "--base-revision",
             base_sha,
             "--toolchain-set-ref",
@@ -3205,6 +3223,12 @@ def test_tier0_run_rejects_wider_run_local_tolerances_ref_on_shipped_spine(tmp_p
     run_id = "run-local-tolerances-wide-001"
     assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic wider tolerances rejection test.",
+        tier_id="tier-0",
+    )
 
     tolerances_rel = f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
     _write_local_json_object(
@@ -3229,7 +3253,7 @@ def test_tier0_run_rejects_wider_run_local_tolerances_ref_on_shipped_spine(tmp_p
             "--tier",
             "tier-0",
             "--intent-spec",
-            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            intent_path.relative_to(repo).as_posix(),
             "--base-revision",
             base_sha,
             "--tolerances-ref",
@@ -3257,6 +3281,12 @@ def test_tier0_run_rejects_mismatched_tier_run_local_tolerances_ref_on_shipped_s
     run_id = "run-local-tolerances-tier-mismatch-001"
     assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
+    intent_path = _rewrite_shared_run_intent_for_empty_doc_impact(
+        repo,
+        run_id=run_id,
+        note="No documentation updates are required for this deterministic tier mismatch test.",
+        tier_id="tier-0",
+    )
 
     tolerances_rel = f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
     _write_local_json_object(
@@ -3281,7 +3311,7 @@ def test_tier0_run_rejects_mismatched_tier_run_local_tolerances_ref_on_shipped_s
             "--tier",
             "tier-0",
             "--intent-spec",
-            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            intent_path.relative_to(repo).as_posix(),
             "--base-revision",
             base_sha,
             "--tolerances-ref",

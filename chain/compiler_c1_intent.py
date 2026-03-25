@@ -752,15 +752,13 @@ def main(argv: list[str] | None = None) -> int:
             pb_ref = _validate_repo_rel(_safe_relpath(repo_root, pb_out_path))
         tol_id, tol_ref = _parse_kv_pair(str(args.tolerances), name="--tolerances")
         tolerances_ref = _object_ref(repo_root, object_id=tol_id, storage_ref=tol_ref)
-        tolerances_obj = _load_validated_object_payload(
+        _load_validated_object_payload(
             repo_root=repo_root,
             protocol=protocol,
             storage_ref=tol_ref,
             schema_rel="schemas/Tolerances.schema.json",
             label="Tolerances",
         )
-        if str(tolerances_obj.get("tier_id") or "").strip() != tier_id:
-            raise _UserInputError("Tolerances.tier_id must match IntentSpec.tier.tier_pack_id")
 
         toolchain_pairs = [str(x) for x in (args.toolchain_ref or [])]
         if len(toolchain_pairs) == 0:
