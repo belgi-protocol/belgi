@@ -16,17 +16,18 @@ from typing import Any
 
 import pytest
 
+from chain.logic.s_checks import s2_objectref_binding
+from chain.logic.s_checks.context import SCheckContext
+from tests.helpers import builders
+from tests.helpers.repo_imports import import_fresh_protocol_pack_surface
+
 pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-for _k in list(sys.modules.keys()):
-    if _k == "belgi" or _k.startswith("belgi."):
-        del sys.modules[_k]
 
-import builders
-from belgi.protocol.pack import MANIFEST_FILENAME, build_manifest_bytes
-from chain.logic.s_checks import s2_objectref_binding
-from chain.logic.s_checks.context import SCheckContext
+_PACK_SURFACE = import_fresh_protocol_pack_surface()
+MANIFEST_FILENAME = _PACK_SURFACE.manifest_filename
+build_manifest_bytes = _PACK_SURFACE.build_manifest_bytes
 
 
 def _taxonomy_ids(root: Path) -> set[str]:

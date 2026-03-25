@@ -12,10 +12,12 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILTIN_PACK_ROOT = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
 MANIFEST_FILENAME = "ProtocolPackManifest.json"
 
@@ -24,16 +26,10 @@ __all__ = [
     "build_r_repo",
     "build_s_repo",
     "builtin_tiers",
-    "copy_builtin_protocol_pack",
     "init_git_repo",
-    "object_ref",
-    "read_json",
     "run_gate_q",
     "run_gate_r",
-    "structured_command",
     "sync_locked_spec_protocol_identity",
-    "tier_contract",
-    "write_bytes",
     "write_json",
     "write_text",
     "write_tiers_override",
@@ -42,6 +38,15 @@ __all__ = [
 
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _current_belgi_version() -> str:
+    try:
+        return pkg_version("belgi")
+    except PackageNotFoundError:
+        belgi_version = (REPO_ROOT / "VERSION").read_text(encoding="utf-8", errors="strict").strip()
+        assert belgi_version, "VERSION file is empty"
+        return belgi_version
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -150,21 +155,24 @@ def _install_synthetic_gitignore(repo_root: Path) -> None:
     )
 
 
+def _flush_synthetic_repo_diff_target(
+    repo_root: Path, current_rel: str | None, added_lines: list[str]
+) -> None:
+    if current_rel is None:
+        return
+    final_bytes = ("\n".join(added_lines) + "\n").encode("utf-8", errors="strict")
+    write_bytes(repo_root / Path(*current_rel.split("/")), final_bytes)
+
+
 def _apply_synthetic_repo_diff_targets(repo_root: Path) -> None:
     for diff_path in sorted(repo_root.rglob("repo.diff.patch"), key=lambda path: path.as_posix()):
         text = diff_path.read_text(encoding="utf-8", errors="strict")
         current_rel: str | None = None
         added_lines: list[str] = []
 
-        def flush() -> None:
-            if current_rel is None:
-                return
-            final_bytes = ("\n".join(added_lines) + "\n").encode("utf-8", errors="strict")
-            write_bytes(repo_root / Path(*current_rel.split("/")), final_bytes)
-
         for line in text.splitlines():
             if line.startswith("diff --git "):
-                flush()
+                _flush_synthetic_repo_diff_target(repo_root, current_rel, added_lines)
                 parts = line.split()
                 if len(parts) < 4:
                     raise AssertionError(f"unexpected synthetic diff header: {line}")
@@ -180,7 +188,7 @@ def _apply_synthetic_repo_diff_targets(repo_root: Path) -> None:
             if line.startswith("+"):
                 added_lines.append(line[1:])
 
-        flush()
+        _flush_synthetic_repo_diff_target(repo_root, current_rel, added_lines)
 
 
 def structured_command(subcommand: str, *, exit_code: int = 0) -> dict[str, Any]:
@@ -371,7 +379,7 @@ def build_q_repo(
 
     locked_spec: dict[str, Any] = {
         "schema_version": "1.0.0",
-        "belgi_version": "1.6.0",
+        "belgi_version": _current_belgi_version(),
         "run_id": run_id,
         "compilation": {
             "compiled_at": "1970-01-01T00:00:00Z",

@@ -293,7 +293,7 @@ Replay Integrity means an independent verifier can re-run deterministic verifica
 
 <a id="wheel-vs-repo-local"></a>
 ### Wheel vs Repo-Local (Canonical)
-Wheel-distributed BELGI publish boundary is the module-prefix set `{belgi/, chain/, wrapper/, tools/}` plus wheel metadata (`*.dist-info/`). This boundary is SSOT for v1.4.x and is mechanically enforced.
+Wheel-distributed BELGI publish boundary is the module-prefix set `{belgi/, chain/, wrapper/, tools/}` plus wheel metadata (`*.dist-info/`). This boundary is SSOT and is mechanically enforced.
 
 Wheel content assertions MUST:
 - build the wheel deterministically,

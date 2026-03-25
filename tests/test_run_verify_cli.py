@@ -6,24 +6,20 @@ import json
 import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-for _k in list(sys.modules.keys()):
-    if _k == "belgi" or _k.startswith("belgi."):
-        del sys.modules[_k]
+from tests.helpers.repo_imports import import_fresh_belgi_cli_surface
 
-import belgi.cli as belgi_cli
-from belgi.cli import main as belgi_main
-from belgi.core import run_orchestrator
-from belgi.core.schema import validate_schema
-from belgi.protocol.pack import get_builtin_protocol_context
-from belgi.trust_anchor import load_pinned_trust_anchor
+REPO_ROOT = Path(__file__).resolve().parents[1]
+_CLI_SURFACE = import_fresh_belgi_cli_surface()
+belgi_cli = _CLI_SURFACE.cli
+belgi_main = _CLI_SURFACE.main
+run_orchestrator = _CLI_SURFACE.run_orchestrator
+validate_schema = _CLI_SURFACE.validate_schema
+get_builtin_protocol_context = _CLI_SURFACE.get_builtin_protocol_context
+load_pinned_trust_anchor = _CLI_SURFACE.load_pinned_trust_anchor
 
 _FIXED_TIER2_SHARED_PATH_ANCHOR_UTC = "2000-01-01T00:00:00Z"
 
@@ -285,21 +281,44 @@ def _ed25519_pubkey_hex(seed_hex: str) -> str:
 
 
 def _rewrite_shared_run_intent_for_empty_doc_impact(
-    repo: Path, *, run_id: str, note: str, tier_id: str = "tier-2"
+    repo: Path,
+    *,
+    run_id: str,
+    note: str,
+    tier_id: str = "tier-2",
+    allowed_dirs: list[str] | None = None,
 ) -> Path:
+    def _render_yaml_list(items: list[str]) -> str:
+        if not items:
+            return " []"
+        return "\n" + "\n".join(f'    - "{item}"' for item in items)
+
     intent_path = repo / ".belgi" / "runs" / run_id / "inputs" / "intent" / "IntentSpec.core.md"
     text = intent_path.read_text(encoding="utf-8", errors="strict")
-    updated = re.sub(
+    updated, tier_count = re.subn(
         r'tier:\n  tier_pack_id: "[^"]+"\n',
-        f'tier:\n  tier_pack_id: "{tier_id}"\n',
+        f"tier:\n  tier_pack_id: {json.dumps(tier_id)}\n",
         text,
         count=1,
     )
-    updated = updated.replace(
-        'doc_impact:\n  required_paths:\n    - "README.md"\n  note_on_empty: "Docs updated to reflect behavior change."\n',
-        'doc_impact:\n  required_paths: []\n'
-        f'  note_on_empty: "{note}"\n',
+    assert tier_count == 1
+    updated, doc_count = re.subn(
+        r'(?ms)^doc_impact:\n  required_paths:(?: \[\]|(?:\n(?: {4}- "[^\n]*"\n?)+))\n  note_on_empty: "[^\n]*"\n?',
+        "doc_impact:\n"
+        "  required_paths: []\n"
+        f"  note_on_empty: {json.dumps(note)}\n",
+        updated,
+        count=1,
     )
+    assert doc_count == 1
+    if allowed_dirs is not None:
+        updated, allowed_count = re.subn(
+            r'(?m)^  allowed_dirs:(?: \[\]|(?:\n(?: {4}- "[^\n]*"\n?)+))',
+            "  allowed_dirs:" + _render_yaml_list(list(allowed_dirs)),
+            updated,
+            count=1,
+        )
+        assert allowed_count == 1
     assert updated != text
     intent_path.write_text(updated, encoding="utf-8", errors="strict", newline="\n")
     return intent_path
@@ -2560,19 +2579,7 @@ def test_tier0_fails_r7_when_changed_declaration_surface_is_unaccounted(tmp_path
         run_id=run_id,
         note="No documentation updates are required for this deterministic R7 accounting test.",
         tier_id="tier-0",
-    )
-    intent_text = intent_path.read_text(encoding="utf-8", errors="strict")
-    updated_intent = intent_text.replace(
-        '  allowed_dirs:\n    - "src/"\n',
-        '  allowed_dirs:\n    - "requirements-dev.txt"\n',
-        1,
-    )
-    assert updated_intent != intent_text
-    intent_path.write_text(
-        updated_intent,
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
+        allowed_dirs=["requirements-dev.txt"],
     )
 
     _unset_upstream_if_present(repo)
@@ -2743,19 +2750,7 @@ def test_tier0_run_toolchain_ref_accounts_for_changed_declaration_surface(tmp_pa
         run_id=run_id,
         note="No documentation updates are required for this deterministic R7 accounting test.",
         tier_id="tier-0",
-    )
-    intent_text = intent_path.read_text(encoding="utf-8", errors="strict")
-    updated_intent = intent_text.replace(
-        '  allowed_dirs:\n    - "src/"\n',
-        '  allowed_dirs:\n    - "requirements-dev.txt"\n',
-        1,
-    )
-    assert updated_intent != intent_text
-    intent_path.write_text(
-        updated_intent,
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
+        allowed_dirs=["requirements-dev.txt"],
     )
 
     _unset_upstream_if_present(repo)
