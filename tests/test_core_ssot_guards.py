@@ -3,31 +3,20 @@ from __future__ import annotations
 import ast
 import copy
 import json
-import sys
 from pathlib import Path
 
 import pytest
+
+from tests.helpers.repo_imports import import_fresh_core_surface
 
 pytestmark = pytest.mark.repo_local
 
 
 def _import_local_core() -> tuple[object, object]:
-    """Force imports to resolve from this repo, not site-packages."""
-
-    root = _repo_root()
-    sys.path.insert(0, str(root))
-    # If an installed 'belgi' is already imported, nuke it so local wins.
-    sys.modules.pop("belgi", None)
-
-    from belgi.core.jail import (  # type: ignore
-        normalize_repo_rel,
-        normalize_repo_rel_path,
-    )
-    from belgi.core.schema import parse_rfc3339, validate_schema  # type: ignore
-
+    core = import_fresh_core_surface()
     return (
-        (normalize_repo_rel, normalize_repo_rel_path),
-        (parse_rfc3339, validate_schema),
+        (core.normalize_repo_rel, core.normalize_repo_rel_path),
+        (core.parse_rfc3339, core.validate_schema),
     )
 
 
