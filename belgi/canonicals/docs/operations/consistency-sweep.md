@@ -477,12 +477,14 @@ Canonical trigger:
   - PASS if docs, parser, and command enforcement agree.
   - FAIL otherwise.
 
-#### CS-RUN-002 — `run new` guidance promotes authoritative environment inputs
+#### CS-RUN-002 — `run new` guidance and non-owner run docs stay owner-bounded
 - invariant_id: CS-RUN-002
-- statement: Operator-visible `belgi run new` guidance MUST advertise authoritative environment inputs under `.belgi/runs/<run_id>/inputs/environment/`, not stale placeholders.
+- statement: Operator-visible `belgi run new` guidance MUST advertise authoritative environment inputs under `.belgi/runs/<run_id>/inputs/environment/`, and non-owner operator docs MUST point exact shipped CLI syntax/examples back to `docs/operations/cli.md` instead of duplicating full flag catalogs.
 - source-of-truth (file/section):
   - belgi/cli_app/commands/run.py
+  - docs/operations/cli.md
   - docs/operations/running-belgi.md
+  - docs/operations/operator-anchors.md
 - check procedure (deterministic):
   1) Render the operator-visible guidance emitted from `belgi/cli_app/commands/run.py` for the canonical examples (`workspace_rel=".belgi"`, `run_id="run-001"`), then confirm the rendered `README.md` / `RUN.md` guidance advertises:
      - `.belgi/runs/run-001/inputs/environment/toolchain-set.json`
@@ -492,10 +494,18 @@ Canonical trigger:
      - `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json`
      - `.belgi/runs/<run_id>/inputs/environment/tolerances.json`
      - `belgi run new` as the path that seeds those operator-visible inputs
-  3) Confirm neither the rendered guidance nor `docs/operations/running-belgi.md` advertise stale root-level `.belgi/runs/<run_id>/toolchain.json` or `.belgi/runs/<run_id>/tolerances.json` placeholders.
+     - `docs/operations/cli.md` as the owner for exact shipped `belgi run` syntax/examples
+     - `docs/operations/operator-anchors.md` as the owner for anchor classes and file boundaries
+     - the manual-versus-shipped boundary between current-run `.belgi/.../inputs/environment/` object staging and manual C1 `--toolchain-set` / `--tolerances` inputs
+  3) Confirm `docs/operations/operator-anchors.md` teaches:
+     - `.belgi/runs/<run_id>/inputs/anchors/`
+     - `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`
+     - `docs/operations/cli.md` as the owner for exact Tier-2/Tier-3 shipped CLI syntax/examples
+     - the `genesis_seal` / `TrustAnchor.json` non-anchor boundary
+  4) Confirm neither the rendered guidance nor the non-owner docs advertise stale root-level `.belgi/runs/<run_id>/toolchain.json` or `.belgi/runs/<run_id>/tolerances.json` placeholders, and confirm the non-owner docs do not restate full shipped `belgi run` flag catalogs or full Tier-2/Tier-3 command examples.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
-  - PASS if generated guidance and docs both teach authoritative environment inputs only.
+  - PASS if generated guidance teaches authoritative environment inputs, and the non-owner docs stay pointer-bounded without contradicting the owner CLI surface.
   - FAIL otherwise.
 
 #### CS-SCHEMA-001 — Schema catalog claims match ToolchainSet/Tolerances loader truth

@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.4 — 2026-03-25
+
+### Summary
+Patch release resetting shipped operator-doc ownership so one owner-of-record carries the run contract and non-owner docs become pointer-bounded.
+
+### Changed
+- Made `docs/operations/cli.md` the sole tracked owner of shipped `belgi run` flags, accepted path examples, and operator quickstart for the shared run spine.
+- Reduced `docs/operations/running-belgi.md` to manual `python -m chain.*` reference, stage order, and replay/evidence notes while keeping only the bounded shipped-vs-manual execution truths it still needs.
+- Reduced `docs/operations/operator-anchors.md` to anchor classes, handling, and workspace/file-boundary guidance, removing the repeated full Tier-2/Tier-3 `belgi run` command examples and exact flag catalog posture.
+- Realigned consistency-sweep and contract guards so owner docs keep exact-claim protection while non-owner docs are checked for required pointers, useful boundary notes, and absence of contradictory or owner-competing wording.
+
+### Notes
+- This patch changes documentation authority and guard scope only; runtime, schema, tier, and gate semantics are unchanged.
+
 ## 1.6.3 — 2026-03-25
 
 ### Summary

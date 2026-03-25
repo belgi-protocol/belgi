@@ -40,6 +40,7 @@ _C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
     ("docs/operations/cli.md", "belgi/canonicals/docs/operations/cli.md"),
     ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
     ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
+    ("docs/operations/operator-anchors.md", "belgi/canonicals/docs/operations/operator-anchors.md"),
     ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
     ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
     ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
@@ -1168,7 +1169,7 @@ def check_cs_run_001(root: Path) -> InvariantResult:
 
 
 def check_cs_run_002(root: Path) -> InvariantResult:
-    """CS-RUN-002 — run new guidance promotes authoritative environment inputs, not placeholders."""
+    """CS-RUN-002 — run new guidance and non-owner operator docs stay owner-bounded."""
 
     violations: list[str] = []
     command_path = repo_path(root, "belgi/cli_app/commands/run.py")
@@ -1234,8 +1235,19 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             ".belgi/runs/<run_id>/inputs/environment/toolchain-set.json",
             ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
             "`belgi run new`",
-            "this is the only accepted explicit `belgi run` ingress path for ToolchainSet",
-            "this is the only accepted explicit `belgi run` ingress path for Tolerances",
+            "`docs/operations/cli.md` owns exact shipped `belgi run` flags, accepted path examples, and operator quickstart",
+            "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and workspace/file-boundary guidance",
+            "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs",
+        ],
+        "docs/operations/operator-anchors.md": [
+            ".belgi/runs/<run_id>/inputs/anchors/approvals/",
+            ".belgi/runs/<run_id>/inputs/anchors/keys/",
+            ".belgi/runs/<run_id>/inputs/anchors/signing/",
+            ".belgi/runs/<run_id>/inputs/evidence/genesis_seal.json",
+            "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples",
+            "this guide owns anchor classes, handling, and workspace/file-boundary guidance",
+            "`genesis_seal` remains Tier-3 evidence.",
+            "`TrustAnchor.json` remains the canonical Tier-3 authority artifact.",
         ],
     }
     forbidden_docs = {
@@ -1243,7 +1255,22 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             ".belgi/runs/<run_id>/toolchain.json",
             ".belgi/runs/<run_id>/tolerances.json",
             "The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location.",
-        ]
+            "--toolchain-set-ref <object_id>=<repo-relative-path>",
+            "--tolerances-ref <object_id>=<repo-relative-path>",
+            "--attestation-pubkey-ref <object_id>=<repo-relative-path>",
+            "--seal-pubkey-ref <object_id>=<repo-relative-path>",
+            "--hotl-approval-ref <repo-relative-path>",
+            "--attestation-signing-key-ref <repo-relative-path>",
+            "--seal-private-key-ref <repo-relative-path>",
+            "--seal-signature-ref <repo-relative-path>",
+            "--genesis-seal-ref <repo-relative-path>",
+        ],
+        "docs/operations/operator-anchors.md": [
+            "belgi run \\",
+            "--repo .",
+            "--tier tier-2",
+            "--tier tier-3",
+        ],
     }
     for rel, needles in doc_targets.items():
         path = repo_path(root, rel)
@@ -1267,15 +1294,25 @@ def check_cs_run_002(root: Path) -> InvariantResult:
         return InvariantResult(
             "CS-RUN-002",
             "FAIL",
-            ["belgi/cli_app/commands/run.py", "docs/operations/running-belgi.md"],
-            "Keep run new guidance and operator docs anchored on authoritative inputs/environment ToolchainSet and Tolerances objects.",
+            [
+                "belgi/cli_app/commands/run.py",
+                "docs/operations/cli.md",
+                "docs/operations/running-belgi.md",
+                "docs/operations/operator-anchors.md",
+            ],
+            "Keep run new guidance authoritative, and keep non-owner operator docs pointer-bounded to the CLI owner instead of duplicating full shipped flag catalogs.",
             {"violations_sample": violations[:12], "violations_total": len(violations)},
         )
 
     return InvariantResult(
         "CS-RUN-002",
         "PASS",
-        ["belgi/cli_app/commands/run.py", "docs/operations/running-belgi.md"],
+        [
+            "belgi/cli_app/commands/run.py",
+            "docs/operations/cli.md",
+            "docs/operations/running-belgi.md",
+            "docs/operations/operator-anchors.md",
+        ],
         "",
     )
 
@@ -1663,6 +1700,7 @@ def check_cs_ev_001(root: Path) -> InvariantResult:
     docs = [
         "docs/operations/evidence-bundles.md",
         "tiers/tier-packs.md",
+        "docs/operations/cli.md",
         "docs/operations/running-belgi.md",
         "belgi/templates/DocsCompiler.template.md",
     ]
@@ -2937,11 +2975,18 @@ def check_cs_ls_002(root: Path) -> InvariantResult:
         ("chain/logic/q_checks/q5_environment_envelope.py", ["load_locked_toolchain_set"]),
         ("chain/logic/r_checks/r2_scope_budgets.py", ["load_locked_tolerances", "locked Tolerances object only"]),
         (
-            "docs/operations/running-belgi.md",
+            "docs/operations/cli.md",
             [
                 "--toolchain-set-ref",
                 "--tolerances-ref",
                 "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
+            ],
+        ),
+        (
+            "docs/operations/running-belgi.md",
+            [
+                "current-run ToolchainSet/Tolerances inputs are staged into locked/store authority before C1",
+                "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs",
             ],
         ),
     ]
@@ -2969,6 +3014,7 @@ def check_cs_ls_002(root: Path) -> InvariantResult:
                 "chain/logic/q_checks/q4_constraints_present.py",
                 "chain/logic/q_checks/q5_environment_envelope.py",
                 "chain/logic/r_checks/r2_scope_budgets.py",
+                "docs/operations/cli.md",
                 "docs/operations/running-belgi.md",
             ],
             "Keep ToolchainSet/Tolerances as first-class LockedSpec object authority in schema, C1, loaders, Gate Q/R consumers, and run docs, then rerun sweep.",
@@ -2991,6 +3037,7 @@ def check_cs_ls_002(root: Path) -> InvariantResult:
             "chain/logic/q_checks/q4_constraints_present.py",
             "chain/logic/q_checks/q5_environment_envelope.py",
             "chain/logic/r_checks/r2_scope_budgets.py",
+            "docs/operations/cli.md",
             "docs/operations/running-belgi.md",
         ],
         "",

@@ -35,6 +35,7 @@ _C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
     ("docs/operations/cli.md", "belgi/canonicals/docs/operations/cli.md"),
     ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
     ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
+    ("docs/operations/operator-anchors.md", "belgi/canonicals/docs/operations/operator-anchors.md"),
     ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
     ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
     ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),

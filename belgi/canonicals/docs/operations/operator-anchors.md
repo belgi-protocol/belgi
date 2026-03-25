@@ -5,6 +5,11 @@ Canonical term:
 
 This guide describes the shared operator-control surface used by shipped Tier-2/Tier-3 runs on the single `belgi run` backbone.
 
+Owner boundaries:
+- `docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples
+- `docs/operations/running-belgi.md` owns manual `python -m chain.*` stage order and replay/evidence notes
+- this guide owns anchor classes, handling, and workspace/file-boundary guidance
+
 ## 1) Classes
 
 Recommended workspace family:
@@ -51,41 +56,18 @@ Tier-3 note:
 - It is taught under `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`.
 - It is intentionally not part of the anchors family.
 
-## 4) HOTL Example
+## 4) Shipped CLI Pointer
 
-Recommended path:
-- `.belgi/runs/<run_id>/inputs/anchors/approvals/hotl_approval.json`
+This section keeps only the class-to-file boundary:
 
-Example CLI usage:
+| Surface | Shipped CLI family | Workspace boundary |
+|---|---|---|
+| approvals | approval-ref family (see `docs/operations/cli.md`) | `.belgi/runs/<run_id>/inputs/anchors/approvals/hotl_approval.json` |
+| keys | public-key ref family (see `docs/operations/cli.md`) | `.belgi/runs/<run_id>/inputs/anchors/keys/*.hex` |
+| signing | signing-key / seal-signature ref family (see `docs/operations/cli.md`) | `.belgi/runs/<run_id>/inputs/anchors/signing/*` |
+| Tier-3 evidence (not an anchor) | Tier-3 evidence ref family (see `docs/operations/cli.md`) | `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json` |
 
-```bash
-belgi run \
-  --repo . \
-  --tier tier-2 \
-  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
-  --base-revision "${BASE_SHA40}" \
-  --hotl-approval-ref .belgi/runs/run-001/inputs/anchors/approvals/hotl_approval.json
-```
-
-## 5) Public-Key Example
-
-Recommended paths:
-- `.belgi/runs/<run_id>/inputs/anchors/keys/attestation_pubkey.hex`
-- `.belgi/runs/<run_id>/inputs/anchors/keys/seal_pubkey.hex`
-
-Example CLI usage:
-
-```bash
-belgi run \
-  --repo . \
-  --tier tier-2 \
-  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
-  --base-revision "${BASE_SHA40}" \
-  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/anchors/keys/attestation_pubkey.hex \
-  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/anchors/keys/seal_pubkey.hex
-```
-
-## 6) Signing Models
+## 5) Signing Models
 
 Local signing key path:
 - use `--attestation-signing-key-ref` for the env attestation signer
@@ -102,28 +84,14 @@ Exactly one seal-signing input is allowed:
 - `--seal-private-key-ref`
 - `--seal-signature-ref`
 
-## 7) Tier-3 Evidence Boundary
+## 6) Tier-3 Evidence Boundary
 
 Recommended Tier-3 evidence path:
 - `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`
 
-Tier-3 example:
+Use `docs/operations/cli.md` for the full Tier-3 `belgi run` examples that combine these files on the shipped spine.
 
-```bash
-belgi run \
-  --repo . \
-  --tier tier-3 \
-  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
-  --base-revision "${BASE_SHA40}" \
-  --attestation-pubkey-ref env.attestation_pubkey=.belgi/runs/run-001/inputs/anchors/keys/attestation_pubkey.hex \
-  --seal-pubkey-ref env.seal_pubkey=.belgi/runs/run-001/inputs/anchors/keys/seal_pubkey.hex \
-  --hotl-approval-ref .belgi/runs/run-001/inputs/anchors/approvals/hotl_approval.json \
-  --attestation-signing-key-ref .belgi/runs/run-001/inputs/anchors/signing/attestation_signing_key.hex \
-  --seal-signature-ref .belgi/runs/run-001/inputs/anchors/signing/seal_signature.b64 \
-  --genesis-seal-ref .belgi/runs/run-001/inputs/evidence/genesis_seal.json
-```
-
-## 8) Verify And Replay Boundaries
+## 7) Verify And Replay Boundaries
 
 - `belgi verify` replays the stored run summaries, manifests, hashes, and gate outputs for the selected attempt.
 - `belgi verify` does not create missing HOTL approvals, public-key refs, signing refs, Tier-3 evidence inputs, or signatures.
