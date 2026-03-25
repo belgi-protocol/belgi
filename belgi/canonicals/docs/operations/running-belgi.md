@@ -52,6 +52,8 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
 - `toolchain.main` is reserved for the built-in generated run toolchain input
 - recommended object id: `tier.tolerances`
 - explicit tolerances refs are not Operator Anchors, and if omitted are replaced by a canonically generated tolerances object from the selected tier pack
+- `Tolerances.tier_id` must match the selected tier
+- for the selected tier, explicit tolerances `scope_budgets.max_touched_files` and `scope_budgets.max_loc_delta` values may equal or tighten the selected tier ceilings, but BELGI rejects wider values
 - numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy `IntentSpec.scope.max_*` fields with migration guidance to move them into Tolerances
 - If none of the above can resolve a valid base revision, `belgi run` fails closed with `USER_ERROR (20)`.
 
@@ -160,6 +162,8 @@ Boundary:
 - explicit Tolerances refs on `belgi run` are pre-lock operator inputs
 - BELGI stages the referenced Tolerances object into locked/store authority before C1; later stages consume the locked/store copy, not ambient workspace bytes
 - this binds into `LockedSpec.tier.tolerances_ref`
+- `Tolerances.tier_id` must match the selected tier
+- for the selected tier, `scope_budgets.max_touched_files` and `scope_budgets.max_loc_delta` may equal or tighten the selected tier ceilings, but BELGI rejects wider values
 - if omitted, orchestration generates the canonical tolerances object from the selected tier pack and locks that generated object automatically
 - tier-pack scope budgets remain the authoritative ceilings
 - numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy `IntentSpec.scope.max_*` fields with migration guidance

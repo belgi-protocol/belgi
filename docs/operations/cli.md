@@ -81,6 +81,8 @@ Optional shared run object inputs on any tier:
 - recommended object id: `tier.tolerances`
 - the referenced Tolerances file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/tolerances.json`
 - BELGI stages that Tolerances object into locked/store authority before C1; later stages consume the locked/store copy, not ambient workspace bytes
+- `Tolerances.tier_id` must match the selected tier
+- for the selected tier, `scope_budgets.max_touched_files` and `scope_budgets.max_loc_delta` may equal or tighten the selected tier ceilings, but BELGI rejects wider values
 - if omitted, `belgi run` materializes the canonical tolerances object from the selected tier pack and locks that generated object automatically
 - numeric scope budgets no longer live in `IntentSpec`; move any legacy `IntentSpec.scope.max_*` values into the Tolerances object
 - this is not an Operator Anchor

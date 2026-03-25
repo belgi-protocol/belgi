@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from belgi.protocol.pack import ProtocolContext
 
@@ -81,3 +81,45 @@ def load_locked_tolerances(
             field="scope_budgets.max_loc_delta",
         ),
     )
+
+
+def _widens_selected_tier_ceiling(*, actual: int | None, ceiling: int | None) -> bool:
+    if ceiling is None:
+        return False
+    if actual is None:
+        return True
+    return actual > ceiling
+
+
+def find_scope_budget_widening_against_selected_tier(
+    *,
+    locked_tolerances: LockedTolerances,
+    tier_params: Mapping[str, Any],
+) -> list[str]:
+    selected_touched = _require_optional_nonneg_int(
+        tier_params.get("scope_budgets.max_touched_files"),
+        field="selected tier scope_budgets.max_touched_files",
+    )
+    selected_loc = _require_optional_nonneg_int(
+        tier_params.get("scope_budgets.max_loc_delta"),
+        field="selected tier scope_budgets.max_loc_delta",
+    )
+
+    widening_errors: list[str] = []
+    if _widens_selected_tier_ceiling(
+        actual=locked_tolerances.max_touched_files,
+        ceiling=selected_touched,
+    ):
+        widening_errors.append(
+            "max_touched_files="
+            f"{locked_tolerances.max_touched_files!r} (selected tier ceiling {selected_touched!r})"
+        )
+    if _widens_selected_tier_ceiling(
+        actual=locked_tolerances.max_loc_delta,
+        ceiling=selected_loc,
+    ):
+        widening_errors.append(
+            "max_loc_delta="
+            f"{locked_tolerances.max_loc_delta!r} (selected tier ceiling {selected_loc!r})"
+        )
+    return widening_errors

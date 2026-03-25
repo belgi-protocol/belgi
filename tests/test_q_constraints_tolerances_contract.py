@@ -92,7 +92,29 @@ def test_q4_accepts_valid_locked_tolerances_object(tmp_path: Path) -> None:
     assert results[0].status == "PASS"
 
 
-def test_q4_rejects_locked_tolerances_object_that_mismatches_tier_ceilings(tmp_path: Path) -> None:
+def test_q4_accepts_locked_tolerances_object_that_tightens_selected_tier_ceilings(tmp_path: Path) -> None:
+    ctx = _build_ctx(
+        tmp_path=tmp_path / "q4_tighten_ok",
+        constraints={
+            "allowed_paths": ["src/"],
+            "forbidden_paths": ["secrets/"],
+        },
+        tolerances_obj={
+            "schema_version": "1.0.0",
+            "tier_id": "tier-1",
+            "scope_budgets": {
+                "max_touched_files": 10,
+                "max_loc_delta": 1000,
+            },
+        },
+    )
+
+    results = q4_constraints_present.run(ctx)
+    assert len(results) == 1
+    assert results[0].status == "PASS"
+
+
+def test_q4_rejects_locked_tolerances_object_that_widens_selected_tier_ceilings(tmp_path: Path) -> None:
     ctx = _build_ctx(
         tmp_path=tmp_path / "q4_widen_fail",
         constraints={
@@ -113,4 +135,31 @@ def test_q4_rejects_locked_tolerances_object_that_mismatches_tier_ceilings(tmp_p
     assert len(results) == 1
     assert results[0].status == "FAIL"
     assert results[0].category == "FQ-SCHEMA-LOCKEDSPEC-INVALID"
-    assert "does not match selected tier ceilings" in results[0].message
+    assert "widens selected tier ceilings" in results[0].message
+    assert "max_touched_files=99" in results[0].message
+    assert "max_loc_delta=9999" in results[0].message
+    assert "stays within the selected tier ceilings" in str(results[0].remediation_next_instruction or "")
+
+
+def test_q4_rejects_locked_tolerances_object_with_mismatched_tier_id(tmp_path: Path) -> None:
+    ctx = _build_ctx(
+        tmp_path=tmp_path / "q4_tier_mismatch",
+        constraints={
+            "allowed_paths": ["src/"],
+            "forbidden_paths": ["secrets/"],
+        },
+        tolerances_obj={
+            "schema_version": "1.0.0",
+            "tier_id": "tier-0",
+            "scope_budgets": {
+                "max_touched_files": 25,
+                "max_loc_delta": 2500,
+            },
+        },
+    )
+
+    results = q4_constraints_present.run(ctx)
+    assert len(results) == 1
+    assert results[0].status == "FAIL"
+    assert results[0].category == "FQ-SCHEMA-LOCKEDSPEC-INVALID"
+    assert "Locked tolerances object tier mismatch" in results[0].message

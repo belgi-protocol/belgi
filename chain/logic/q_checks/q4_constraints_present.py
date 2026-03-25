@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from chain.logic.base import CheckResult
-from chain.logic.tolerances import load_locked_tolerances
+from chain.logic.tolerances import (
+    find_scope_budget_widening_against_selected_tier,
+    load_locked_tolerances,
+)
 
 from .context import QCheckContext
 
@@ -70,7 +73,8 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
                 pointers=[str(ctx.locked_spec_path)],
                 category="FQ-SCHEMA-LOCKEDSPEC-INVALID",
                 remediation_next_instruction=(
-                    "Do lock a valid tier.tolerances_ref object for the selected tier ceilings, then re-run Q."
+                    "Do lock a valid tier.tolerances_ref object for the selected tier that stays within the "
+                    "selected tier ceilings, then re-run Q."
                 ),
             )
         ]
@@ -90,34 +94,27 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
                 pointers=[str(ctx.locked_spec_path), locked_tolerances.storage_ref],
                 category="FQ-SCHEMA-LOCKEDSPEC-INVALID",
                 remediation_next_instruction=(
-                    "Do lock a valid tier.tolerances_ref object for the selected tier ceilings, then re-run Q."
+                    "Do lock a valid tier.tolerances_ref object for the selected tier that stays within the "
+                    "selected tier ceilings, then re-run Q."
                 ),
             )
         ]
 
-    expected_touched = ctx.tier_params.get("scope_budgets.max_touched_files")
-    expected_loc = ctx.tier_params.get("scope_budgets.max_loc_delta")
-    tier_ceiling_errors: list[str] = []
-    if expected_touched != locked_tolerances.max_touched_files:
-        tier_ceiling_errors.append(
-            "max_touched_files="
-            f"{locked_tolerances.max_touched_files!r} (expected {expected_touched!r} from selected tier)"
-        )
-    if expected_loc != locked_tolerances.max_loc_delta:
-        tier_ceiling_errors.append(
-            "max_loc_delta="
-            f"{locked_tolerances.max_loc_delta!r} (expected {expected_loc!r} from selected tier)"
-        )
+    tier_ceiling_errors = find_scope_budget_widening_against_selected_tier(
+        locked_tolerances=locked_tolerances,
+        tier_params=ctx.tier_params,
+    )
     if tier_ceiling_errors:
         return [
             CheckResult(
                 check_id="Q4",
                 status="FAIL",
-                message="Locked tolerances object does not match selected tier ceilings: " + "; ".join(tier_ceiling_errors),
+                message="Locked tolerances object widens selected tier ceilings: " + "; ".join(tier_ceiling_errors),
                 pointers=[str(ctx.locked_spec_path), locked_tolerances.storage_ref],
                 category="FQ-SCHEMA-LOCKEDSPEC-INVALID",
                 remediation_next_instruction=(
-                    "Do lock a valid tier.tolerances_ref object for the selected tier ceilings, then re-run Q."
+                    "Do lock a valid tier.tolerances_ref object for the selected tier that stays within the "
+                    "selected tier ceilings, then re-run Q."
                 ),
             )
         ]
@@ -126,7 +123,10 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
         CheckResult(
             check_id="Q4",
             status="PASS",
-            message="Q4 satisfied: path constraints are present and the locked tolerances object is valid.",
+            message=(
+                "Q4 satisfied: path constraints are present and the locked tolerances object is valid "
+                "for the selected tier ceilings."
+            ),
             pointers=[str(ctx.locked_spec_path), locked_tolerances.storage_ref],
         )
     ]

@@ -352,6 +352,8 @@ def test_r8_public_docs_match_runtime_contract() -> None:
 
 
 def test_r2_public_docs_match_locked_tolerances_contract() -> None:
+    gate_q = _read_text("gates/GATE_Q.md")
+    gate_q_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_Q.md")
     gate_r = _read_text("gates/GATE_R.md")
     gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     cli_docs = _read_text("docs/operations/cli.md")
@@ -369,9 +371,21 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
     cli_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>` (singular)"
     cli_tolerances_binding = "binds a real locked tolerances object into `LockedSpec.tier.tolerances_ref`"
     cli_tolerances_pre_lock = "the referenced Tolerances file is a pre-lock operator input"
+    cli_tolerances_tier_match = "`Tolerances.tier_id` must match the selected tier"
+    cli_tolerances_tighten = (
+        "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
+    )
     running_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>`"
     running_tolerances_default = "if omitted, orchestration generates the canonical tolerances object from the selected tier pack"
     running_tolerances_pre_lock = "explicit Tolerances refs on `belgi run` are pre-lock operator inputs"
+    running_tolerances_tier_match = "`Tolerances.tier_id` must match the selected tier"
+    running_tolerances_tighten = (
+        "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
+    )
+    gate_q_tighten = "to be equal to or stricter than the selected tier ceilings; reject any wider value"
+    gate_q_remediation = (
+        "Do lock a valid tier.tolerances_ref object for the selected tier that stays within the selected tier ceilings, then re-run Q."
+    )
     running_numeric_retired = (
         "Numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy "
         "`IntentSpec.scope.max_*` fields with migration guidance."
@@ -380,6 +394,11 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
         "`Do reduce scope to within the locked tolerances ceilings or change the locked Tolerances object / "
         "selected tier and re-run Q, then re-run R.`"
     )
+
+    for text in (gate_q, gate_q_pack):
+        assert "Resolve `LockedSpec.tier.tolerances_ref`" in text
+        assert gate_q_tighten in text
+        assert gate_q_remediation in text
 
     for text in (gate_r, gate_r_pack):
         assert gate_r_locked_object in text
@@ -392,6 +411,8 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
         assert cli_tolerances_flag in text
         assert cli_tolerances_binding in text
         assert cli_tolerances_pre_lock in text
+        assert cli_tolerances_tier_match in text
+        assert cli_tolerances_tighten in text
         assert "materializes the canonical tolerances object from the selected tier pack" in text
         assert "numeric scope budgets no longer live in `IntentSpec`" in text
 
@@ -399,6 +420,8 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
         assert running_tolerances_flag in text
         assert running_tolerances_default in text
         assert running_tolerances_pre_lock in text
+        assert running_tolerances_tier_match in text
+        assert running_tolerances_tighten in text
         assert "stages the referenced Tolerances object into locked/store authority before C1" in text
         assert running_numeric_retired in text
         assert "R2 semantic budget ceilings come from the locked `LockedSpec.tier.tolerances_ref` object" in text
