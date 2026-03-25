@@ -126,6 +126,16 @@ def _write_toolchain_set_object(
     )
 
 
+def _write_local_json_object(repo: Path, rel: str, payload: object) -> None:
+    path = repo / Path(*rel.split("/"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+
+
 def _run_git(repo: Path, args: list[str]) -> None:
     cp = subprocess.run(
         ["git", "-C", str(repo), *args],
@@ -2676,7 +2686,7 @@ def test_tier0_run_locks_generated_default_tolerances_object(tmp_path: Path, cap
     }
 
 
-def test_tier0_run_accepts_explicit_tolerances_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
+def test_tier0_run_rejects_repo_relative_tolerances_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
     _write_tolerances_object(
         repo,
@@ -2689,6 +2699,8 @@ def test_tier0_run_accepts_explicit_tolerances_ref_on_shipped_spine(tmp_path: Pa
     base_sha = _git_rev_parse(repo, "HEAD")
 
     assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-repo-relative-tolerances-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
     _unset_upstream_if_present(repo)
 
@@ -2699,10 +2711,63 @@ def test_tier0_run_accepts_explicit_tolerances_ref_on_shipped_spine(tmp_path: Pa
             str(repo),
             "--tier",
             "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
             "--base-revision",
             base_sha,
             "--tolerances-ref",
             "tier.tolerances=policy/tolerances/tier-0.json",
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert str(machine.get("primary_reason") or "") == (
+        f"--tolerances-ref must point to the current run canonical input: "
+        f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
+    )
+
+
+def test_tier0_run_accepts_run_local_tolerances_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-local-tolerances-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    tolerances_rel = f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
+    _write_local_json_object(
+        repo,
+        tolerances_rel,
+        {
+            "schema_version": "1.0.0",
+            "tier_id": "tier-0",
+            "scope_budgets": {
+                "max_touched_files": 50,
+                "max_loc_delta": 5000,
+            },
+        },
+    )
+    _unset_upstream_if_present(repo)
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+            "--tolerances-ref",
+            f"tier.tolerances={tolerances_rel}",
         ]
     )
     assert rc_run == 0
@@ -2713,16 +2778,32 @@ def test_tier0_run_accepts_explicit_tolerances_ref_on_shipped_spine(tmp_path: Pa
     attempt_id = str(machine["attempt_id"])
     attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
 
-    locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    locked_spec = json.loads(
+        (attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict")
+    )
     tier_obj = locked_spec.get("tier")
     tolerances_ref = tier_obj.get("tolerances_ref") if isinstance(tier_obj, dict) else None
     assert isinstance(tolerances_ref, dict)
     assert tolerances_ref["id"] == "tier.tolerances"
-    assert tolerances_ref["storage_ref"] == "policy/tolerances/tier-0.json"
+    assert tolerances_ref["storage_ref"] == "out/inputs/environment/tolerances.json"
+
+    staged_obj = json.loads(
+        (attempt_dir / "repo" / "out" / "inputs" / "environment" / "tolerances.json").read_text(
+            encoding="utf-8", errors="strict"
+        )
+    )
+    assert staged_obj == {
+        "schema_version": "1.0.0",
+        "tier_id": "tier-0",
+        "scope_budgets": {
+            "max_touched_files": 50,
+            "max_loc_delta": 5000,
+        },
+    }
 
     summary = json.loads((attempt_dir / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     assert summary["run_key_preimage"]["normalized_inputs"]["tolerances_ref"] == (
-        "tier.tolerances=policy/tolerances/tier-0.json"
+        f"tier.tolerances={tolerances_rel}"
     )
 
 
@@ -2876,7 +2957,7 @@ def test_tier0_rejects_legacy_intent_numeric_budgets_with_migration_guidance(tmp
     assert "move numeric budgets into a Tolerances object" in captured.err
 
 
-def test_tier0_run_accepts_explicit_toolchain_set_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
+def test_tier0_run_rejects_repo_relative_toolchain_set_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
     repo = _fresh_repo_clone(tmp_path)
     _write_toolchain_set_object(
         repo,
@@ -2888,6 +2969,8 @@ def test_tier0_run_accepts_explicit_toolchain_set_ref_on_shipped_spine(tmp_path:
     base_sha = _git_rev_parse(repo, "HEAD")
 
     assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-repo-relative-toolchain-set-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
     _ = capsys.readouterr()
     _unset_upstream_if_present(repo)
 
@@ -2898,10 +2981,60 @@ def test_tier0_run_accepts_explicit_toolchain_set_ref_on_shipped_spine(tmp_path:
             str(repo),
             "--tier",
             "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
             "--base-revision",
             base_sha,
             "--toolchain-set-ref",
             "env.toolchains=policy/environment/toolchain-set.json",
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert str(machine.get("primary_reason") or "") == (
+        f"--toolchain-set-ref must point to the current run canonical input: "
+        f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json"
+    )
+
+
+def test_tier0_run_accepts_run_local_toolchain_set_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-local-toolchain-set-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    toolchain_set_rel = f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json"
+    _write_local_json_object(
+        repo,
+        toolchain_set_rel,
+        {
+            "schema_version": "1.0.0",
+            "toolchain_set_id": "env.toolchains",
+            "refs": [{"id": "deps.requirements", "path": "requirements-dev.txt"}],
+        },
+    )
+    _unset_upstream_if_present(repo)
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+            "--toolchain-set-ref",
+            f"env.toolchains={toolchain_set_rel}",
         ]
     )
     assert rc_run == 0
@@ -2912,19 +3045,141 @@ def test_tier0_run_accepts_explicit_toolchain_set_ref_on_shipped_spine(tmp_path:
     attempt_id = str(machine["attempt_id"])
     attempt_dir = repo / ".belgi" / "store" / "runs" / run_key / attempt_id
 
-    locked_spec = json.loads((attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    locked_spec = json.loads(
+        (attempt_dir / "repo" / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict")
+    )
     envelope = locked_spec.get("environment_envelope")
     toolchain_set_ref = envelope.get("toolchain_set_ref") if isinstance(envelope, dict) else None
     pinned_refs = envelope.get("pinned_toolchain_refs") if isinstance(envelope, dict) else None
 
     assert isinstance(toolchain_set_ref, dict)
     assert toolchain_set_ref["id"] == "env.toolchains"
-    assert toolchain_set_ref["storage_ref"] == "policy/environment/toolchain-set.json"
+    assert toolchain_set_ref["storage_ref"] == "out/inputs/environment/toolchain-set.json"
     assert isinstance(pinned_refs, list)
     assert [(ref["id"], ref["storage_ref"]) for ref in pinned_refs] == [
         ("toolchain.main", "out/inputs/toolchain.json"),
         ("deps.requirements", "requirements-dev.txt"),
     ]
+
+    staged_obj = json.loads(
+        (attempt_dir / "repo" / "out" / "inputs" / "environment" / "toolchain-set.json").read_text(
+            encoding="utf-8", errors="strict"
+        )
+    )
+    assert staged_obj == {
+        "schema_version": "1.0.0",
+        "toolchain_set_id": "env.toolchains",
+        "refs": [
+            {
+                "id": "deps.requirements",
+                "path": "requirements-dev.txt",
+            }
+        ],
+    }
+
+    summary = json.loads((attempt_dir / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
+    assert summary["run_key_preimage"]["normalized_inputs"]["toolchain_set_ref"] == (
+        f"env.toolchains={toolchain_set_rel}"
+    )
+
+
+def test_tier0_rejects_foreign_run_tolerances_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    current_run_id = "run-current-tolerances-001"
+    foreign_run_id = "run-foreign-tolerances-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", current_run_id]) == 0
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", foreign_run_id]) == 0
+    _ = capsys.readouterr()
+
+    foreign_tolerances_rel = f".belgi/runs/{foreign_run_id}/inputs/environment/tolerances.json"
+    _write_local_json_object(
+        repo,
+        foreign_tolerances_rel,
+        {
+            "schema_version": "1.0.0",
+            "tier_id": "tier-0",
+            "scope_budgets": {
+                "max_touched_files": 50,
+                "max_loc_delta": 5000,
+            },
+        },
+    )
+    _unset_upstream_if_present(repo)
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{current_run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+            "--tolerances-ref",
+            f"tier.tolerances={foreign_tolerances_rel}",
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert str(machine.get("primary_reason") or "") == (
+        f"--tolerances-ref must point to the current run canonical input: "
+        f".belgi/runs/{current_run_id}/inputs/environment/tolerances.json"
+    )
+
+
+def test_tier0_rejects_wrong_leaf_toolchain_set_ref_on_shipped_spine(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-wrong-leaf-toolchain-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    wrong_leaf_rel = f".belgi/runs/{run_id}/inputs/environment/toolchain-other.json"
+    _write_local_json_object(
+        repo,
+        wrong_leaf_rel,
+        {
+            "schema_version": "1.0.0",
+            "toolchain_set_id": "env.toolchains",
+            "refs": [{"id": "deps.requirements", "path": "requirements-dev.txt"}],
+        },
+    )
+    _unset_upstream_if_present(repo)
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+            "--toolchain-set-ref",
+            f"env.toolchains={wrong_leaf_rel}",
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert str(machine.get("primary_reason") or "") == (
+        f"--toolchain-set-ref must point to the current run canonical input: "
+        f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json"
+    )
 
 
 def test_tier0_rejects_toolchain_ref_missing_path(tmp_path: Path, capsys: object) -> None:
@@ -2988,6 +3243,115 @@ def test_tier0_rejects_toolchain_ref_outside_evaluated_revision(tmp_path: Path, 
     reason = str(machine.get("primary_reason") or "")
     assert "present in the evaluated revision" in reason
     assert "toolchains/local-only.lock.json" in reason
+
+
+def test_tier0_rejects_malformed_run_local_tolerances_ref(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    _ = capsys.readouterr()
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--base-revision",
+            base_sha,
+            "--tolerances-ref",
+            "tier.tolerances",
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert "--tolerances-ref must use <object_id>=<repo-relative-path>" in str(machine.get("primary_reason") or "")
+
+
+def test_tier0_rejects_run_local_tolerances_ref_missing_path(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-local-missing-tolerances-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    tolerances_rel = f".belgi/runs/{run_id}/inputs/environment/tolerances.json"
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+            "--tolerances-ref",
+            f"tier.tolerances={tolerances_rel}",
+        ]
+    )
+    assert rc_run == 20
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    assert tolerances_rel in str(machine.get("primary_reason") or "")
+
+
+def test_tier0_rejects_run_local_toolchain_set_ref_with_local_only_member_path(tmp_path: Path, capsys: object) -> None:
+    repo = _fresh_repo_clone(tmp_path)
+    base_sha = _git_rev_parse(repo, "HEAD")
+
+    assert belgi_main(["init", "--repo", str(repo)]) == 0
+    run_id = "run-local-toolchain-invalid-001"
+    assert belgi_main(["run", "new", "--repo", str(repo), "--run-id", run_id]) == 0
+    _ = capsys.readouterr()
+
+    local_member_rel = f".belgi/runs/{run_id}/inputs/environment/local-only.lock.json"
+    _write_local_json_object(repo, local_member_rel, {"python": "3.11.0"})
+    toolchain_set_rel = f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json"
+    _write_local_json_object(
+        repo,
+        toolchain_set_rel,
+        {
+            "schema_version": "1.0.0",
+            "toolchain_set_id": "env.toolchains",
+            "refs": [{"id": "deps.local", "path": local_member_rel}],
+        },
+    )
+    _unset_upstream_if_present(repo)
+
+    rc_run = belgi_main(
+        [
+            "run",
+            "--repo",
+            str(repo),
+            "--tier",
+            "tier-0",
+            "--intent-spec",
+            f".belgi/runs/{run_id}/inputs/intent/IntentSpec.core.md",
+            "--base-revision",
+            base_sha,
+            "--toolchain-set-ref",
+            f"env.toolchains={toolchain_set_rel}",
+        ]
+    )
+    assert rc_run == 10
+    captured = capsys.readouterr()
+    machine = json.loads(captured.out.splitlines()[0])
+    assert machine["ok"] is False
+    assert machine["verdict"] == "NO-GO"
+    reason = str(machine.get("primary_reason") or "")
+    assert "declared ToolchainSet ref missing/invalid in evaluated revision" in reason
+    assert local_member_rel in reason
 
 
 def test_tier0_rejects_reserved_toolchain_main_id(tmp_path: Path, capsys: object) -> None:

@@ -1119,11 +1119,16 @@ def check_cs_run_001(root: Path) -> InvariantResult:
             "--toolchain-set-ref <object_id>=<repo-relative-path>",
             "--toolchain-ref <object_id>=<repo-relative-path>",
             "--tolerances-ref <object_id>=<repo-relative-path>",
+            "the referenced ToolchainSet file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json`",
+            "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain declaration surfaces in the evaluated revision truth envelope",
+            "the referenced Tolerances file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/tolerances.json`",
             "do not mix `--toolchain-set-ref` with shorthand `--toolchain-ref` values",
             "`toolchain.main` is reserved for the built-in generated run toolchain input",
         ],
         "belgi/cli_app/parser/run.py": ['"--toolchain-set-ref"', '"--toolchain-ref"', '"--tolerances-ref"'],
         "belgi/cli_app/commands/run.py": [
+            "def _resolve_run_environment_object_ref(",
+            "must point to the current run canonical input:",
             "do not mix --toolchain-set-ref with shorthand --toolchain-ref values",
             "--toolchain-ref id `toolchain.main` is reserved for the built-in run toolchain input",
             "--toolchain-set-ref id `toolchain.main` is reserved for the built-in run toolchain input",
@@ -1187,6 +1192,10 @@ def check_cs_run_002(root: Path) -> InvariantResult:
                     ".belgi/runs/run-001/inputs/environment/toolchain-set.json",
                     ".belgi/runs/run-001/inputs/environment/tolerances.json",
                     "Optional shared environment objects:",
+                    "cat > .belgi/runs/run-001/inputs/environment/toolchain-set.json <<'JSON'",
+                    "cat > .belgi/runs/run-001/inputs/environment/tolerances.json <<'JSON'",
+                    "--toolchain-set-ref env.toolchains=.belgi/runs/run-001/inputs/environment/toolchain-set.json",
+                    "--tolerances-ref tier.tolerances=.belgi/runs/run-001/inputs/environment/tolerances.json",
                 ],
             ),
         }
@@ -1215,12 +1224,15 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             ".belgi/runs/<run_id>/inputs/environment/toolchain-set.json",
             ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
             "`belgi run new`",
+            "this is the only accepted explicit `belgi run` ingress path for ToolchainSet",
+            "this is the only accepted explicit `belgi run` ingress path for Tolerances",
         ],
     }
     forbidden_docs = {
         "docs/operations/running-belgi.md": [
             ".belgi/runs/<run_id>/toolchain.json",
             ".belgi/runs/<run_id>/tolerances.json",
+            "The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location.",
         ]
     }
     for rel, needles in doc_targets.items():

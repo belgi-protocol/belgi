@@ -65,19 +65,22 @@ Optional shared run object inputs on any tier:
 - `--toolchain-set-ref <object_id>=<repo-relative-path>` (singular)
 - binds an authoritative ToolchainSet object into `LockedSpec.environment_envelope.toolchain_set_ref` on the same shipped `belgi run` spine
 - ToolchainSet is the first-class declaration object for operator-supplied dependency/toolchain accounting refs
-- the referenced ToolchainSet file must already exist in the evaluated revision truth envelope; local-only extras are rejected fail-closed
+- the referenced ToolchainSet file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json`
+- BELGI stages that ToolchainSet into locked/store authority before C1; later stages consume the locked/store copy, not ambient workspace bytes
+- ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain declaration surfaces in the evaluated revision truth envelope
 - this is not an Operator Anchor
 - `--toolchain-ref <object_id>=<repo-relative-path>` (repeatable)
 - shorthand only: `belgi run` normalizes these refs into authoritative ToolchainSet object authority before lock
 - use actual repo-relative dependency/toolchain declaration surfaces that matter for the run (for example `requirements.txt`, `pyproject.toml`, `uv.lock`, `toolchains/python.lock.json`)
-- the referenced file must already exist in the evaluated revision truth envelope; local-only extras are rejected fail-closed
+- the referenced declaration file must already exist in the evaluated revision truth envelope; local-only extras are rejected fail-closed
 - do not mix `--toolchain-set-ref` with shorthand `--toolchain-ref` values
 - `toolchain.main` is reserved for the built-in generated run toolchain input
 - this is not an Operator Anchor
 - `--tolerances-ref <object_id>=<repo-relative-path>` (singular)
 - binds a real locked tolerances object into `LockedSpec.tier.tolerances_ref` on the same shipped `belgi run` spine
 - recommended object id: `tier.tolerances`
-- the referenced file must already exist in the evaluated revision truth envelope; local-only extras are rejected fail-closed
+- the referenced Tolerances file is a pre-lock operator input; accepted only as the current run's canonical run-local object path: `.belgi/runs/<run_id>/inputs/environment/tolerances.json`
+- BELGI stages that Tolerances object into locked/store authority before C1; later stages consume the locked/store copy, not ambient workspace bytes
 - if omitted, `belgi run` materializes the canonical tolerances object from the selected tier pack and locks that generated object automatically
 - numeric scope budgets no longer live in `IntentSpec`; move any legacy `IntentSpec.scope.max_*` values into the Tolerances object
 - this is not an Operator Anchor

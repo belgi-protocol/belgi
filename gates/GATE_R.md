@@ -466,7 +466,8 @@ Optional binding check (when GateVerdict is provided to the verifier):
   3) Require `R4` structural acceptance of the required `policy.supplychain` report for the current run (§5.2.1) before semantic interpretation.
   4) The accepted report MUST treat the actual locked-base -> evaluated diff as the primary R7 change surface.
   5) The accepted report MUST limit `summary.failed != 0` to unaccounted changes on the bounded declaration surfaces above, using `LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` as the accounting context derived from the locked ToolchainSet plus built-in `toolchain.main`.
-     - On the shipped operator surface, use `belgi run --toolchain-set-ref <object_id>=<repo-relative-path>` for explicit ToolchainSet authority, or repeat shorthand `belgi run --toolchain-ref <object_id>=<repo-relative-path>` when you want `belgi run` to generate that ToolchainSet authority before lock.
+     - On the shipped operator surface, explicit ToolchainSet refs are pre-lock operator inputs accepted only at `.belgi/runs/<run_id>/inputs/environment/toolchain-set.json` for the current run, and BELGI stages that object into locked/store authority before C1.
+     - Shorthand `belgi run --toolchain-ref <object_id>=<repo-relative-path>` remains the evaluated-revision declaration ingress when `belgi run` generates ToolchainSet authority before lock.
      - If the accepted report indicates failures (`summary.failed != 0`) => fail `FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED`.
   6) Gate R does not publish path classification lists or signatures; it treats the scan command + policy report as the authoritative, deterministic evidence obligation.
   7) Tier ownership note: Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes the normalized `LockedSpec.environment_envelope.pinned_toolchain_refs` evidence context derived from `toolchain_set_ref` but does not read that tier parameter.

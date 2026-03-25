@@ -463,12 +463,15 @@ Canonical trigger:
      - `--toolchain-set-ref <object_id>=<repo-relative-path>`
      - repeatable shorthand `--toolchain-ref <object_id>=<repo-relative-path>`
      - `--tolerances-ref <object_id>=<repo-relative-path>`
+     - explicit ToolchainSet/Tolerances refs are pre-lock operator inputs accepted only at `.belgi/runs/<current_run_id>/inputs/environment/toolchain-set.json` and `.belgi/runs/<current_run_id>/inputs/environment/tolerances.json`
+     - shorthand declaration paths and ToolchainSet member declaration paths remain evaluated-revision-bound
      - mixing prohibition for `--toolchain-set-ref` + shorthand `--toolchain-ref`
      - reserved built-in `toolchain.main`
   2) Confirm `belgi/cli_app/parser/run.py` exposes exactly those three run flags.
   3) Confirm `belgi/cli_app/commands/run.py` enforces:
      - no mixing of `--toolchain-set-ref` with shorthand `--toolchain-ref`
      - reserved `toolchain.main` rejection on explicit toolchain refs
+     - explicit ToolchainSet/Tolerances refs use dedicated current-run environment-object handling with exact canonical leaf-name validation and no evaluated-revision fallback
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if docs, parser, and command enforcement agree.

@@ -10,7 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from importlib.resources import files as resource_files
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from belgi.commands.adversarial_scan import run_adversarial_scan
@@ -33,6 +33,7 @@ _OPERATOR_ANCHORS_APPROVALS_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REP
 _OPERATOR_ANCHORS_KEYS_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/keys"
 _OPERATOR_ANCHORS_SIGNING_STAGE_REPO_REL = f"{_OPERATOR_ANCHORS_STAGE_ROOT_REPO_REL}/signing"
 _RUN_EVIDENCE_STAGE_ROOT_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/evidence"
+_RUN_ENVIRONMENT_STAGE_ROOT_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/environment"
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -612,6 +613,49 @@ def _stage_local_input_ref(
     return safe_relpath(chain_repo_root, target_path), target_path
 
 
+def _expected_run_environment_object_source_ref(
+    *,
+    workspace_rel: str,
+    current_run_id: str | None,
+    leaf_name: str,
+) -> str:
+    workspace_norm = str(workspace_rel).strip().strip("/")
+    run_id = str(current_run_id).strip() if current_run_id is not None else "<run_id>"
+    return PurePosixPath(workspace_norm, "runs", run_id, "inputs", "environment", leaf_name).as_posix()
+
+
+def _bind_current_run_environment_object_ref(
+    *,
+    source_repo_root: Path,
+    chain_repo_root: Path,
+    workspace_rel: str,
+    current_run_id: str | None,
+    source_ref: str,
+    expected_leaf_name: str,
+    target_rel: str,
+    label: str,
+) -> tuple[str, Path]:
+    expected_source_ref = _expected_run_environment_object_source_ref(
+        workspace_rel=workspace_rel,
+        current_run_id=current_run_id,
+        leaf_name=expected_leaf_name,
+    )
+    if current_run_id is None:
+        raise ValueError(
+            f"{label} requires the current run intent binding and must match the canonical path: {expected_source_ref}"
+        )
+    source_ref_norm = PurePosixPath(str(source_ref).strip().strip("/")).as_posix()
+    if source_ref_norm != expected_source_ref:
+        raise ValueError(f"{label} must match the current run canonical path: {expected_source_ref}")
+    return _stage_local_input_ref(
+        source_repo_root=source_repo_root,
+        chain_repo_root=chain_repo_root,
+        source_ref=source_ref,
+        target_rel=target_rel,
+        label=label,
+    )
+
+
 def _anchor_stage_rel_for_source_ref(*, leaf_name: str, source_ref: str, default_suffix: str, anchor_class: str) -> str:
     source_suffix = Path(str(source_ref)).suffix or default_suffix
     if anchor_class not in {"approvals", "keys", "signing"}:
@@ -848,7 +892,10 @@ def _load_toolchain_set_paths(
 
 def _bind_declared_toolchain_set_ref(
     *,
+    source_repo_root: Path,
     chain_repo_root: Path,
+    workspace_rel: str,
+    current_run_id: str | None,
     declared_toolchain_set_ref: str | None,
 ) -> tuple[str | None, list[str]]:
     spec = str(declared_toolchain_set_ref or "").strip()
@@ -864,15 +911,18 @@ def _bind_declared_toolchain_set_ref(
     if toolchain_set_id == "toolchain.main":
         raise ValueError("declared ToolchainSet id `toolchain.main` is reserved for the built-in run toolchain input")
 
-    try:
-        chain_path = resolve_storage_ref(chain_repo_root, source_ref)
-    except ValueError as e:
-        raise ValueError(f"invalid declared ToolchainSet ref: {source_ref}: {e}") from e
+    bound_storage_ref, chain_path = _bind_current_run_environment_object_ref(
+        source_repo_root=source_repo_root,
+        chain_repo_root=chain_repo_root,
+        workspace_rel=workspace_rel,
+        current_run_id=current_run_id,
+        source_ref=source_ref,
+        expected_leaf_name="toolchain-set.json",
+        target_rel=f"{_RUN_ENVIRONMENT_STAGE_ROOT_REPO_REL}/toolchain-set.json",
+        label="declared ToolchainSet ref",
+    )
 
-    if not chain_path.exists() or chain_path.is_symlink() or not chain_path.is_file():
-        raise ValueError(f"declared ToolchainSet ref missing/invalid in evaluated revision: {source_ref}")
-
-    bound_ref = f"{toolchain_set_id}={safe_relpath(chain_repo_root, chain_path)}"
+    bound_ref = f"{toolchain_set_id}={bound_storage_ref}"
     bound_toolchain_refs = _load_toolchain_set_paths(
         chain_repo_root=chain_repo_root,
         toolchain_set_path=chain_path,
@@ -882,7 +932,10 @@ def _bind_declared_toolchain_set_ref(
 
 def _bind_declared_tolerances_ref(
     *,
+    source_repo_root: Path,
     chain_repo_root: Path,
+    workspace_rel: str,
+    current_run_id: str | None,
     declared_tolerances_ref: str | None,
 ) -> str | None:
     spec = str(declared_tolerances_ref or "").strip()
@@ -896,14 +949,17 @@ def _bind_declared_tolerances_ref(
     if not tolerances_id or not source_ref:
         raise ValueError("declared tolerances ref must use <object_id>=<repo-relative-path>")
 
-    try:
-        chain_path = resolve_storage_ref(chain_repo_root, source_ref)
-    except ValueError as e:
-        raise ValueError(f"invalid declared tolerances ref: {source_ref}: {e}") from e
-
-    if not chain_path.exists() or chain_path.is_symlink() or not chain_path.is_file():
-        raise ValueError(f"declared tolerances ref missing/invalid in evaluated revision: {source_ref}")
-    return f"{tolerances_id}={safe_relpath(chain_repo_root, chain_path)}"
+    bound_storage_ref, _ = _bind_current_run_environment_object_ref(
+        source_repo_root=source_repo_root,
+        chain_repo_root=chain_repo_root,
+        workspace_rel=workspace_rel,
+        current_run_id=current_run_id,
+        source_ref=source_ref,
+        expected_leaf_name="tolerances.json",
+        target_rel=f"{_RUN_ENVIRONMENT_STAGE_ROOT_REPO_REL}/tolerances.json",
+        label="declared tolerances ref",
+    )
+    return f"{tolerances_id}={bound_storage_ref}"
 
 
 def _assert_unique_toolchain_ids(*, toolchain_refs: list[str]) -> None:
@@ -1061,6 +1117,8 @@ def orchestrate_chain_run(
     declared_toolchain_set_ref: str | None = None,
     declared_toolchain_refs: list[str] | None = None,
     declared_tolerances_ref: str | None = None,
+    workspace_rel: str = ".belgi",
+    current_run_id: str | None = None,
 ) -> RunOrchestrationResult:
     base_revision = _require_commit_sha40(base_revision, label="base_revision")
     evaluated_revision = _require_commit_sha40(evaluated_revision, label="evaluated_revision")
@@ -1107,11 +1165,17 @@ def orchestrate_chain_run(
 
     _git_clone_at_commit(source_repo=source_repo_root, dest_repo=chain_repo_dir, commit_sha=evaluated_revision)
     bound_declared_toolchain_set_ref, bound_toolchain_set_refs = _bind_declared_toolchain_set_ref(
+        source_repo_root=source_repo_root,
         chain_repo_root=chain_repo_dir,
+        workspace_rel=workspace_rel,
+        current_run_id=current_run_id,
         declared_toolchain_set_ref=declared_toolchain_set_ref,
     )
     bound_declared_tolerances_ref = _bind_declared_tolerances_ref(
+        source_repo_root=source_repo_root,
         chain_repo_root=chain_repo_dir,
+        workspace_rel=workspace_rel,
+        current_run_id=current_run_id,
         declared_tolerances_ref=declared_tolerances_ref,
     )
     if bound_declared_toolchain_set_ref is not None and declared_toolchain_refs:

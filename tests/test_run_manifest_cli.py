@@ -91,14 +91,28 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert "inputs/anchors/keys/attestation_pubkey.hex" in runbook_text
     assert "inputs/anchors/signing/seal_signature.b64" in runbook_text
     assert "inputs/evidence/genesis_seal.json" in runbook_text
+    assert "mkdir -p .belgi/runs/run-demo-001/inputs/environment" in runbook_text
+    assert "cat > .belgi/runs/run-demo-001/inputs/environment/toolchain-set.json <<'JSON'" in runbook_text
+    assert '  "toolchain_set_id": "env.toolchains",' in runbook_text
+    assert "cat > .belgi/runs/run-demo-001/inputs/environment/tolerances.json <<'JSON'" in runbook_text
+    assert '  "tier_id": "tier-1",' in runbook_text
+    assert "Then bind them on the same shipped run spine:" in runbook_text
+    assert "--toolchain-set-ref env.toolchains=.belgi/runs/run-demo-001/inputs/environment/toolchain-set.json" in runbook_text
+    assert "--tolerances-ref tier.tolerances=.belgi/runs/run-demo-001/inputs/environment/tolerances.json" in runbook_text
     assert "--toolchain-set-ref <object_id>=<repo-relative-path>" in runbook_text
     assert "--toolchain-ref <object_id>=<repo-relative-path>" in runbook_text
     assert "ToolchainSet is not an Operator Anchor." in runbook_text
-    assert "must already exist in the evaluated revision truth envelope" in runbook_text
+    assert "explicit ToolchainSet refs are pre-lock operator inputs." in runbook_text
+    assert "Accepted only as the current run canonical input:" in runbook_text
+    assert "stages that ToolchainSet into locked/store authority before C1" in runbook_text
+    assert "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain declaration surfaces in the evaluated revision truth envelope." in runbook_text
     assert "`toolchain.main` is reserved" in runbook_text
     assert "--tolerances-ref <object_id>=<repo-relative-path>" in runbook_text
     assert "Tolerances is not an Operator Anchor." in runbook_text
+    assert "explicit Tolerances refs are pre-lock operator inputs." in runbook_text
+    assert "stages that Tolerances object into locked/store authority before C1" in runbook_text
     assert "generates the canonical Tolerances object from the selected tier pack" in runbook_text
+    assert "If you run a different tier, keep the same canonical paths" in runbook_text
     assert "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`." in runbook_text
     assert not tolerances_path.exists()
     assert not toolchain_path.exists()
@@ -172,7 +186,12 @@ def test_init_creates_operator_readme_with_required_sections(tmp_path: Path) -> 
     assert "Use `--toolchain-set-ref <object_id>=<repo-relative-path>`" in text
     assert "Repeat `--toolchain-ref <object_id>=<repo-relative-path>`" in text
     assert "Use `--tolerances-ref <object_id>=<repo-relative-path>`" in text
-    assert "must already exist in the evaluated revision truth envelope" in text
+    assert "Explicit ToolchainSet refs are pre-lock operator inputs." in text
+    assert "Accepted only as the current run canonical input:" in text
+    assert "stages that ToolchainSet into locked/store authority before C1" in text
+    assert "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain declaration surfaces in the evaluated revision truth envelope." in text
+    assert "Explicit Tolerances refs are pre-lock operator inputs." in text
+    assert "stages that Tolerances object into locked/store authority before C1" in text
     assert "`toolchain.main` is reserved" in text
     assert "materializes the canonical Tolerances object from the selected tier pack" in text
     assert "belgi verify --repo ." in text
