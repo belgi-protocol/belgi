@@ -93,26 +93,12 @@ belgi bundle check --in path/to/bundle --demo
 
 ### Publish Surface (Wheel vs Repo-local)
 
-Canonical definitions:
+Wheel boundary, publication posture, and builtin protocol-pack drift rules are owned by:
 - [CANONICALS.md#wheel-vs-repo-local](CANONICALS.md#wheel-vs-repo-local)
 - [CANONICALS.md#publication-posture](CANONICALS.md#publication-posture)
+- [tools/README.md](tools/README.md)
 
-Published wheel (`pip install belgi`) includes:
-- module-prefix boundary SSOT: `{belgi/, chain/, wrapper/, tools/}` (plus wheel metadata `*.dist-info/`)
-- `belgi/` (CLI and packaged resources, including builtin protocol pack mirror and templates)
-- `chain/` (reference deterministic gate implementations)
-- `wrapper/` (optional forwarders)
-- `tools/` (operator/developer command surfaces shipped in wheel)
-
-Mechanical enforcement:
-- CI asserts wheel contents fail-closed against boundary SSOT using `python -m tools.wheel_boundary --wheel <path-to-wheel>`.
-
-Repo-only surfaces (outside wheel boundary):
-- `policy/`, `housekeeping/`, `.github/`, `tests/`, `docs/operations/` (authoring sources)
-
-SSOT/mirror rule:
-- Canonical specs live at repo root: `gates/`, `schemas/`, `tiers/`.
-- The wheel ships a mirror at `belgi/_protocol_packs/v1/`; pack mirror drift is forbidden and must be detected before publishing (repo-local: `python -m tools.check_drift`).
+Use those owner docs for exact wheel contents, repo-only authoring boundaries, and pack-verification or drift-check commands.
 
 ### Repo-local Development
 
@@ -142,39 +128,15 @@ Operator Anchors prep and boundary guide: [docs/operations/operator-anchors.md](
 
 Chain-module reference commands (`python -m chain.*`): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
 
-Local workflow checks with Docker + `act` are recommended before pushing workflow changes:
+Hosted proof surfaces, required gate contexts, local workflow rehearsal, and branch-governance details: [docs/operations/workflows.md](docs/operations/workflows.md)
+
+Repo-local maintenance commands and tool contracts: [tools/README.md](tools/README.md)
+
+Common repo-local repair entrypoint from the workspace:
 
 ```bash
-act -W .github/workflows/repository-verification.yml -j health \
-  -P ubuntu-24.04=catthehacker/ubuntu:full-latest
-act -W .github/workflows/repository-verification.yml -j wheel-smoke \
-  -P ubuntu-24.04=catthehacker/ubuntu:full-latest
-```
-
-For cross-repo checkout jobs, a valid `GITHUB_TOKEN` secret is required locally; missing/invalid token is a fail-closed NO-GO.
-
-The three hosted proof surfaces and their boundaries are defined in [docs/operations/workflows.md](docs/operations/workflows.md).
-Hosted merge governance should bind only to the stable gate contexts `repository-verification-gate` and `pull-request-proof-gate`.
-GitHub will still show additional job-level checks for proof-carrying jobs and matrix entries.
-`Pinned Install Proof` remains manual/reusable and is not a PR-required context in `v1.4.17`.
-
-From the repo workspace:
-
-```bash
-# Local fixer (single command; may modify tracked artifacts that still live in BELGI)
 ./scripts/dev_sync.ps1
-
-# Main-repo regression coverage is pytest-based.
-python -m pytest
-
-# CI verifier equivalents for tracked repo truth (must not modify files)
-python -m ruff check belgi chain tools wrapper tests scripts .github/scripts
-python -m tools.sweep consistency --repo .
 ```
-
-Tracked `ruff` configuration is active as the repo-maintenance lint authority for the chosen `F`, `I`, and `B` rule families in the local and hosted verification path. Pyright remains non-gating.
-
-See [tools/README.md](tools/README.md) for dev tool documentation.
 
 ### Commit Metadata Privacy
 

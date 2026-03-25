@@ -9,6 +9,9 @@ This is the operator SSOT for CLI usage. Keep this file focused on:
 For chain module reference commands, use:
 - `docs/operations/running-belgi.md`
 
+For Operator Anchor classes, handling, and workspace/file-boundary guidance, use:
+- `docs/operations/operator-anchors.md`
+
 ## CLI Tiers
 
 | Tier | Commands | Status |

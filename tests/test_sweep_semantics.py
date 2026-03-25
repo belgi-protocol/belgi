@@ -561,6 +561,135 @@ def test_managed_sweep_surfaces_are_covered_in_repo() -> None:
     assert missing == []
 
 
+def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from belgi.cli_app.commands import run as run_mod
+    from tools import sweep as sweep_mod
+
+    monkeypatch.setattr(
+        run_mod,
+        "_render_adopter_readme",
+        lambda *, workspace_rel: "\n".join(
+            [
+                f"{workspace_rel}/runs/run-001/inputs/environment/toolchain-set.json",
+                f"{workspace_rel}/runs/run-001/inputs/environment/tolerances.json",
+                f"--toolchain-set-ref env.toolchains={workspace_rel}/runs/run-001/inputs/environment/toolchain-set.json",
+                f"--tolerances-ref tier.tolerances={workspace_rel}/runs/run-001/inputs/environment/tolerances.json",
+                "Optional shared run object inputs:",
+                "`Tolerances.tier_id` must match the selected tier.",
+                "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
+            ]
+        )
+        + "\n",
+    )
+    monkeypatch.setattr(
+        run_mod,
+        "_render_runbook_template",
+        lambda *, run_id: "\n".join(
+            [
+                f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json",
+                f".belgi/runs/{run_id}/inputs/environment/tolerances.json",
+                "Optional shared environment objects:",
+                f"cat > .belgi/runs/{run_id}/inputs/environment/toolchain-set.json <<'JSON'",
+                f"cat > .belgi/runs/{run_id}/inputs/environment/tolerances.json <<'JSON'",
+                f"--toolchain-set-ref env.toolchains=.belgi/runs/{run_id}/inputs/environment/toolchain-set.json",
+                f"--tolerances-ref tier.tolerances=.belgi/runs/{run_id}/inputs/environment/tolerances.json",
+                "`Tolerances.tier_id` must match the selected tier.",
+                "may equal or tighten the selected tier ceilings, but BELGI rejects wider values",
+                "stays within that selected tier",
+            ]
+        )
+        + "\n",
+    )
+
+    (tmp_path / "belgi" / "cli_app" / "commands").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "belgi" / "cli_app" / "commands" / "run.py").write_text(
+        "# stub\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    (tmp_path / "docs" / "operations").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "operations" / "running-belgi.md").write_text(
+        "\n".join(
+            [
+                "`belgi run new`",
+                ".belgi/runs/<run_id>/inputs/environment/toolchain-set.json",
+                ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
+                "`docs/operations/cli.md` owns exact shipped `belgi run` flags, accepted path examples, and operator quickstart",
+                "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and workspace/file-boundary guidance",
+                "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
+                "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    (tmp_path / "docs" / "operations" / "operator-anchors.md").write_text(
+        "\n".join(
+            [
+                ".belgi/runs/<run_id>/inputs/anchors/approvals/",
+                ".belgi/runs/<run_id>/inputs/anchors/keys/",
+                ".belgi/runs/<run_id>/inputs/anchors/signing/",
+                ".belgi/runs/<run_id>/inputs/evidence/genesis_seal.json",
+                "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples",
+                "this guide owns anchor classes, handling, and workspace/file-boundary guidance",
+                "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    res = sweep_mod.check_cs_run_002(tmp_path)
+    assert res.invariant_id == "CS-RUN-002"
+    assert res.status == "PASS"
+
+
+def test_cs_run_002_fails_when_non_owner_docs_reintroduce_cli_catalogs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from belgi.cli_app.commands import run as run_mod
+    from tools import sweep as sweep_mod
+
+    monkeypatch.setattr(run_mod, "_render_adopter_readme", lambda *, workspace_rel: f"{workspace_rel}/runs/run-001/inputs/environment/toolchain-set.json\n{workspace_rel}/runs/run-001/inputs/environment/tolerances.json\n--toolchain-set-ref env.toolchains={workspace_rel}/runs/run-001/inputs/environment/toolchain-set.json\n--tolerances-ref tier.tolerances={workspace_rel}/runs/run-001/inputs/environment/tolerances.json\nOptional shared run object inputs:\n`Tolerances.tier_id` must match the selected tier.\nmay equal or tighten the selected tier ceilings, but BELGI rejects wider values\n")
+    monkeypatch.setattr(run_mod, "_render_runbook_template", lambda *, run_id: f".belgi/runs/{run_id}/inputs/environment/toolchain-set.json\n.belgi/runs/{run_id}/inputs/environment/tolerances.json\nOptional shared environment objects:\ncat > .belgi/runs/{run_id}/inputs/environment/toolchain-set.json <<'JSON'\ncat > .belgi/runs/{run_id}/inputs/environment/tolerances.json <<'JSON'\n--toolchain-set-ref env.toolchains=.belgi/runs/{run_id}/inputs/environment/toolchain-set.json\n--tolerances-ref tier.tolerances=.belgi/runs/{run_id}/inputs/environment/tolerances.json\n`Tolerances.tier_id` must match the selected tier.\nmay equal or tighten the selected tier ceilings, but BELGI rejects wider values\nstays within that selected tier\n")
+
+    (tmp_path / "belgi" / "cli_app" / "commands").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "belgi" / "cli_app" / "commands" / "run.py").write_text(
+        "# stub\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    (tmp_path / "docs" / "operations").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs" / "operations" / "running-belgi.md").write_text(
+        "--toolchain-set-ref <object_id>=<repo-relative-path>\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+    (tmp_path / "docs" / "operations" / "operator-anchors.md").write_text(
+        "belgi run \\\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    res = sweep_mod.check_cs_run_002(tmp_path)
+    assert res.invariant_id == "CS-RUN-002"
+    assert res.status == "FAIL"
+    assert "docs/operations/running-belgi.md" in str(res.details)
+    assert "docs/operations/operator-anchors.md" in str(res.details)
+
+
 def _write_cs_wvr_003_fixture(
     root: Path,
     *,

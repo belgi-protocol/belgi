@@ -167,6 +167,17 @@ def test_operator_anchor_docs_and_canonicals_align() -> None:
     term_pointer = "| Operator Anchors | [CANONICALS.md#operator-anchors](CANONICALS.md#operator-anchors) |"
     running_boundary = "Tier-3 evidence remains separate from anchors:"
     anchors_boundary = "Adjacent non-anchor Tier-3 evidence workspace:"
+    running_owner_pointer = (
+        "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and "
+        "workspace/file-boundary guidance"
+    )
+    anchors_owner_pointer = (
+        "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples"
+    )
+    tier3_owner_pointer = (
+        "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, "
+        "are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`."
+    )
 
     for text in (canonicals, canonicals_mirror):
         assert required_definition in text
@@ -183,11 +194,17 @@ def test_operator_anchor_docs_and_canonicals_align() -> None:
 
     for text in (running_docs, running_docs_mirror):
         assert running_boundary in text
+        assert running_owner_pointer in text
+        assert text.count(running_owner_pointer) == 1
+        assert tier3_owner_pointer in text
 
     for text in (anchors_docs, anchors_docs_mirror):
         assert anchors_boundary in text
+        assert anchors_owner_pointer in text
+        assert text.count(anchors_owner_pointer) == 1
         assert "`genesis_seal` is not an Operator Anchor." in text
-        assert "`TrustAnchor.json` remains the canonical Tier-3 authority artifact." in text
+        assert tier3_owner_pointer in text
+        assert "belgi run \\" not in text
 
     assert anchors_docs == anchors_docs_mirror
 
@@ -375,12 +392,16 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
     cli_tolerances_tighten = (
         "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
     )
-    running_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>`"
-    running_tolerances_default = "if omitted, orchestration generates the canonical tolerances object from the selected tier pack"
-    running_tolerances_pre_lock = "explicit Tolerances refs on `belgi run` are pre-lock operator inputs"
-    running_tolerances_tier_match = "`Tolerances.tier_id` must match the selected tier"
-    running_tolerances_tighten = (
-        "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
+    running_default = (
+        "if shipped `belgi run` omits Tolerances, orchestration generates the canonical tolerances object "
+        "from the selected tier pack before lock"
+    )
+    running_boundary = (
+        "on the shipped `belgi run` spine, current-run ToolchainSet/Tolerances inputs are staged into "
+        "locked/store authority before C1"
+    )
+    running_manual_boundary = (
+        "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs"
     )
     gate_q_tighten = "to be equal to or stricter than the selected tier ceilings; reject any wider value"
     gate_q_remediation = (
@@ -417,14 +438,12 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
         assert "numeric scope budgets no longer live in `IntentSpec`" in text
 
     for text in (running_docs, running_docs_mirror):
-        assert running_tolerances_flag in text
-        assert running_tolerances_default in text
-        assert running_tolerances_pre_lock in text
-        assert running_tolerances_tier_match in text
-        assert running_tolerances_tighten in text
-        assert "stages the referenced Tolerances object into locked/store authority before C1" in text
+        assert running_default in text
+        assert running_boundary in text
+        assert running_manual_boundary in text
         assert running_numeric_retired in text
         assert "R2 semantic budget ceilings come from the locked `LockedSpec.tier.tolerances_ref` object" in text
+        assert "`--tolerances-ref <object_id>=<repo-relative-path>`" not in text
 
     for text in (rendered_tiers, rendered_tiers_pack):
         assert "| Q4 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" in text
@@ -439,18 +458,23 @@ def test_consistency_sweep_docs_keep_shipped_and_manual_object_flags_distinct() 
     sweep_docs = _read_text("docs/operations/consistency-sweep.md")
     sweep_docs_mirror = _read_text("belgi/canonicals/docs/operations/consistency-sweep.md")
 
-    required_line = (
-        "Confirm `docs/operations/running-belgi.md` teaches first-class shipped object inputs via "
-        "`--toolchain-set-ref` and `--tolerances-ref`, while keeping manual C1 compiler inputs on "
-        "`--toolchain-set` and `--tolerances`."
+    required_running_line = (
+        "non-owner operator docs MUST point exact shipped CLI syntax/examples back to `docs/operations/cli.md` "
+        "instead of duplicating full flag catalogs."
     )
-    stale_line = (
-        "Confirm `docs/operations/running-belgi.md` teaches first-class shipped object inputs via "
-        "`--toolchain-set` and `--tolerances`."
+    required_tier3_line = (
+        "non-owner Tier-3 reminders MUST point `genesis_seal` / `TrustAnchor.json` authority semantics back "
+        "to `docs/operations/evidence-bundles.md` and `../../CANONICALS.md` instead of restating full authority prose."
     )
+    required_anchors_line = (
+        "Confirm `docs/operations/operator-anchors.md` teaches:"
+    )
+    stale_line = "run new guidance promotes authoritative environment inputs"
 
     for text in (sweep_docs, sweep_docs_mirror):
-        assert required_line in text
+        assert required_running_line in text
+        assert required_tier3_line in text
+        assert required_anchors_line in text
         assert stale_line not in text
 
 
@@ -486,26 +510,15 @@ def test_r7_public_docs_match_runtime_contract() -> None:
         "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain "
         "declaration surfaces in the evaluated revision truth envelope"
     )
-    running_owner_note = (
-        "`docs/operations/cli.md` owns the exact shipped `belgi run` flag syntax and examples for "
-        "ToolchainSet/Tolerances ingress"
-    )
     running_ingress = (
-        "on the shipped `belgi run` spine, explicit ToolchainSet/Tolerances refs are pre-lock operator "
-        "inputs accepted only at the matching current-run paths under `.belgi/runs/<run_id>/inputs/environment/`, "
-        "and BELGI stages them into locked/store authority before C1"
-    )
-    running_manual_boundary = (
-        "Exact shipped `belgi run` flag syntax for this surface lives in `docs/operations/cli.md`; this "
-        "manual keeps only the execution-truth boundary between explicit ToolchainSet/Tolerances refs and "
-        "manual C1 `--toolchain-set` / `--tolerances` inputs."
+        "For the shared environment objects on the shipped spine, keep only this execution boundary in mind: "
+        "current-run ToolchainSet/Tolerances inputs are staged into locked/store authority before C1, while "
+        "manual C1 still uses repo-relative `--toolchain-set` / `--tolerances` inputs."
     )
     running_member_guard = (
         "Shorthand `--toolchain-ref` declaration paths, and ToolchainSet member declaration paths inside "
         "the locked object, must still exist in the evaluated revision truth envelope."
     )
-    running_toolchain_only_path = "this is the only accepted explicit `belgi run` ingress path for ToolchainSet"
-    running_tolerances_only_path = "this is the only accepted explicit `belgi run` ingress path for Tolerances"
     gate_r_shipped_ingress = (
         "explicit ToolchainSet refs are pre-lock operator inputs accepted only at "
         "`.belgi/runs/<run_id>/inputs/environment/toolchain-set.json` for the current run"
@@ -533,13 +546,9 @@ def test_r7_public_docs_match_runtime_contract() -> None:
         assert "R7 semantic verdicting is driven by the accepted `policy.supplychain` report after `R4` structural acceptance." in text
         assert running_docs_meaning in text
         assert running_docs_accounting in text
-        assert running_owner_note in text
         assert running_ingress in text
-        assert running_manual_boundary in text
         assert running_member_guard in text
-        assert running_toolchain_only_path in text
-        assert running_tolerances_only_path in text
-        assert reserved_main in text
+        assert "`--toolchain-set-ref <object_id>=<repo-relative-path>`" not in text
 
 
 def test_tier3_canonical_authority_docs_are_explicit() -> None:
@@ -549,6 +558,8 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
     evidence_mirror = _read_text("belgi/canonicals/docs/operations/evidence-bundles.md")
     running = _read_text("docs/operations/running-belgi.md")
     running_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+    anchors = _read_text("docs/operations/operator-anchors.md")
+    anchors_mirror = _read_text("belgi/canonicals/docs/operations/operator-anchors.md")
     trust_model = _read_text("trust-model.md")
     trust_model_mirror = _read_text("belgi/canonicals/trust-model.md")
     genesis_readme = _read_text("belgi/genesis/README.md")
@@ -562,8 +573,12 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
     history_boundary = (
         "`belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload"
     )
+    non_owner_pointer = (
+        "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, "
+        "are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`."
+    )
 
-    for text in (evidence, evidence_mirror, running, running_mirror, trust_model, trust_model_mirror):
+    for text in (evidence, evidence_mirror, trust_model, trust_model_mirror):
         assert canonical_root in text
 
     for text in (gate_r, gate_r_pack):
@@ -573,9 +588,15 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
         assert evidence_boundary in text
         assert repo_primary in text
 
-    for text in (running, running_mirror, trust_model, trust_model_mirror):
+    for text in (trust_model, trust_model_mirror):
         assert "the repo artifact is the primary authority surface." in text
         assert history_boundary in text
+
+    for text in (running, running_mirror, anchors, anchors_mirror):
+        assert non_owner_pointer in text
+        assert canonical_root not in text
+        assert repo_primary not in text
+        assert history_boundary not in text
 
     assert "historical repo-local genesis reference payload" in genesis_readme
     assert "it is not authoritative for canonical Tier-3 trust-anchor verification" in genesis_readme

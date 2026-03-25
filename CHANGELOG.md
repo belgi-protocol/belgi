@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.4 — 2026-03-25
+
+### Summary
+Patch release resetting shipped operator-doc ownership so one owner-of-record carries each run/operator truth family while README and non-owner Tier-3 surfaces become pointer-led.
+
+### Changed
+- Made `docs/operations/cli.md` the sole tracked owner of shipped `belgi run` flags, accepted path examples, and operator quickstart for the shared run spine.
+- Reduced `docs/operations/running-belgi.md` to manual `python -m chain.*` reference, stage order, and replay/evidence notes while keeping only the bounded shipped-vs-manual execution truths it still needs.
+- Reduced `docs/operations/operator-anchors.md` to anchor classes, handling, and workspace/file-boundary guidance, removing the repeated full Tier-2/Tier-3 `belgi run` command examples and exact flag catalog posture.
+- Slimmed `README.md` into a pointer-led entrypoint for hosted workflow governance, wheel-boundary truth, and repo-maintenance tooling, with those families now owned by `docs/operations/workflows.md`, `CANONICALS.md`, and `tools/README.md`.
+- Narrowed the remaining Tier-3 reminders in `docs/operations/running-belgi.md` and `docs/operations/operator-anchors.md` to owner pointers back to `docs/operations/evidence-bundles.md` and `CANONICALS.md` instead of long-form co-owner authority prose.
+- Realigned consistency-sweep and contract guards so owner docs keep exact-claim protection while non-owner docs are checked for required pointers, useful boundary notes, and absence of contradictory or owner-competing wording.
+
+### Notes
+- This patch changes documentation authority and guard scope only; runtime, schema, tier, and gate semantics are unchanged.
+
 ## 1.6.3 — 2026-03-25
 
 ### Summary
