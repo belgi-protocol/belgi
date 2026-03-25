@@ -620,6 +620,7 @@ def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(
                 ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
                 "`docs/operations/cli.md` owns exact shipped `belgi run` flags, accepted path examples, and operator quickstart",
                 "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and workspace/file-boundary guidance",
+                "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
                 "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs",
             ]
         )
@@ -637,8 +638,7 @@ def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(
                 ".belgi/runs/<run_id>/inputs/evidence/genesis_seal.json",
                 "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples",
                 "this guide owns anchor classes, handling, and workspace/file-boundary guidance",
-                "`genesis_seal` remains Tier-3 evidence.",
-                "`TrustAnchor.json` remains the canonical Tier-3 authority artifact.",
+                "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
             ]
         )
         + "\n",

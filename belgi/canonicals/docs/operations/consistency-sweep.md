@@ -480,6 +480,7 @@ Canonical trigger:
 #### CS-RUN-002 — `run new` guidance and non-owner run docs stay owner-bounded
 - invariant_id: CS-RUN-002
 - statement: Operator-visible `belgi run new` guidance MUST advertise authoritative environment inputs under `.belgi/runs/<run_id>/inputs/environment/`, and non-owner operator docs MUST point exact shipped CLI syntax/examples back to `docs/operations/cli.md` instead of duplicating full flag catalogs.
+- non-owner Tier-3 reminders MUST point `genesis_seal` / `TrustAnchor.json` authority semantics back to `docs/operations/evidence-bundles.md` and `../../CANONICALS.md` instead of restating full authority prose.
 - source-of-truth (file/section):
   - belgi/cli_app/commands/run.py
   - docs/operations/cli.md
@@ -496,13 +497,14 @@ Canonical trigger:
      - `belgi run new` as the path that seeds those operator-visible inputs
      - `docs/operations/cli.md` as the owner for exact shipped `belgi run` syntax/examples
      - `docs/operations/operator-anchors.md` as the owner for anchor classes and file boundaries
+     - `docs/operations/evidence-bundles.md` plus `../../CANONICALS.md` as the owners for Tier-3 authority semantics
      - the manual-versus-shipped boundary between current-run `.belgi/.../inputs/environment/` object staging and manual C1 `--toolchain-set` / `--tolerances` inputs
   3) Confirm `docs/operations/operator-anchors.md` teaches:
      - `.belgi/runs/<run_id>/inputs/anchors/`
      - `.belgi/runs/<run_id>/inputs/evidence/genesis_seal.json`
      - `docs/operations/cli.md` as the owner for exact Tier-2/Tier-3 shipped CLI syntax/examples
-     - the `genesis_seal` / `TrustAnchor.json` non-anchor boundary
-  4) Confirm neither the rendered guidance nor the non-owner docs advertise stale root-level `.belgi/runs/<run_id>/toolchain.json` or `.belgi/runs/<run_id>/tolerances.json` placeholders, and confirm the non-owner docs do not restate full shipped `belgi run` flag catalogs or full Tier-2/Tier-3 command examples.
+     - `docs/operations/evidence-bundles.md` plus `../../CANONICALS.md` as the owners for Tier-3 authority semantics
+  4) Confirm neither the rendered guidance nor the non-owner docs advertise stale root-level `.belgi/runs/<run_id>/toolchain.json` or `.belgi/runs/<run_id>/tolerances.json` placeholders, and confirm the non-owner docs do not restate full shipped `belgi run` flag catalogs, full Tier-2/Tier-3 command examples, or long-form Tier-3 authority prose.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if generated guidance teaches authoritative environment inputs, and the non-owner docs stay pointer-bounded without contradicting the owner CLI surface.

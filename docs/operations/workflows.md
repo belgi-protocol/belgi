@@ -6,6 +6,9 @@ Proof surfaces and required gate contexts are not the same thing.
 GitHub may show additional job-level checks in the UI.
 Hosted governance should bind only to the stable required gate contexts listed here.
 
+Owner boundary:
+- `README.md` is a thin entrypoint for this family and points here for hosted proof surfaces, required gate contexts, local `act` rehearsal, and branch-governance details.
+
 These workflows prove different things under different input and trust models.
 Overlap in Tier-0/Tier-1 execution does not make them duplicates.
 
@@ -136,6 +139,19 @@ It does not rely on `--no-build-isolation` as an ambient runner shortcut.
 GitHub may still display additional check runs for matrix jobs or proof-carrying jobs.
 That is expected.
 Hosted governance should still bind only to the two stable gate contexts above.
+
+## Local Workflow Rehearsal
+
+Recommended local `act` commands before pushing workflow changes:
+
+```bash
+act -W .github/workflows/repository-verification.yml -j health \
+  -P ubuntu-24.04=catthehacker/ubuntu:full-latest
+act -W .github/workflows/repository-verification.yml -j wheel-smoke \
+  -P ubuntu-24.04=catthehacker/ubuntu:full-latest
+```
+
+For cross-repo checkout jobs, a valid `GITHUB_TOKEN` secret is required locally; missing/invalid token is a fail-closed NO-GO.
 
 ## Triggering Pull Request Proof
 

@@ -36,9 +36,7 @@ Adjacent non-anchor Tier-3 evidence workspace:
 
 Boundary:
 - `genesis_seal` is not an Operator Anchor.
-- `belgi/anchor/v1/TrustAnchor.json` is not an Operator Anchor.
-- `genesis_seal` remains Tier-3 evidence.
-- `TrustAnchor.json` remains the canonical Tier-3 authority artifact.
+- Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.
 
 ## 3) Format Expectations
 

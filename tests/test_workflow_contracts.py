@@ -110,11 +110,22 @@ def test_readme_uses_current_workflow_references() -> None:
     text = _read_text("README.md")
 
     assert "actions/workflows/repository-verification.yml" in text
-    assert ".github/workflows/repository-verification.yml" in text
+    assert "docs/operations/workflows.md" in text
     assert "demo_matrix.yml" not in text
     assert "actions/workflows/ci.yml" not in text
-    assert "`repository-verification-gate` and `pull-request-proof-gate`" in text
-    assert "`Pinned Install Proof` remains manual/reusable and is not a PR-required context in `v1.4.17`." in text
+    assert "Local workflow checks with Docker + `act` are recommended before pushing workflow changes:" not in text
+    assert "`repository-verification-gate` and `pull-request-proof-gate`" not in text
+    assert "`Pinned Install Proof` remains manual/reusable and is not a PR-required context in `v1.4.17`." not in text
+
+
+def test_readme_points_wheel_boundary_to_owner_docs() -> None:
+    text = _read_text("README.md")
+
+    assert "CANONICALS.md#wheel-vs-repo-local" in text
+    assert "CANONICALS.md#publication-posture" in text
+    assert "tools/README.md" in text
+    assert "Published wheel (`pip install belgi`) includes:" not in text
+    assert "python -m tools.check_drift" not in text
 
 
 def test_repo_lint_authority_is_active_for_chosen_surface() -> None:
@@ -133,7 +144,8 @@ def test_repo_lint_authority_is_active_for_chosen_surface() -> None:
     assert 'unfixable = ["B"]' in pyproject
     assert "Tracked `ruff` configuration is active on this surface" in workflows
     assert "repo-maintenance enforcement only" in workflows
-    assert "Tracked `ruff` configuration is active as the repo-maintenance lint authority" in readme
+    assert "Repo-local maintenance commands and tool contracts: [tools/README.md](tools/README.md)" in readme
+    assert "Tracked `ruff` configuration is active as the repo-maintenance lint authority" not in readme
     assert 'Run-Step "Ruff lint"' in dev_sync
     assert 'function Resolve-RuffPython([string]$repoRoot, [hashtable]$fallbackPyInfo)' in dev_sync
     assert 'vars.BELGI_ENABLE_RUFF' not in _read_text(".github/workflows/repository-verification.yml")

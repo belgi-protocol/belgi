@@ -174,6 +174,10 @@ def test_operator_anchor_docs_and_canonicals_align() -> None:
     anchors_owner_pointer = (
         "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples"
     )
+    tier3_owner_pointer = (
+        "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, "
+        "are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`."
+    )
 
     for text in (canonicals, canonicals_mirror):
         assert required_definition in text
@@ -192,13 +196,14 @@ def test_operator_anchor_docs_and_canonicals_align() -> None:
         assert running_boundary in text
         assert running_owner_pointer in text
         assert text.count(running_owner_pointer) == 1
+        assert tier3_owner_pointer in text
 
     for text in (anchors_docs, anchors_docs_mirror):
         assert anchors_boundary in text
         assert anchors_owner_pointer in text
         assert text.count(anchors_owner_pointer) == 1
         assert "`genesis_seal` is not an Operator Anchor." in text
-        assert "`TrustAnchor.json` remains the canonical Tier-3 authority artifact." in text
+        assert tier3_owner_pointer in text
         assert "belgi run \\" not in text
 
     assert anchors_docs == anchors_docs_mirror
@@ -457,6 +462,10 @@ def test_consistency_sweep_docs_keep_shipped_and_manual_object_flags_distinct() 
         "non-owner operator docs MUST point exact shipped CLI syntax/examples back to `docs/operations/cli.md` "
         "instead of duplicating full flag catalogs."
     )
+    required_tier3_line = (
+        "non-owner Tier-3 reminders MUST point `genesis_seal` / `TrustAnchor.json` authority semantics back "
+        "to `docs/operations/evidence-bundles.md` and `../../CANONICALS.md` instead of restating full authority prose."
+    )
     required_anchors_line = (
         "Confirm `docs/operations/operator-anchors.md` teaches:"
     )
@@ -464,6 +473,7 @@ def test_consistency_sweep_docs_keep_shipped_and_manual_object_flags_distinct() 
 
     for text in (sweep_docs, sweep_docs_mirror):
         assert required_running_line in text
+        assert required_tier3_line in text
         assert required_anchors_line in text
         assert stale_line not in text
 
@@ -548,6 +558,8 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
     evidence_mirror = _read_text("belgi/canonicals/docs/operations/evidence-bundles.md")
     running = _read_text("docs/operations/running-belgi.md")
     running_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
+    anchors = _read_text("docs/operations/operator-anchors.md")
+    anchors_mirror = _read_text("belgi/canonicals/docs/operations/operator-anchors.md")
     trust_model = _read_text("trust-model.md")
     trust_model_mirror = _read_text("belgi/canonicals/trust-model.md")
     genesis_readme = _read_text("belgi/genesis/README.md")
@@ -561,8 +573,12 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
     history_boundary = (
         "`belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload"
     )
+    non_owner_pointer = (
+        "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, "
+        "are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`."
+    )
 
-    for text in (evidence, evidence_mirror, running, running_mirror, trust_model, trust_model_mirror):
+    for text in (evidence, evidence_mirror, trust_model, trust_model_mirror):
         assert canonical_root in text
 
     for text in (gate_r, gate_r_pack):
@@ -572,9 +588,15 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
         assert evidence_boundary in text
         assert repo_primary in text
 
-    for text in (running, running_mirror, trust_model, trust_model_mirror):
+    for text in (trust_model, trust_model_mirror):
         assert "the repo artifact is the primary authority surface." in text
         assert history_boundary in text
+
+    for text in (running, running_mirror, anchors, anchors_mirror):
+        assert non_owner_pointer in text
+        assert canonical_root not in text
+        assert repo_primary not in text
+        assert history_boundary not in text
 
     assert "historical repo-local genesis reference payload" in genesis_readme
     assert "it is not authoritative for canonical Tier-3 trust-anchor verification" in genesis_readme

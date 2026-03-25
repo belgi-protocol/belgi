@@ -1237,6 +1237,7 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             "`belgi run new`",
             "`docs/operations/cli.md` owns exact shipped `belgi run` flags, accepted path examples, and operator quickstart",
             "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and workspace/file-boundary guidance",
+            "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
             "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs",
         ],
         "docs/operations/operator-anchors.md": [
@@ -1246,8 +1247,7 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             ".belgi/runs/<run_id>/inputs/evidence/genesis_seal.json",
             "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples",
             "this guide owns anchor classes, handling, and workspace/file-boundary guidance",
-            "`genesis_seal` remains Tier-3 evidence.",
-            "`TrustAnchor.json` remains the canonical Tier-3 authority artifact.",
+            "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
         ],
     }
     forbidden_docs = {
@@ -1264,12 +1264,17 @@ def check_cs_run_002(root: Path) -> InvariantResult:
             "--seal-private-key-ref <repo-relative-path>",
             "--seal-signature-ref <repo-relative-path>",
             "--genesis-seal-ref <repo-relative-path>",
+            "Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`.",
+            "`belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload and is not authoritative for canonical Tier-3 trust-anchor verification.",
+            "Internet publication of the Tier-3 trust anchor is secondary only; the repo artifact is the primary authority surface.",
         ],
         "docs/operations/operator-anchors.md": [
             "belgi run \\",
             "--repo .",
             "--tier tier-2",
             "--tier tier-3",
+            "`belgi/anchor/v1/TrustAnchor.json` is not an Operator Anchor.",
+            "`TrustAnchor.json` remains the canonical Tier-3 authority artifact.",
         ],
     }
     for rel, needles in doc_targets.items():

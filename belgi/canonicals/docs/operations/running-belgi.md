@@ -49,7 +49,7 @@ Revision semantics in `belgi run` (deterministic, fail-closed):
   3. explicit `--base-revision <40-hex SHA>`
 - the shared environment-object family on the shipped spine is `.belgi/runs/<run_id>/inputs/environment/`
 - shorthand `--toolchain-ref` declaration paths, and ToolchainSet member declaration paths inside the locked object, must still exist in the evaluated revision truth envelope
-- Tier-2/Tier-3 use the same shipped run backbone; `genesis_seal` remains Tier-3 evidence, not an Operator Anchor, under canonical `belgi/anchor/v1/TrustAnchor.json` authority
+- Tier-2/Tier-3 use the same shipped run backbone; `genesis_seal` stays separate from Operator Anchors
 - numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy `IntentSpec.scope.max_*` fields with migration guidance to move them into Tolerances
 - If none of the above can resolve a valid base revision, `belgi run` fails closed with `USER_ERROR (20)`.
 
@@ -103,7 +103,7 @@ Recommended Tier-3 evidence path:
 
 Boundary:
 - `genesis_seal` is Tier-3 evidence, not an Operator Anchor.
-- `belgi/anchor/v1/TrustAnchor.json` is the canonical Tier-3 authority artifact, not an Operator Anchor.
+- Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.
 
 The stage-level examples below use `IntentSpec.core.md` as an artifact name shorthand; direct `chain.*` invocations may use any repo-relative path that resolves to the same bytes.
 
@@ -523,10 +523,7 @@ Chain of custody note (R-Snapshot):
   - Tier 1–3 require: `diff`, `command_log`, `schema_validation`, `policy_report`, `test_report`, `env_attestation`
   - Tier 3 additionally requires: `genesis_seal`
   - (From `../../tiers/tier-packs.json`: `docs_compilation_log` exists but is produced after Gate R (C3). Gate R MUST NOT require it.)
-- Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`.
-- `genesis_seal` remains the Tier-3 evidence kind consumed under that canonical authority boundary.
-- `belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload and is not authoritative for canonical Tier-3 trust-anchor verification.
-- Internet publication of the Tier-3 trust anchor is secondary only; the repo artifact is the primary authority surface.
+- Tier-3 authority note: `genesis_seal` remains the Tier-3 required evidence kind on this path; see Section 0.4 and `docs/operations/evidence-bundles.md` for the full authority boundary.
 - Gate checks satisfied:
   - Gate R: R1–R8, R-DOC-001
   - Additionally, Gate R enforces Evidence Sufficiency (rule_id `R0.evidence_sufficiency`) and `command_log_mode` (rule_id `R0.command_log_mode`) per `../../gates/GATE_R.md`.
@@ -543,7 +540,7 @@ Failure handling:
 
 Notes:
 - This is an operator convenience tool and is **not** a gate requirement.
-- For Tier 3, the report includes an explicit YAML frontmatter block with the genesis insignia only after the `genesis_seal` evidence is verified under canonical `belgi/anchor/v1/TrustAnchor.json` authority.
+- For Tier 3, the report includes an explicit YAML frontmatter block with the genesis insignia only after Tier-3 evidence verification succeeds; use `docs/operations/evidence-bundles.md` for the authority boundary.
 
 Run (example):
 
