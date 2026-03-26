@@ -16,3 +16,12 @@ Lane owners:
 
 This root README is the single lane-owner summary for `tests/`.
 The only per-lane README that remains intentional is `tests/serial/README.md`, because serial is an exception protocol with its own marker, budget, and justification rules.
+
+Custom pytest markers are suite control-plane state, not topic labels.
+Current registered custom vocabulary is only:
+
+- `repo_local`: repo-local import/reset handling
+- `serial`: explicit serial-lane exclusion
+
+Lane identity comes from path and lane classification, not from a second marker taxonomy.
+Empty lane directories are intentionally tracked with placeholders until later split commits move real modules under them.
