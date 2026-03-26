@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = REPO_ROOT / "tests"
+RUN_CLI_ROOT = TESTS_ROOT / "run_cli"
 LANE_DIRS = (
     "meta",
     "docs_authority",
@@ -52,7 +54,6 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_run_belgi_smoke_script.py": "run_cli",
     "tests/test_run_manifest_cli.py": "run_cli",
     "tests/test_run_orchestrator_template_hydration.py": "run_orchestrator",
-    "tests/test_run_verify_cli.py": "run_cli",
     "tests/test_schema_authority_contracts.py": "schemas",
     "tests/test_stage_cli_forwarders.py": "tools",
     "tests/test_tier_contract_enforcement.py": "gates",
@@ -63,6 +64,8 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_wheel_boundary.py": "shipped_surface",
     "tests/test_yaml_subset_parser.py": "schemas",
 }
+FORBIDDEN_RUN_CLI_HELPERS = {"tests.helpers.run_cli_harness"}
+FORBIDDEN_RUN_CLI_HANDLES = {"belgi_cli", "belgi_main", "run_orchestrator"}
 
 
 def _classify_test_module(relpath: str) -> str:
@@ -100,6 +103,13 @@ def test_every_test_module_belongs_to_exactly_one_lane() -> None:
 
 def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> None:
     assert _classify_test_module("tests/test_run_manifest_cli.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_run_cli_spine.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_run_cli_output_contracts.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_verify_cli_contracts.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_run_cli_locked_input_contracts.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_run_cli_tier1_contracts.py") == "run_cli"
+    assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_cli_contracts.py") == "run_orchestrator"
+    assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_cli_output_contracts.py") == "run_orchestrator"
     assert _classify_test_module("tests/meta/test_sweep_semantics.py") == "meta"
     assert _classify_test_module("tests/docs_authority/test_template_claim_contracts.py") == "docs_authority"
     assert _classify_test_module("tests/docs_authority/test_workflow_contracts.py") == "docs_authority"
@@ -108,3 +118,33 @@ def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> 
     assert not (TESTS_ROOT / "test_no_chain_base_cannon_imports.py").exists()
     assert not (TESTS_ROOT / "test_template_claim_contracts.py").exists()
     assert not (TESTS_ROOT / "test_workflow_contracts.py").exists()
+    assert not (TESTS_ROOT / "test_run_verify_cli.py").exists()
+
+
+def test_run_cli_lane_stays_subprocess_black_box() -> None:
+    failures: list[str] = []
+
+    for path in sorted(RUN_CLI_ROOT.rglob("test_*.py")):
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="strict"), filename=rel)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in FORBIDDEN_RUN_CLI_HELPERS:
+                        failures.append(f"{rel}: imports forbidden helper `{alias.name}`")
+            elif isinstance(node, ast.ImportFrom):
+                if node.module in FORBIDDEN_RUN_CLI_HELPERS:
+                    failures.append(f"{rel}: imports forbidden helper `{node.module}`")
+                if node.module == "tests.helpers":
+                    for alias in node.names:
+                        if alias.name == "run_cli_harness":
+                            failures.append(f"{rel}: imports forbidden helper `tests.helpers.run_cli_harness`")
+            elif isinstance(node, ast.FunctionDef):
+                args = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+                if any(arg.arg == "monkeypatch" for arg in args):
+                    failures.append(f"{rel}: uses forbidden `monkeypatch` fixture in subprocess lane")
+            elif isinstance(node, ast.Name) and node.id in FORBIDDEN_RUN_CLI_HANDLES:
+                failures.append(f"{rel}: uses forbidden in-process runtime handle `{node.id}`")
+
+    assert not failures, "\n".join(failures)

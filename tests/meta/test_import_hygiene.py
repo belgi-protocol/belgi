@@ -26,6 +26,7 @@ FORBIDDEN_CHAIN_LOGIC_BASE_IMPORTS = frozenset(
     }
 )
 HELPER_ALLOWLIST = {"tests/helpers/repo_imports.py"}
+FRESH_BELGI_CLI_SURFACE_TARGET = "tests.helpers.repo_imports.import_fresh_belgi_cli_surface"
 SKIP_PATH_PARTS = {
     ".git",
     ".pytest_cache",
@@ -75,6 +76,21 @@ def _module_string_constants(tree: ast.AST) -> dict[str, str]:
             and isinstance(node.value.value, str)
         ):
             bindings[node.targets[0].id] = node.value.value
+    return bindings
+
+
+def _module_import_bindings(tree: ast.AST) -> dict[str, str]:
+    bindings: dict[str, str] = {}
+    if not isinstance(tree, ast.Module):
+        return bindings
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bindings[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            for alias in node.names:
+                local_name = alias.asname or alias.name
+                bindings[local_name] = f"{node.module}.{alias.name}"
     return bindings
 
 
@@ -202,6 +218,40 @@ def _is_sys_modules_pop_call(node: ast.AST) -> bool:
     )
 
 
+def _call_target_name(node: ast.Call, *, import_bindings: dict[str, str]) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return import_bindings.get(func.id, func.id)
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        base = import_bindings.get(func.value.id, func.value.id)
+        return f"{base}.{func.attr}"
+    return None
+
+
+def _collect_top_level_fresh_belgi_cli_surface_inits(*, tree: ast.AST, rel: str) -> list[str]:
+    offenders: list[str] = []
+    if not isinstance(tree, ast.Module):
+        return offenders
+
+    import_bindings = _module_import_bindings(tree)
+    for node in tree.body:
+        value: ast.AST | None = None
+        if isinstance(node, ast.Assign):
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            value = node.value
+        elif isinstance(node, ast.Expr):
+            value = node.value
+        if not isinstance(value, ast.Call):
+            continue
+        target_name = _call_target_name(value, import_bindings=import_bindings)
+        if target_name == FRESH_BELGI_CLI_SURFACE_TARGET:
+            offenders.append(
+                f"{rel}:{getattr(node, 'lineno', '?')} caches a fresh BELGI CLI surface at module import time"
+            )
+    return offenders
+
+
 def test_chain_logic_base_import_boundary_guard_has_single_ast_owner() -> None:
     assert _collect_chain_logic_base_boundary_guard_owners() == [OWNER_BOUNDARY_GUARD]
 
@@ -237,5 +287,16 @@ def test_sys_modules_surgery_is_helper_owned() -> None:
                         offenders.append(f"{rel}:{getattr(node, 'lineno', '?')} uses direct del sys.modules[...]")
             elif _is_sys_modules_pop_call(node):
                 offenders.append(f"{rel}:{getattr(node, 'lineno', '?')} uses sys.modules.pop(...)")
+
+    assert offenders == [], "\n".join(offenders)
+
+
+def test_fresh_belgi_cli_surface_is_not_cached_at_module_import_time() -> None:
+    offenders: list[str] = []
+
+    for path in _iter_test_py_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="strict"), filename=rel)
+        offenders.extend(_collect_top_level_fresh_belgi_cli_surface_inits(tree=tree, rel=rel))
 
     assert offenders == [], "\n".join(offenders)
