@@ -2,11 +2,54 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+_C3_CANONICAL_DOC_MIRRORS: tuple[tuple[str, str], ...] = (
+    ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
+    ("terminology.md", "belgi/canonicals/terminology.md"),
+    ("trust-model.md", "belgi/canonicals/trust-model.md"),
+    ("docs/operations/consistency-sweep.md", "belgi/canonicals/docs/operations/consistency-sweep.md"),
+    ("docs/operations/cli.md", "belgi/canonicals/docs/operations/cli.md"),
+    ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
+    ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
+    ("docs/operations/operator-anchors.md", "belgi/canonicals/docs/operations/operator-anchors.md"),
+    ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
+    ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
+    ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
+    ("docs/research/README.md", "belgi/canonicals/docs/research/README.md"),
+    ("docs/research/experiment-design.md", "belgi/canonicals/docs/research/experiment-design.md"),
+    ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
+)
+
+_PROTOCOL_PACK_TEXT_MIRRORS: tuple[tuple[str, str], ...] = (
+    ("schemas/README.md", "belgi/_protocol_packs/v1/schemas/README.md"),
+    ("gates/GATE_Q.md", "belgi/_protocol_packs/v1/gates/GATE_Q.md"),
+    ("gates/GATE_R.md", "belgi/_protocol_packs/v1/gates/GATE_R.md"),
+    ("gates/failure-taxonomy.md", "belgi/_protocol_packs/v1/gates/failure-taxonomy.md"),
+    ("tiers/tier-packs.md", "belgi/_protocol_packs/v1/tiers/tier-packs.md"),
+    (
+        "schemas/GenesisSealPayload.schema.json",
+        "belgi/_protocol_packs/v1/schemas/GenesisSealPayload.schema.json",
+    ),
+)
 
 
 def _read_text(relpath: str) -> str:
     return (REPO_ROOT / relpath).read_text(encoding="utf-8", errors="strict")
+
+
+def _read_bytes(relpath: str) -> bytes:
+    return (REPO_ROOT / relpath).read_bytes()
+
+
+def test_c3_canonical_doc_mirrors_are_byte_identical() -> None:
+    for src_rel, dst_rel in _C3_CANONICAL_DOC_MIRRORS:
+        assert _read_bytes(src_rel) == _read_bytes(dst_rel)
+
+
+def test_protocol_pack_text_mirrors_are_byte_identical() -> None:
+    for src_rel, dst_rel in _PROTOCOL_PACK_TEXT_MIRRORS:
+        assert _read_bytes(src_rel) == _read_bytes(dst_rel)
 
 
 def test_promptbundle_template_removes_tier_pack_exact_bytes_claim() -> None:
@@ -51,37 +94,31 @@ def test_running_belgi_docs_require_canonical_out_log_path() -> None:
 
 def test_running_belgi_manual_c1_example_matches_current_object_contract() -> None:
     running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
 
-    for text in (running_docs, running_docs_mirror):
-        assert "--toolchain-set env.toolchains=bundle/environment/toolchain-set.json" in text
-        assert "--toolchain-ref toolchain.main=bundle/environment/toolchain.json" in text
-        assert "--tolerances tier.tolerances=bundle/environment/tolerances.json" in text
-        assert "--toolchain-ref tc-001=bundle/toolchains/toolchain-001.json" not in text
-        assert "--tolerances tol-001=bundle/tolerances/tol-001.json" not in text
-        assert "do not pass them as extra shorthand `--toolchain-ref` values" in text
-        assert "The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location." not in text
+    assert "--toolchain-set env.toolchains=bundle/environment/toolchain-set.json" in running_docs
+    assert "--toolchain-ref toolchain.main=bundle/environment/toolchain.json" in running_docs
+    assert "--tolerances tier.tolerances=bundle/environment/tolerances.json" in running_docs
+    assert "--toolchain-ref tc-001=bundle/toolchains/toolchain-001.json" not in running_docs
+    assert "--tolerances tol-001=bundle/tolerances/tol-001.json" not in running_docs
+    assert "do not pass them as extra shorthand `--toolchain-ref` values" in running_docs
+    assert "The explicit CLI flags remain repo-relative and do not require a hardcoded workspace location." not in running_docs
 
 
 def test_schema_readmes_claim_published_schema_backed_locked_objects() -> None:
     schema_readme = _read_text("schemas/README.md")
-    schema_readme_pack = _read_text("belgi/_protocol_packs/v1/schemas/README.md")
     required_line = (
         "Gate Q / Gate R locked-object loaders validate ToolchainSet and Tolerances "
         "against these published schemas after ObjectRef hash binding."
     )
 
-    for text in (schema_readme, schema_readme_pack):
-        assert required_line in text
-        assert "schema and runtime both reject legacy `IntentSpec.scope.max_*` fields" in text
+    assert required_line in schema_readme
+    assert "schema and runtime both reject legacy `IntentSpec.scope.max_*` fields" in schema_readme
 
 
-def test_r7_public_docs_are_explicitly_bounded() -> None:
+def test_r7_owner_docs_are_explicitly_bounded() -> None:
     gate_r = _read_text("gates/GATE_R.md")
     canonicals = _read_text("CANONICALS.md")
-    canonicals_mirror = _read_text("belgi/canonicals/CANONICALS.md")
     evidence_bundles = _read_text("docs/operations/evidence-bundles.md")
-    evidence_bundles_mirror = _read_text("belgi/canonicals/docs/operations/evidence-bundles.md")
 
     required_gate_r = "deterministic declared change-accounting over the actual locked-base -> evaluated diff"
     required_non_claims = (
@@ -99,17 +136,13 @@ def test_r7_public_docs_are_explicitly_bounded() -> None:
 
     assert required_gate_r in gate_r
     assert required_non_claims in gate_r
-    for text in (canonicals, canonicals_mirror):
-        assert required_canonicals in text
-    for text in (evidence_bundles, evidence_bundles_mirror):
-        assert required_evidence_bundles in text
+    assert required_canonicals in canonicals
+    assert required_evidence_bundles in evidence_bundles
 
 
 def test_r7_docs_keep_pinned_toolchain_refs_owned_by_q5() -> None:
     gate_r = _read_text("gates/GATE_R.md")
     rendered_tiers = _read_text("tiers/tier-packs.md")
-    pack_gate_r = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
-    pack_rendered_tiers = _read_text("belgi/_protocol_packs/v1/tiers/tier-packs.md")
 
     owner_note = (
         "Q5 owns `envelope_policy.pinned_toolchain_refs_required`; R7 consumes the normalized "
@@ -120,93 +153,58 @@ def test_r7_docs_keep_pinned_toolchain_refs_owned_by_q5() -> None:
     new_rendered_line = "| R7 | command_log_mode |"
     old_rendered_line = "| R7 | envelope_policy.pinned_toolchain_refs_required, command_log_mode |"
 
-    for text in (gate_r, pack_gate_r):
-        assert owner_note in text
-        assert old_gate_r_line not in text
-
-    for text in (rendered_tiers, pack_rendered_tiers):
-        assert "| Q5 | envelope_policy.pinned_toolchain_refs_required |" in text
-        assert new_rendered_line in text
-        assert old_rendered_line not in text
+    assert owner_note in gate_r
+    assert old_gate_r_line not in gate_r
+    assert "| Q5 | envelope_policy.pinned_toolchain_refs_required |" in rendered_tiers
+    assert new_rendered_line in rendered_tiers
+    assert old_rendered_line not in rendered_tiers
 
 
 def test_waiver_docs_split_mechanical_and_operational_controls() -> None:
     waivers = _read_text("docs/operations/waivers.md")
-    waivers_mirror = _read_text("belgi/canonicals/docs/operations/waivers.md")
 
-    for text in (waivers, waivers_mirror):
-        assert (
-            "Repo-mechanical enforcement in v1 proves schema validity, active status, placeholder rejection, "
-            "the human-authorship heuristic, anchored expiry replay, and tier limits."
-        ) in text
-        assert (
-            "BELGI does not mechanically prove branch protection, restricted storage, actor/source provenance, "
-            "or approval workflow provenance from in-repo artifacts alone; those remain operational controls."
-        ) in text
+    assert (
+        "Repo-mechanical enforcement in v1 proves schema validity, active status, placeholder rejection, "
+        "the human-authorship heuristic, anchored expiry replay, and tier limits."
+    ) in waivers
+    assert (
+        "BELGI does not mechanically prove branch protection, restricted storage, actor/source provenance, "
+        "or approval workflow provenance from in-repo artifacts alone; those remain operational controls."
+    ) in waivers
 
-        section = text[text.index("### 4.2 Operational controls outside repo-mechanical proof") :]
-        assert "branch protection and restricted storage for waiver sources" in section
-        assert "actor/source provenance for who authored or moved a waiver artifact" in section
-        assert "approval workflow provenance showing how human review/approval happened" in section
+    section = waivers[waivers.index("### 4.2 Operational controls outside repo-mechanical proof") :]
+    assert "branch protection and restricted storage for waiver sources" in section
+    assert "actor/source provenance for who authored or moved a waiver artifact" in section
+    assert "approval workflow provenance showing how human review/approval happened" in section
 
 
-def test_operator_anchor_docs_and_canonicals_align() -> None:
+def test_operator_anchor_owner_docs_keep_boundary_and_term_claims() -> None:
     canonicals = _read_text("CANONICALS.md")
-    canonicals_mirror = _read_text("belgi/canonicals/CANONICALS.md")
     terminology = _read_text("terminology.md")
-    terminology_mirror = _read_text("belgi/canonicals/terminology.md")
     cli_docs = _read_text("docs/operations/cli.md")
-    cli_docs_mirror = _read_text("belgi/canonicals/docs/operations/cli.md")
-    running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
     anchors_docs = _read_text("docs/operations/operator-anchors.md")
-    anchors_docs_mirror = _read_text("belgi/canonicals/docs/operations/operator-anchors.md")
 
     required_definition = "Operator Anchors are operator-supplied control artifacts or refs"
     required_boundary = "`genesis_seal` remains Tier-3 evidence"
     term_pointer = "| Operator Anchors | [CANONICALS.md#operator-anchors](CANONICALS.md#operator-anchors) |"
-    running_boundary = "Tier-3 evidence remains separate from anchors:"
     anchors_boundary = "Adjacent non-anchor Tier-3 evidence workspace:"
-    running_owner_pointer = (
-        "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and "
-        "workspace/file-boundary guidance"
-    )
-    anchors_owner_pointer = (
-        "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples"
-    )
-    tier3_owner_pointer = (
-        "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, "
-        "are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`."
-    )
 
-    for text in (canonicals, canonicals_mirror):
-        assert required_definition in text
-        assert required_boundary in text
+    assert required_definition in canonicals
+    assert required_boundary in canonicals
+    assert term_pointer in terminology
 
-    for text in (terminology, terminology_mirror):
-        assert term_pointer in text
+    assert "inputs/anchors/" in cli_docs
+    assert "inputs/evidence/genesis_seal.json" in cli_docs
+    assert "inputs/tier2/" not in cli_docs
+    assert "inputs/tier3/" not in cli_docs
 
-    for text in (cli_docs, cli_docs_mirror, running_docs, running_docs_mirror, anchors_docs, anchors_docs_mirror):
-        assert "inputs/anchors/" in text
-        assert "inputs/evidence/genesis_seal.json" in text
-        assert "inputs/tier2/" not in text
-        assert "inputs/tier3/" not in text
-
-    for text in (running_docs, running_docs_mirror):
-        assert running_boundary in text
-        assert running_owner_pointer in text
-        assert text.count(running_owner_pointer) == 1
-        assert tier3_owner_pointer in text
-
-    for text in (anchors_docs, anchors_docs_mirror):
-        assert anchors_boundary in text
-        assert anchors_owner_pointer in text
-        assert text.count(anchors_owner_pointer) == 1
-        assert "`genesis_seal` is not an Operator Anchor." in text
-        assert tier3_owner_pointer in text
-        assert "belgi run \\" not in text
-
-    assert anchors_docs == anchors_docs_mirror
+    assert anchors_boundary in anchors_docs
+    assert ".belgi/runs/<run_id>/inputs/anchors/approvals/" in anchors_docs
+    assert ".belgi/runs/<run_id>/inputs/anchors/keys/" in anchors_docs
+    assert ".belgi/runs/<run_id>/inputs/anchors/signing/" in anchors_docs
+    assert ".belgi/runs/<run_id>/inputs/evidence/genesis_seal.json" in anchors_docs
+    assert "`genesis_seal` is not an Operator Anchor." in anchors_docs
+    assert "belgi run \\" not in anchors_docs
 
 
 def test_prompt_hash_contract_explicitly_requires_c1_rendered_bytes_hashes() -> None:
@@ -214,19 +212,17 @@ def test_prompt_hash_contract_explicitly_requires_c1_rendered_bytes_hashes() -> 
     required_b = "C3 recomputes expected hashes by rendering the selected prompt blocks and rejects mismatches."
 
     running_docs = _read_text("docs/operations/running-belgi.md")
-    mirror_docs = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
     c3_template = _read_text("belgi/templates/DocsCompiler.template.md")
 
-    for text in (running_docs, mirror_docs, c3_template):
-        assert required_a in text
-        assert required_b in text
+    assert required_a in running_docs
+    assert required_b in running_docs
+    assert required_a in c3_template
+    assert required_b in c3_template
 
 
 def test_gate_r_fail_fast_doctrine_docs_are_explicit() -> None:
     gate_r = _read_text("gates/GATE_R.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
 
     doctrine = "Gate R default doctrine is **fail-fast / minimal mutation**."
     executed_only = "`results[]` contains executed checks only."
@@ -237,23 +233,20 @@ def test_gate_r_fail_fast_doctrine_docs_are_explicit() -> None:
         "Snapshot manifest/index write failure is terminal because Gate R must not continue later evaluation without a persisted evidence anchor."
     )
 
-    for text in (gate_r, gate_r_pack, running_docs, running_docs_mirror):
-        assert doctrine in text
-        assert executed_only in text
-        assert snapshot_stop in text
+    assert doctrine in gate_r
+    assert executed_only in gate_r
+    assert snapshot_stop in gate_r
+    assert "Gate R MUST stop before mutation-producing snapshot work" in gate_r
 
-    for text in (gate_r, gate_r_pack):
-        assert "Gate R MUST stop before mutation-producing snapshot work" in text
-
-    for text in (running_docs, running_docs_mirror):
-        assert identity_stop in text
+    assert doctrine in running_docs
+    assert executed_only in running_docs
+    assert snapshot_stop in running_docs
+    assert identity_stop in running_docs
 
 
 def test_required_report_payloads_are_explicitly_bound_to_current_run() -> None:
     gate_r = _read_text("gates/GATE_R.md")
     running_docs = _read_text("docs/operations/running-belgi.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
 
     required_policy = "Required `policy_report` payloads MUST have `payload.run_id == LockedSpec.run_id`."
     required_test = "Required `test_report` payloads MUST have `payload.run_id == LockedSpec.run_id`."
@@ -262,19 +255,14 @@ def test_required_report_payloads_are_explicitly_bound_to_current_run() -> None:
         "they must also bind to the current run via `payload.run_id == LockedSpec.run_id`."
     )
 
-    for text in (gate_r, gate_r_pack):
-        assert required_policy in text
-        assert required_test in text
-
-    for text in (running_docs, running_docs_mirror):
-        assert required_ops in text
+    assert required_policy in gate_r
+    assert required_test in gate_r
+    assert required_ops in running_docs
 
 
 def test_required_report_current_run_binding_is_owned_by_r4_only() -> None:
     gate_r = _read_text("gates/GATE_R.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
 
     required_owner = (
         "Gate R applies this required-report current-run binding structurally under `R4` before semantic checks "
@@ -285,20 +273,14 @@ def test_required_report_current_run_binding_is_owned_by_r4_only() -> None:
         "checks consume them."
     )
 
-    for text in (gate_r, gate_r_pack):
-        assert required_owner in text
-
-    for text in (running_docs, running_docs_mirror):
-        assert required_ops in text
+    assert required_owner in gate_r
+    assert required_ops in running_docs
 
 
 def test_r8_public_docs_match_runtime_contract() -> None:
     gate_r = _read_text("gates/GATE_R.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
     failure_taxonomy = _read_text("gates/failure-taxonomy.md")
-    failure_taxonomy_pack = _read_text("belgi/_protocol_packs/v1/gates/failure-taxonomy.md")
 
     command_rule = "successful execution means `exit_code == 0` only"
     findings_mode_line = "semantic verdicting is driven by `adversarial_policy.findings_mode`"
@@ -341,46 +323,37 @@ def test_r8_public_docs_match_runtime_contract() -> None:
     stale_rc2 = "rc=2"
     stale_flat_fail = "if the accepted report indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`."
 
-    for text in (gate_r, gate_r_pack):
-        assert command_rule in text
-        assert findings_mode_line in text
-        assert diff_subject_line in text
-        assert diff_guard_line in text
-        assert warn_line in text
-        assert fail_line in text
-        assert waiver_pass_line in text
-        assert stale_rc2 not in text.lower()
-        assert stale_flat_fail not in text.lower()
+    assert command_rule in gate_r
+    assert findings_mode_line in gate_r
+    assert diff_subject_line in gate_r
+    assert diff_guard_line in gate_r
+    assert warn_line in gate_r
+    assert fail_line in gate_r
+    assert waiver_pass_line in gate_r
+    assert stale_rc2 not in gate_r.lower()
+    assert stale_flat_fail not in gate_r.lower()
 
-    for text in (running_docs, running_docs_mirror):
-        assert running_docs_command in text
-        assert "R8 semantic verdicting is driven by `adversarial_policy.findings_mode`" in text
-        assert running_docs_diff_subject in text
-        assert running_docs_diff_guard in text
-        assert running_docs_warn in text
-        assert running_docs_fail in text
-        assert running_docs_waiver in text
+    assert running_docs_command in running_docs
+    assert "R8 semantic verdicting is driven by `adversarial_policy.findings_mode`" in running_docs
+    assert running_docs_diff_subject in running_docs
+    assert running_docs_diff_guard in running_docs
+    assert running_docs_warn in running_docs
+    assert running_docs_fail in running_docs
+    assert running_docs_waiver in running_docs
 
-    for text in (failure_taxonomy, failure_taxonomy_pack):
-        assert '`adversarial_policy.findings_mode == "fail"`' in text
-        assert "one or more unwaived findings (`summary.failed != 0`)" in text
-        assert "is not emitted in `warn` mode" in text
-        assert "is not emitted when all findings are covered by applicable active waivers" in text
+    assert '`adversarial_policy.findings_mode == "fail"`' in failure_taxonomy
+    assert "one or more unwaived findings (`summary.failed != 0`)" in failure_taxonomy
+    assert "is not emitted in `warn` mode" in failure_taxonomy
+    assert "is not emitted when all findings are covered by applicable active waivers" in failure_taxonomy
 
 
 def test_r2_public_docs_match_locked_tolerances_contract() -> None:
     gate_q = _read_text("gates/GATE_Q.md")
-    gate_q_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_Q.md")
     gate_r = _read_text("gates/GATE_R.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     cli_docs = _read_text("docs/operations/cli.md")
-    cli_docs_mirror = _read_text("belgi/canonicals/docs/operations/cli.md")
     running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
     rendered_tiers = _read_text("tiers/tier-packs.md")
-    rendered_tiers_pack = _read_text("belgi/_protocol_packs/v1/tiers/tier-packs.md")
     failure_taxonomy = _read_text("gates/failure-taxonomy.md")
-    failure_taxonomy_pack = _read_text("belgi/_protocol_packs/v1/gates/failure-taxonomy.md")
 
     gate_r_locked_object = "Resolve `LockedSpec.tier.tolerances_ref` and read the locked ceiling values:"
     gate_r_no_tier_defaults = "`max_touched_files` = `LockedSpec.constraints.max_touched_files` if present else tier default."
@@ -416,47 +389,40 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
         "selected tier and re-run Q, then re-run R.`"
     )
 
-    for text in (gate_q, gate_q_pack):
-        assert "Resolve `LockedSpec.tier.tolerances_ref`" in text
-        assert gate_q_tighten in text
-        assert gate_q_remediation in text
+    assert "Resolve `LockedSpec.tier.tolerances_ref`" in gate_q
+    assert gate_q_tighten in gate_q
+    assert gate_q_remediation in gate_q
 
-    for text in (gate_r, gate_r_pack):
-        assert gate_r_locked_object in text
-        assert gate_r_no_tier_defaults not in text
-        assert gate_r_no_hotl not in text
-        assert "scope_budgets.max_touched_files" in text
-        assert "scope_budgets.max_loc_delta" in text
+    assert gate_r_locked_object in gate_r
+    assert gate_r_no_tier_defaults not in gate_r
+    assert gate_r_no_hotl not in gate_r
+    assert "scope_budgets.max_touched_files" in gate_r
+    assert "scope_budgets.max_loc_delta" in gate_r
 
-    for text in (cli_docs, cli_docs_mirror):
-        assert cli_tolerances_flag in text
-        assert cli_tolerances_binding in text
-        assert cli_tolerances_pre_lock in text
-        assert cli_tolerances_tier_match in text
-        assert cli_tolerances_tighten in text
-        assert "materializes the canonical tolerances object from the selected tier pack" in text
-        assert "numeric scope budgets no longer live in `IntentSpec`" in text
+    assert cli_tolerances_flag in cli_docs
+    assert cli_tolerances_binding in cli_docs
+    assert cli_tolerances_pre_lock in cli_docs
+    assert cli_tolerances_tier_match in cli_docs
+    assert cli_tolerances_tighten in cli_docs
+    assert "materializes the canonical tolerances object from the selected tier pack" in cli_docs
+    assert "numeric scope budgets no longer live in `IntentSpec`" in cli_docs
 
-    for text in (running_docs, running_docs_mirror):
-        assert running_default in text
-        assert running_boundary in text
-        assert running_manual_boundary in text
-        assert running_numeric_retired in text
-        assert "R2 semantic budget ceilings come from the locked `LockedSpec.tier.tolerances_ref` object" in text
-        assert "`--tolerances-ref <object_id>=<repo-relative-path>`" not in text
+    assert running_default in running_docs
+    assert running_boundary in running_docs
+    assert running_manual_boundary in running_docs
+    assert running_numeric_retired in running_docs
+    assert "R2 semantic budget ceilings come from the locked `LockedSpec.tier.tolerances_ref` object" in running_docs
+    assert "`--tolerances-ref <object_id>=<repo-relative-path>`" not in running_docs
 
-    for text in (rendered_tiers, rendered_tiers_pack):
-        assert "| Q4 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" in text
-        assert "| R2 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" not in text
-        assert "The run-local Tolerances object locked at `LockedSpec.tier.tolerances_ref` is the runtime budget authority after lock." in text
+    assert "| Q4 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" in rendered_tiers
+    assert "| R2 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |" not in rendered_tiers
+    assert "The run-local Tolerances object locked at `LockedSpec.tier.tolerances_ref` is the runtime budget authority after lock." in rendered_tiers
 
-    for text in (failure_taxonomy, failure_taxonomy_pack):
-        assert failure_taxonomy_line in text
+    assert failure_taxonomy_line in failure_taxonomy
 
 
 def test_consistency_sweep_docs_keep_shipped_and_manual_object_flags_distinct() -> None:
     sweep_docs = _read_text("docs/operations/consistency-sweep.md")
-    sweep_docs_mirror = _read_text("belgi/canonicals/docs/operations/consistency-sweep.md")
 
     required_running_line = (
         "non-owner operator docs MUST point exact shipped CLI syntax/examples back to `docs/operations/cli.md` "
@@ -466,25 +432,19 @@ def test_consistency_sweep_docs_keep_shipped_and_manual_object_flags_distinct() 
         "non-owner Tier-3 reminders MUST point `genesis_seal` / `TrustAnchor.json` authority semantics back "
         "to `docs/operations/evidence-bundles.md` and `../../CANONICALS.md` instead of restating full authority prose."
     )
-    required_anchors_line = (
-        "Confirm `docs/operations/operator-anchors.md` teaches:"
-    )
+    required_anchors_line = "Confirm `docs/operations/operator-anchors.md` teaches:"
     stale_line = "run new guidance promotes authoritative environment inputs"
 
-    for text in (sweep_docs, sweep_docs_mirror):
-        assert required_running_line in text
-        assert required_tier3_line in text
-        assert required_anchors_line in text
-        assert stale_line not in text
+    assert required_running_line in sweep_docs
+    assert required_tier3_line in sweep_docs
+    assert required_anchors_line in sweep_docs
+    assert stale_line not in sweep_docs
 
 
 def test_r7_public_docs_match_runtime_contract() -> None:
     gate_r = _read_text("gates/GATE_R.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     cli_docs = _read_text("docs/operations/cli.md")
-    cli_docs_mirror = _read_text("belgi/canonicals/docs/operations/cli.md")
     running_docs = _read_text("docs/operations/running-belgi.md")
-    running_docs_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
 
     bounded_meaning = "deterministic declared change-accounting over the actual locked-base -> evaluated diff"
     declaration_surface_line = "changed paths whose basename matches `requirements*.txt` or `constraints*.txt`"
@@ -525,43 +485,33 @@ def test_r7_public_docs_match_runtime_contract() -> None:
     )
     reserved_main = "`toolchain.main` is reserved for the built-in generated run toolchain input"
 
-    for text in (gate_r, gate_r_pack):
-        assert bounded_meaning in text
-        assert declaration_surface_line in text
-        assert accounting_context_line in text
-        assert gate_r_shipped_ingress in text
-        assert "ToolchainSet" in text
+    assert bounded_meaning in gate_r
+    assert declaration_surface_line in gate_r
+    assert accounting_context_line in gate_r
+    assert gate_r_shipped_ingress in gate_r
+    assert "ToolchainSet" in gate_r
 
-    for text in (cli_docs, cli_docs_mirror):
-        assert "`--toolchain-set-ref <object_id>=<repo-relative-path>` (singular)" in text
-        assert "`--toolchain-ref <object_id>=<repo-relative-path>` (repeatable)" in text
-        assert cli_binding in text
-        assert "normalizes these refs into authoritative ToolchainSet object authority before lock" in text
-        assert cli_pre_lock in text
-        assert cli_member_guard in text
-        assert reserved_main in text
-        assert "this is not an Operator Anchor" in text
+    assert "`--toolchain-set-ref <object_id>=<repo-relative-path>` (singular)" in cli_docs
+    assert "`--toolchain-ref <object_id>=<repo-relative-path>` (repeatable)" in cli_docs
+    assert cli_binding in cli_docs
+    assert "normalizes these refs into authoritative ToolchainSet object authority before lock" in cli_docs
+    assert cli_pre_lock in cli_docs
+    assert cli_member_guard in cli_docs
+    assert reserved_main in cli_docs
+    assert "this is not an Operator Anchor" in cli_docs
 
-    for text in (running_docs, running_docs_mirror):
-        assert "R7 semantic verdicting is driven by the accepted `policy.supplychain` report after `R4` structural acceptance." in text
-        assert running_docs_meaning in text
-        assert running_docs_accounting in text
-        assert running_ingress in text
-        assert running_member_guard in text
-        assert "`--toolchain-set-ref <object_id>=<repo-relative-path>`" not in text
+    assert "R7 semantic verdicting is driven by the accepted `policy.supplychain` report after `R4` structural acceptance." in running_docs
+    assert running_docs_meaning in running_docs
+    assert running_docs_accounting in running_docs
+    assert running_ingress in running_docs
+    assert running_member_guard in running_docs
+    assert "`--toolchain-set-ref <object_id>=<repo-relative-path>`" not in running_docs
 
 
-def test_tier3_canonical_authority_docs_are_explicit() -> None:
+def test_tier3_owner_docs_are_explicit() -> None:
     gate_r = _read_text("gates/GATE_R.md")
-    gate_r_pack = _read_text("belgi/_protocol_packs/v1/gates/GATE_R.md")
     evidence = _read_text("docs/operations/evidence-bundles.md")
-    evidence_mirror = _read_text("belgi/canonicals/docs/operations/evidence-bundles.md")
-    running = _read_text("docs/operations/running-belgi.md")
-    running_mirror = _read_text("belgi/canonicals/docs/operations/running-belgi.md")
-    anchors = _read_text("docs/operations/operator-anchors.md")
-    anchors_mirror = _read_text("belgi/canonicals/docs/operations/operator-anchors.md")
     trust_model = _read_text("trust-model.md")
-    trust_model_mirror = _read_text("belgi/canonicals/trust-model.md")
     genesis_readme = _read_text("belgi/genesis/README.md")
 
     canonical_root = "Tier-3 canonical authority is rooted in `belgi/anchor/v1/TrustAnchor.json`."
@@ -573,31 +523,14 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
     history_boundary = (
         "`belgi/genesis/GenesisSealPayload.json` remains a historical repo-local genesis reference payload"
     )
-    non_owner_pointer = (
-        "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, "
-        "are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`."
-    )
 
-    for text in (evidence, evidence_mirror, trust_model, trust_model_mirror):
-        assert canonical_root in text
-
-    for text in (gate_r, gate_r_pack):
-        assert canonical_root_gate_r in text
-
-    for text in (evidence, evidence_mirror):
-        assert evidence_boundary in text
-        assert repo_primary in text
-
-    for text in (trust_model, trust_model_mirror):
-        assert "the repo artifact is the primary authority surface." in text
-        assert history_boundary in text
-
-    for text in (running, running_mirror, anchors, anchors_mirror):
-        assert non_owner_pointer in text
-        assert canonical_root not in text
-        assert repo_primary not in text
-        assert history_boundary not in text
-
+    assert canonical_root in evidence
+    assert canonical_root in trust_model
+    assert canonical_root_gate_r in gate_r
+    assert evidence_boundary in evidence
+    assert repo_primary in evidence
+    assert "the repo artifact is the primary authority surface." in trust_model
+    assert history_boundary in trust_model
     assert "historical repo-local genesis reference payload" in genesis_readme
     assert "it is not authoritative for canonical Tier-3 trust-anchor verification" in genesis_readme
     assert "Canonical Tier-3 authority begins with" in genesis_readme
@@ -605,8 +538,6 @@ def test_tier3_canonical_authority_docs_are_explicit() -> None:
 
 def test_genesis_seal_schema_description_keeps_trust_anchor_boundary() -> None:
     schema_text = _read_text("schemas/GenesisSealPayload.schema.json")
-    schema_text_pack = _read_text("belgi/_protocol_packs/v1/schemas/GenesisSealPayload.schema.json")
-    for text in (schema_text, schema_text_pack):
-        assert "root-of-trust payload" not in text
-        assert "validated under the canonical TrustAnchor authority artifact" in text
-        assert "not itself the Tier-3 authority object" in text
+    assert "root-of-trust payload" not in schema_text
+    assert "validated under the canonical TrustAnchor authority artifact" in schema_text
+    assert "not itself the Tier-3 authority object" in schema_text

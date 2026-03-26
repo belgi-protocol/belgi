@@ -6,7 +6,7 @@ Lane owners:
 
 - `tests/meta/`: suite governance, duplicate-guard prevention, serial discipline, sweep registry/helper semantics, and bounded xdist-determinism guards
 - `tests/docs_authority/`: owner-doc claims, mirror parity, and thin-entrypoint structural checks only
-- `tests/run_cli/`: black-box shipped CLI contracts and generated workspace/run guidance
+- `tests/run_cli/`: black-box shipped CLI contracts and runtime-owned generated workspace/run guidance
 - `tests/run_orchestrator/`: in-process orchestration and staging contracts
 - `tests/gates/`: Q/R/S, objectref, tier, and trust-anchor gate contracts
 - `tests/schemas/`: schema and loader authority checks
@@ -24,4 +24,5 @@ Current registered custom vocabulary is only:
 - `serial`: explicit serial-lane exclusion
 
 Lane identity comes from path and lane classification, not from a second marker taxonomy.
+Generated `.belgi/README.md` and run-local `RUN.md` stay under `run_cli/`; they are product surfaces tied to runtime behavior, not public-doc owner claims.
 Empty lane directories are intentionally tracked with placeholders until later split commits move real modules under them.

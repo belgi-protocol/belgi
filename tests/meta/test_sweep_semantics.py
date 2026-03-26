@@ -618,10 +618,11 @@ def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(
                 "`belgi run new`",
                 ".belgi/runs/<run_id>/inputs/environment/toolchain-set.json",
                 ".belgi/runs/<run_id>/inputs/environment/tolerances.json",
-                "`docs/operations/cli.md` owns exact shipped `belgi run` flags, accepted path examples, and operator quickstart",
-                "`docs/operations/operator-anchors.md` owns Operator Anchor classes, handling, and workspace/file-boundary guidance",
-                "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
-                "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs",
+                "docs/operations/cli.md",
+                "docs/operations/operator-anchors.md",
+                "docs/operations/evidence-bundles.md",
+                "../../CANONICALS.md",
+                "`--toolchain-set` / `--tolerances`",
             ]
         )
         + "\n",
@@ -636,9 +637,9 @@ def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(
                 ".belgi/runs/<run_id>/inputs/anchors/keys/",
                 ".belgi/runs/<run_id>/inputs/anchors/signing/",
                 ".belgi/runs/<run_id>/inputs/evidence/genesis_seal.json",
-                "`docs/operations/cli.md` owns exact shipped Tier-2/Tier-3 `belgi run` flag syntax and end-to-end examples",
-                "this guide owns anchor classes, handling, and workspace/file-boundary guidance",
-                "Tier-3 authority semantics, including `TrustAnchor.json` and the historical genesis payload boundary, are owned by `docs/operations/evidence-bundles.md` and `../../CANONICALS.md`.",
+                "docs/operations/cli.md",
+                "docs/operations/evidence-bundles.md",
+                "../../CANONICALS.md",
             ]
         )
         + "\n",

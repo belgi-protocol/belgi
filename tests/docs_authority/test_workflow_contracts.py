@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _read_text(relpath: str) -> str:
@@ -106,7 +106,7 @@ def test_workflow_files_define_gate_jobs_and_current_topology() -> None:
     assert "--no-build-isolation" not in pinned_text
 
 
-def test_readme_uses_current_workflow_references() -> None:
+def test_readme_uses_current_workflow_pointers() -> None:
     text = _read_text("README.md")
 
     assert "actions/workflows/repository-verification.yml" in text

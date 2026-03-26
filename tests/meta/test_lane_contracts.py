@@ -55,14 +55,12 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_run_verify_cli.py": "run_cli",
     "tests/test_schema_authority_contracts.py": "schemas",
     "tests/test_stage_cli_forwarders.py": "tools",
-    "tests/test_template_claim_contracts.py": "docs_authority",
     "tests/test_tier_contract_enforcement.py": "gates",
     "tests/test_tier_packs_schema.py": "schemas",
     "tests/test_trust_anchor_contract.py": "gates",
     "tests/test_validate_belgi_ref_pin.py": "tools",
     "tests/test_waiver_cli.py": "tools",
     "tests/test_wheel_boundary.py": "shipped_surface",
-    "tests/test_workflow_contracts.py": "docs_authority",
     "tests/test_yaml_subset_parser.py": "schemas",
 }
 
@@ -103,6 +101,10 @@ def test_every_test_module_belongs_to_exactly_one_lane() -> None:
 def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> None:
     assert _classify_test_module("tests/test_run_manifest_cli.py") == "run_cli"
     assert _classify_test_module("tests/meta/test_sweep_semantics.py") == "meta"
+    assert _classify_test_module("tests/docs_authority/test_template_claim_contracts.py") == "docs_authority"
+    assert _classify_test_module("tests/docs_authority/test_workflow_contracts.py") == "docs_authority"
 
     assert not (TESTS_ROOT / "test_sweep_semantics.py").exists()
     assert not (TESTS_ROOT / "test_no_chain_base_cannon_imports.py").exists()
+    assert not (TESTS_ROOT / "test_template_claim_contracts.py").exists()
+    assert not (TESTS_ROOT / "test_workflow_contracts.py").exists()
