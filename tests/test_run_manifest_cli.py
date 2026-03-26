@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
+from tests.helpers.repo_imports import reset_repo_local_imports
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-for _k in list(sys.modules.keys()):
-    if _k == "belgi" or _k.startswith("belgi."):
-        del sys.modules[_k]
+reset_repo_local_imports("belgi")
 
 from belgi.cli import main as belgi_main
 from belgi.core.hash import sha256_bytes

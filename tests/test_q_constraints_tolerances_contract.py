@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
+from tests.helpers.repo_imports import reset_repo_local_imports
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-for _k in list(sys.modules.keys()):
-    if _k == "chain" or _k.startswith("chain."):
-        del sys.modules[_k]
+reset_repo_local_imports("chain")
 
 from belgi.core.hash import sha256_bytes
 from chain.logic.q_checks import q4_constraints_present

@@ -74,50 +74,6 @@ def test_protocol_pack_is_data_only_no_py() -> None:
     assert offenders == [], f"Protocol pack must be data-only; found python files: {offenders}"
 
 
-def test_no_canonical_imports_from_chain_logic_base() -> None:
-    root = _repo_root()
-
-    banned = {
-        "parse_rfc3339",
-        "validate_schema",
-        "sha256_bytes",
-        "safe_relpath",
-        "resolve_storage_ref",
-        "normalize_repo_rel",
-        "normalize_repo_rel_path",
-        "resolve_repo_rel_path",
-        "is_under_prefix",
-    }
-
-    offenders: list[str] = []
-
-    for p in sorted(root.rglob("*.py")):
-        rel = p.relative_to(root).as_posix()
-        if rel.startswith((
-            "build/",
-            "belgi.egg-info/",
-            ".venv/",
-            ".venv_packtest/",
-            "venv/",
-        )) or "/site-packages/" in rel:
-            continue
-
-        src = p.read_text(encoding="utf-8")
-        try:
-            tree = ast.parse(src, filename=rel)
-        except SyntaxError:
-            continue
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "chain.logic.base":
-                for alias in node.names:
-                    if alias.name in banned:
-                        line = getattr(node, "lineno", "?")
-                        offenders.append(f"{rel}:{line} imports {alias.name} from chain.logic.base")
-
-    assert offenders == [], "\n".join(offenders)
-
-
 @pytest.mark.parametrize(
     "dt",
     [

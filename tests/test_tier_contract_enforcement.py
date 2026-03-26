@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from tests.helpers.repo_imports import reset_repo_local_imports
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-for _k in list(sys.modules.keys()):
-    if _k == "chain" or _k.startswith("chain."):
-        del sys.modules[_k]
+reset_repo_local_imports("chain")
 
 from chain.logic.r_checks import r0_evidence_sufficiency
 from chain.logic.tier_packs import load_tier_params
