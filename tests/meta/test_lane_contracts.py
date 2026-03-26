@@ -33,7 +33,6 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_docs_compiler_hash_contract.py": "shipped_surface",
     "tests/test_ergonomics_helpers.py": "tools",
     "tests/test_external_action_pin_guard.py": "tools",
-    "tests/test_gate_contracts.py": "gates",
     "tests/test_github_vars_sanitize.py": "tools",
     "tests/test_import_graph_sanity.py": "meta",
     "tests/test_manifest_init.py": "tools",
@@ -58,7 +57,6 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_stage_cli_forwarders.py": "tools",
     "tests/test_tier_contract_enforcement.py": "gates",
     "tests/test_tier_packs_schema.py": "schemas",
-    "tests/test_trust_anchor_contract.py": "gates",
     "tests/test_validate_belgi_ref_pin.py": "tools",
     "tests/test_waiver_cli.py": "tools",
     "tests/test_wheel_boundary.py": "shipped_surface",
@@ -119,6 +117,21 @@ def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> 
     assert not (TESTS_ROOT / "test_template_claim_contracts.py").exists()
     assert not (TESTS_ROOT / "test_workflow_contracts.py").exists()
     assert not (TESTS_ROOT / "test_run_verify_cli.py").exists()
+
+
+def test_gate_hotspot_is_split_into_owner_lanes() -> None:
+    assert _classify_test_module("tests/gates/test_gate_q_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_r_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_s_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_objectref_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_tier_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_trust_anchor_contracts.py") == "gates"
+    assert _classify_test_module("tests/shipped_surface/test_c3_docs_bundle_contracts.py") == "shipped_surface"
+    assert _classify_test_module("tests/tools/test_sweep_repo_revision_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_byte_guard_contracts.py") == "tools"
+
+    assert not (TESTS_ROOT / "test_gate_contracts.py").exists()
+    assert not (TESTS_ROOT / "test_trust_anchor_contract.py").exists()
 
 
 def test_run_cli_lane_stays_subprocess_black_box() -> None:

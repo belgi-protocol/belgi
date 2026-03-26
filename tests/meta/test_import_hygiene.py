@@ -27,6 +27,17 @@ FORBIDDEN_CHAIN_LOGIC_BASE_IMPORTS = frozenset(
 )
 HELPER_ALLOWLIST = {"tests/helpers/repo_imports.py"}
 FRESH_BELGI_CLI_SURFACE_TARGET = "tests.helpers.repo_imports.import_fresh_belgi_cli_surface"
+SYSPATH_MUTATION_ALLOWLIST = {
+    "tests/conftest.py",
+    "tests/helpers/repo_imports.py",
+    "tests/helpers/subprocess_cli.py",
+    "tests/meta/test_sweep_semantics.py",
+    "tests/test_github_vars_sanitize.py",
+    "tests/test_r2_r3_diff_capture_integration.py",
+    "tests/test_r6_attestation_signing_integration.py",
+    "tests/test_r7_r8_policy_scan_integration.py",
+    "tests/test_yaml_subset_parser.py",
+}
 SKIP_PATH_PARTS = {
     ".git",
     ".pytest_cache",
@@ -228,6 +239,24 @@ def _call_target_name(node: ast.Call, *, import_bindings: dict[str, str]) -> str
     return None
 
 
+def _is_sys_path_attr(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "path"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "sys"
+    )
+
+
+def _is_sys_path_mutation_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"insert", "append"}
+        and _is_sys_path_attr(node.func.value)
+    )
+
+
 def _collect_top_level_fresh_belgi_cli_surface_inits(*, tree: ast.AST, rel: str) -> list[str]:
     offenders: list[str] = []
     if not isinstance(tree, ast.Module):
@@ -298,5 +327,23 @@ def test_fresh_belgi_cli_surface_is_not_cached_at_module_import_time() -> None:
         rel = path.relative_to(REPO_ROOT).as_posix()
         tree = ast.parse(path.read_text(encoding="utf-8", errors="strict"), filename=rel)
         offenders.extend(_collect_top_level_fresh_belgi_cli_surface_inits(tree=tree, rel=rel))
+
+    assert offenders == [], "\n".join(offenders)
+
+
+def test_sys_path_surgery_is_allowlisted_only() -> None:
+    offenders: list[str] = []
+
+    for path in _iter_test_py_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if rel in SYSPATH_MUTATION_ALLOWLIST:
+            continue
+
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="strict"), filename=rel)
+        for node in ast.walk(tree):
+            if _is_sys_path_mutation_call(node):
+                offenders.append(
+                    f"{rel}:{getattr(node, 'lineno', '?')} uses ad hoc sys.path.{node.func.attr}(...) outside the allowlist"
+                )
 
     assert offenders == [], "\n".join(offenders)

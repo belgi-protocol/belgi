@@ -1,0 +1,427 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import stat
+import time
+from pathlib import Path
+
+import pytest
+
+from tests.helpers import builders
+from tests.helpers.repo_imports import import_fresh_protocol_pack_surface
+from tests.gates.gate_test_support import (
+    REPO_ROOT,
+    _read_json,
+    _remove_locked_spec_protocol_pack,
+    _run_module,
+    _setup_fake_repo_with_pack,
+    _sha256_hex,
+    _tamper_locked_spec_pack_id,
+)
+
+pytestmark = pytest.mark.repo_local
+
+
+def _taxonomy_ids(root: Path) -> set[str]:
+    text = (root / "gates" / "failure-taxonomy.md").read_text(encoding="utf-8", errors="strict")
+    ids = set(re.findall(r"category_id:\s*`([^`]+)`", text))
+    assert ids, "taxonomy category_id tokens not parsed"
+    return ids
+
+
+def _clean_dir(path: Path) -> None:
+    if path.exists():
+        _rmtree_retry(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _rmtree_retry(path: Path, *, attempts: int = 12, base_delay_s: float = 0.03) -> None:
+    def _onerror(func, p, exc_info):
+        _ = exc_info
+        try:
+            os.chmod(p, stat.S_IWRITE)
+        except Exception:
+            pass
+        func(p)
+
+    last_exc: BaseException | None = None
+    for i in range(attempts):
+        try:
+            shutil.rmtree(path, onerror=_onerror)
+            return
+        except (PermissionError, OSError) as exc:
+            last_exc = exc
+            if i == attempts - 1:
+                raise
+            time.sleep(base_delay_s * (i + 1))
+
+    if last_exc is not None:
+        raise last_exc
+
+
+def test_gate_q_evidence_002_remediation_substitutes_missing_kind(tmp_path: Path) -> None:
+    taxo = _taxonomy_ids(REPO_ROOT)
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q_pass_tier0", run_id="q-evidence-002")
+    intent_rel = paths["intent"]
+    locked_rel = paths["locked"]
+    evidence_manifest = _read_json(tmp_path / paths["evidence"])
+    artifacts = evidence_manifest.get("artifacts")
+    assert isinstance(artifacts, list)
+    evidence_manifest["artifacts"] = [row for row in artifacts if isinstance(row, dict) and row.get("kind") != "command_log"]
+    evidence_rel = "out/EvidenceManifest.missing_command_log.json"
+    evidence_path = tmp_path / Path(*evidence_rel.split("/"))
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(
+        json.dumps(evidence_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+    verdict_rel = "out/GateVerdict.Q.missing_command_log.json"
+    verdict_path = tmp_path / Path(*verdict_rel.split("/"))
+
+    cp = _run_module(
+        "chain.gate_q_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--intent-spec",
+            intent_rel,
+            "--locked-spec",
+            locked_rel,
+            "--evidence-manifest",
+            evidence_rel,
+            "--out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+    gate_verdict = _read_json(verdict_path)
+    assert gate_verdict.get("failure_category") == "FQ-EVIDENCE-MISSING"
+    assert gate_verdict.get("failure_category") in taxo
+
+    remediation = ((gate_verdict.get("remediation") or {}).get("next_instruction"))
+    assert isinstance(remediation, str)
+    assert "command_log" in remediation
+    assert "missing_kind" not in remediation
+
+
+def test_gate_q_taxonomy_mismatch_is_internal_error_and_no_output(tmp_path: Path) -> None:
+    fake_root = tmp_path / "fake_repo"
+    _clean_dir(fake_root)
+
+    paths = builders.build_q_repo(
+        fake_root,
+        rel_root="gate_q/q_intent_001_no_yaml_block",
+        run_id="q-taxonomy-mismatch",
+    )
+    pack_root = fake_root / "protocol_pack"
+    (pack_root / "gates" / "failure-taxonomy.md").write_text(
+        "# Fake taxonomy\n\n- category_id: `FQ-NOT-THE-ONE`\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+    pack_surface = import_fresh_protocol_pack_surface()
+    manifest_filename = pack_surface.manifest_filename
+    (pack_root / manifest_filename).write_bytes(pack_surface.build_manifest_bytes(pack_root=pack_root, pack_name="test-pack"))
+    builders.sync_locked_spec_protocol_identity(fake_root / paths["locked"], pack_root / manifest_filename)
+    (fake_root / paths["intent"]).write_text("# Intent\nNo YAML block here.\n", encoding="utf-8", errors="strict")
+
+    out_path = fake_root / "out" / "GateVerdict.json"
+    cp = _run_module(
+        "chain.gate_q_verify",
+        [
+            "--repo",
+            str(fake_root),
+            "--protocol-pack",
+            "protocol_pack",
+            "--intent-spec",
+            paths["intent"],
+            "--locked-spec",
+            paths["locked"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--out",
+            "out/GateVerdict.json",
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 3, (cp.returncode, cp.stdout, cp.stderr)
+    assert "category_id not in taxonomy" in cp.stderr
+    assert not out_path.exists()
+
+
+def test_gate_q_q3_duplicate_invariant_ids_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(
+        tmp_path,
+        rel_root="gate_q/q3_invariants_duplicate_ids",
+        run_id="q3-duplicate",
+        invariants=[
+            {"id": "INV-001", "description": "first", "severity": "policy"},
+            {"id": "INV-001", "description": "second", "severity": "policy"},
+        ],
+    )
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-INVARIANTS-EMPTY"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q3"
+
+
+def test_gate_q_q5_missing_pinned_refs_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q5_envelope_missing_pinned_refs", run_id="q5-envelope")
+    locked_path = tmp_path / paths["locked"]
+    locked = _read_json(locked_path)
+    envelope = locked.get("environment_envelope")
+    assert isinstance(envelope, dict)
+    envelope["pinned_toolchain_refs"] = []
+    locked_path.write_text(json.dumps(locked, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-ENVELOPE-MISSING"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q5"
+
+
+def test_gate_q_q7_unsupported_tier_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q7_tier_unsupported", run_id="q7-tier")
+
+    intent_path = tmp_path / paths["intent"]
+    locked_path = tmp_path / paths["locked"]
+    tiers = builders.builtin_tiers()
+    tiers["tiers"]["tier-99"] = json.loads(json.dumps(tiers["tiers"]["tier-0"]))
+    tiers_rel = builders.write_tiers_override(tmp_path, tiers)
+
+    locked = _read_json(locked_path)
+    tier = locked.get("tier")
+    assert isinstance(tier, dict)
+    tolerances_ref = tier.get("tolerances_ref")
+    assert isinstance(tolerances_ref, dict)
+    tolerances_storage_ref = tolerances_ref.get("storage_ref")
+    assert isinstance(tolerances_storage_ref, str) and tolerances_storage_ref
+    tolerances_path = tmp_path / tolerances_storage_ref
+    tolerances = _read_json(tolerances_path)
+    tolerances["tier_id"] = "tier-99"
+    tolerances_bytes = (json.dumps(tolerances, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    tolerances_path.write_bytes(tolerances_bytes)
+    tolerances_ref["hash"] = _sha256_hex(tolerances_bytes)
+    tier["tier_id"] = "tier-99"
+    tier["tier_name"] = "Tier 99"
+    locked_path.write_text(json.dumps(locked, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
+    intent_text = intent_path.read_text(encoding="utf-8", errors="strict").replace('tier_pack_id: "tier-0"', 'tier_pack_id: "tier-99"')
+    intent_path.write_text(intent_text, encoding="utf-8", errors="strict")
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+        tiers_rel=tiers_rel,
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-TIER-UNKNOWN"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q7"
+
+
+def test_gate_q_prompt_001_unlisted_repo_is_primary(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(
+        tmp_path,
+        rel_root="gate_q/q_prompt_001_unlisted_repo",
+        run_id="q-prompt-001",
+        allowed_repo_refs=["allowed/repo"],
+        prompt_storage_ref="blocked/repo/prompt_bundle.txt",
+    )
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+    )
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["failure_category"] == "FQ-PROMPT-SOURCE-INVALID"
+    failures = verdict.get("failures")
+    assert isinstance(failures, list) and failures
+    assert failures[0]["rule_id"] == "Q-PROMPT-001"
+
+
+def test_gate_q_doc_002_tier2_empty_required_paths_passes(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(
+        tmp_path,
+        rel_root="gate_q/q_doc_002_pass_tier2",
+        tier_id="tier-2",
+        run_id="q-doc-002",
+        doc_impact={
+            "required_paths": [],
+            "note_on_empty": "No documentation change is required for this synthetic tier-2 run.",
+        },
+        publication_intent={"publish": False, "profile": "internal"},
+    )
+    _append_hotl_approval_artifact(
+        tmp_path,
+        evidence_rel=paths["evidence"],
+        rel_root="gate_q/q_doc_002_pass_tier2",
+        run_id="q-doc-002",
+    )
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
+    )
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["verdict"] == "GO"
+    assert verdict["failure_category"] is None
+
+
+def test_gate_q_protocol_identity_mismatch_pack_id(tmp_path: Path) -> None:
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q_pass_tier0", run_id="q-pass-tier0")
+    locked_path = tmp_path / paths["locked"]
+    _tamper_locked_spec_pack_id(locked_path, "0" * 64)
+
+    verdict_rel = "out/GateVerdict.json"
+    verdict_path = tmp_path / "out" / "GateVerdict.json"
+    cp = _run_module(
+        "chain.gate_q_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--intent-spec",
+            paths["intent"],
+            "--locked-spec",
+            paths["locked"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+    gate_verdict = _read_json(verdict_path)
+    assert gate_verdict.get("failure_category") == "FQ-PROTOCOL-IDENTITY-MISMATCH", gate_verdict
+
+
+def test_gate_q_missing_protocol_pack_field(tmp_path: Path) -> None:
+    builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
+    _setup_fake_repo_with_pack(tmp_path, builtin_pack)
+
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q_pass_tier0", run_id="q-pass-tier0")
+    locked_path = tmp_path / paths["locked"]
+    _remove_locked_spec_protocol_pack(locked_path)
+
+    verdict_rel = "out/GateVerdict.json"
+    verdict_path = tmp_path / "out" / "GateVerdict.json"
+    cp = _run_module(
+        "chain.gate_q_verify",
+        [
+            "--repo",
+            str(tmp_path),
+            "--protocol-pack",
+            "protocol_pack",
+            "--intent-spec",
+            paths["intent"],
+            "--locked-spec",
+            paths["locked"],
+            "--evidence-manifest",
+            paths["evidence"],
+            "--out",
+            verdict_rel,
+        ],
+        cwd=REPO_ROOT,
+    )
+
+    assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
+    gate_verdict = _read_json(verdict_path)
+    assert gate_verdict.get("failure_category") == "FQ-PROTOCOL-IDENTITY-MISMATCH", gate_verdict
+
+
+def _append_hotl_approval_artifact(repo_root: Path, *, evidence_rel: str, rel_root: str, run_id: str) -> None:
+    hotl_rel = f"{rel_root}/hotl_approval.json"
+    audit_rel = f"{rel_root}/hotl_approval.log"
+    locked_rel = f"{rel_root}/LockedSpec.json"
+    builders.write_text(repo_root / audit_rel, "synthetic HOTL audit trail\n")
+    hotl_payload = {
+        "schema_version": "1.0.0",
+        "run_id": run_id,
+        "approval_id": "hotl.synthetic",
+        "approver": "human:operator@example.com",
+        "approval_type": "pre-proposal",
+        "reviewed_artifacts": [
+            {
+                "id": "locked.synthetic",
+                "hash": _sha256_hex((repo_root / locked_rel).read_bytes()),
+                "storage_ref": locked_rel,
+            }
+        ],
+        "decision": "approved",
+        "approved_at": "1970-01-01T00:00:00Z",
+        "justification": "synthetic HOTL approval for tier-2 coverage",
+        "audit_trail_ref": {
+            "id": "audit.hotl.synthetic",
+            "storage_ref": audit_rel,
+        },
+    }
+    builders.write_json(repo_root / hotl_rel, hotl_payload)
+
+    evidence_path = repo_root / evidence_rel
+    evidence = _read_json(evidence_path)
+    artifacts = evidence.get("artifacts")
+    assert isinstance(artifacts, list)
+    artifacts.append(
+        {
+            "kind": "hotl_approval",
+            "id": "hotl.synthetic",
+            "hash": _sha256_hex((repo_root / hotl_rel).read_bytes()),
+            "media_type": "application/json",
+            "produced_by": "C1",
+            "storage_ref": hotl_rel,
+        }
+    )
+    evidence_path.write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
