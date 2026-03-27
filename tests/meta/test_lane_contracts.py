@@ -23,7 +23,6 @@ LANE_DIRS = (
 )
 LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_belgi_tools_run_tests.py": "tools",
-    "tests/test_builtin_protocol_pack.py": "shipped_surface",
     "tests/test_ci_result_parser.py": "tools",
     "tests/test_cli_usage_error_model.py": "tools",
     "tests/test_codeowners_checker.py": "tools",
@@ -32,10 +31,8 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_github_vars_sanitize.py": "tools",
     "tests/test_manifest_init.py": "tools",
     "tests/test_overlay_requirements.py": "tools",
-    "tests/test_pack_lifecycle.py": "shipped_surface",
     "tests/test_packaging_smoke.py": "shipped_surface",
     "tests/test_policy_stub_cli.py": "tools",
-    "tests/test_protocol_pack_manifest.py": "shipped_surface",
     "tests/test_resolve_belgi_workflow_inputs.py": "tools",
     "tests/test_stage_cli_forwarders.py": "tools",
     "tests/test_validate_belgi_ref_pin.py": "tools",
@@ -140,12 +137,18 @@ def test_gate_hotspot_is_split_into_owner_lanes() -> None:
 
 
 def test_shipped_surface_lane_owner_splits() -> None:
+    assert _classify_test_module("tests/shipped_surface/test_builtin_protocol_pack_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_c3_docs_bundle_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_c3_engine_canonicals_integration.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_docs_compiler_hash_contract.py") == "shipped_surface"
+    assert _classify_test_module("tests/shipped_surface/test_protocol_pack_lifecycle_contracts.py") == "shipped_surface"
+    assert _classify_test_module("tests/shipped_surface/test_protocol_pack_manifest_contracts.py") == "shipped_surface"
 
+    assert not (TESTS_ROOT / "test_builtin_protocol_pack.py").exists()
     assert not (TESTS_ROOT / "test_c3_engine_canonicals_integration.py").exists()
     assert not (TESTS_ROOT / "test_docs_compiler_hash_contract.py").exists()
+    assert not (TESTS_ROOT / "test_pack_lifecycle.py").exists()
+    assert not (TESTS_ROOT / "test_protocol_pack_manifest.py").exists()
 
 
 def test_run_cli_lane_stays_subprocess_black_box() -> None:

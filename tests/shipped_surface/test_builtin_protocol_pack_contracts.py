@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import importlib.resources
 import json
-from pathlib import Path
 
 from tests.helpers.repo_imports import reset_repo_local_imports
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 reset_repo_local_imports("belgi")
 
 from belgi.core.json_canon import canonical_json_bytes
