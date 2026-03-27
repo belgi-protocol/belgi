@@ -270,6 +270,15 @@ def _invoke_module_main(module_name: str, argv: list[str]) -> int:
     return rc
 
 
+def _invoke_module_subprocess(module_name: str, argv: list[str]) -> int:
+    cp = subprocess.run(
+        [sys.executable, "-m", module_name, *argv],
+        check=False,
+        shell=False,
+    )
+    return cp.returncode
+
+
 def _run_module_expect_rc(module_name: str, argv: list[str], *, allowed: tuple[int, ...] = (0,)) -> None:
     rc = _invoke_module_main(module_name, argv)
     if rc not in allowed:
@@ -277,7 +286,7 @@ def _run_module_expect_rc(module_name: str, argv: list[str], *, allowed: tuple[i
 
 
 def _run_tools_belgi(repo_root: Path, argv: list[str], *, allowed: tuple[int, ...] = (0,)) -> int:
-    rc = _invoke_module_main("tools.belgi_tools", [*argv, "--repo", str(repo_root)])
+    rc = _invoke_module_subprocess("tools.belgi_tools", [*argv, "--repo", str(repo_root)])
     if rc not in allowed:
         raise ValueError(f"tools.belgi_tools {' '.join(argv)} returned rc={rc}")
     return rc
