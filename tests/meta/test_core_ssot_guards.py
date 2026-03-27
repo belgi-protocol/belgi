@@ -21,8 +21,8 @@ def _import_local_core() -> tuple[object, object]:
 
 
 def _repo_root() -> Path:
-    # tests/ lives at repo_root/tests
-    return Path(__file__).resolve().parents[1]
+    # tests/meta/ lives at repo_root/tests/meta
+    return Path(__file__).resolve().parents[2]
 
 
 def _sample_evidence_manifest() -> dict[str, object]:

@@ -8,7 +8,7 @@ from pathlib import Path
 from belgi.core.schema import validate_schema
 from tests.helpers import builders
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _read_json(path: Path) -> dict:

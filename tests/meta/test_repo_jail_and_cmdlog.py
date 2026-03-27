@@ -20,7 +20,7 @@ from pathlib import Path
 
 from tests.helpers.repo_imports import reset_repo_local_imports
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 reset_repo_local_imports("belgi")
 
 from belgi.core.command_log import (
