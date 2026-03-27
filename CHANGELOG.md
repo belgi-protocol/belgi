@@ -13,6 +13,7 @@ Patch release completing the physical test-suite lane modularization and removin
 - Removed the legacy root-lane fallback from `tests/meta/test_lane_contracts.py`; unclassified test modules now fail closed instead of inheriting a root-path mapping.
 - Updated `tests/README.md` and `pytest.ini` to describe and discover the physically lane-owned suite layout while keeping custom marker vocabulary limited to execution-control exceptions.
 - Preserved import hygiene, shared script-loader handling, and serial-only exceptions on the new lane-owned surfaces.
+- Updated repository verification to install `pytest-xdist`, run the full tracked test suite under xdist, and keep wheel-smoke packaging checks aligned with the lane-owned packaging smoke test surface.
 
 ### Notes
 - This patch restructures test ownership and discovery surfaces only; application runtime behavior is unchanged.

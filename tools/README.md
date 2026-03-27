@@ -33,7 +33,7 @@ Behavior contract:
 
 Integration:
 - Imported by `.github/scripts/resolve_belgi_workflow_inputs.py`, which is called by `.github/workflows/pinned-install-proof.yml`.
-- Tested by `tests/test_github_vars_sanitize.py`.
+- Tested by `tests/tools/test_github_vars_sanitize_contracts.py`.
 
 ## check_external_action_pins.py
 
@@ -46,7 +46,7 @@ Behavior contract:
 
 Integration:
 - Invoked by `Repository Verification` before repo/package proof steps.
-- Tested by `tests/test_external_action_pin_guard.py`.
+- Tested by `tests/tools/test_external_action_pin_guard_contracts.py`.
 
 ## rehash.py
 

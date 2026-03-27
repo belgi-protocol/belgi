@@ -32,7 +32,7 @@ SYSPATH_MUTATION_ALLOWLIST = {
     "tests/helpers/repo_imports.py",
     "tests/helpers/subprocess_cli.py",
     "tests/meta/test_sweep_semantics.py",
-    "tests/test_github_vars_sanitize.py",
+    "tests/tools/test_github_vars_sanitize_contracts.py",
 }
 SKIP_PATH_PARTS = {
     ".git",
