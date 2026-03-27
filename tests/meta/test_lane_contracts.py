@@ -22,11 +22,8 @@ LANE_DIRS = (
     "serial",
 )
 LEGACY_TOP_LEVEL_LANE_MAP = {
-    "tests/test_belgi_tools_run_tests.py": "tools",
     "tests/test_ci_result_parser.py": "tools",
     "tests/test_cli_usage_error_model.py": "tools",
-    "tests/test_codeowners_checker.py": "tools",
-    "tests/test_ergonomics_helpers.py": "tools",
     "tests/test_external_action_pin_guard.py": "tools",
     "tests/test_github_vars_sanitize.py": "tools",
     "tests/test_manifest_init.py": "tools",
@@ -151,6 +148,19 @@ def test_shipped_surface_lane_owner_splits() -> None:
     assert not (TESTS_ROOT / "test_packaging_smoke.py").exists()
     assert not (TESTS_ROOT / "test_protocol_pack_manifest.py").exists()
     assert not (TESTS_ROOT / "test_wheel_boundary.py").exists()
+
+
+def test_tools_lane_owner_splits() -> None:
+    assert _classify_test_module("tests/tools/test_belgi_tools_run_tests_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_byte_guard_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_codeowners_checker_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_ergonomics_helpers_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_run_belgi_smoke_script.py") == "tools"
+    assert _classify_test_module("tests/tools/test_sweep_repo_revision_contracts.py") == "tools"
+
+    assert not (TESTS_ROOT / "test_belgi_tools_run_tests.py").exists()
+    assert not (TESTS_ROOT / "test_codeowners_checker.py").exists()
+    assert not (TESTS_ROOT / "test_ergonomics_helpers.py").exists()
 
 
 def test_run_cli_lane_stays_subprocess_black_box() -> None:
