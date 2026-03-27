@@ -21,8 +21,6 @@ LANE_DIRS = (
     "tools",
     "serial",
 )
-LEGACY_TOP_LEVEL_LANE_MAP = {
-}
 FORBIDDEN_RUN_CLI_HELPERS = {"tests.helpers.run_cli_harness"}
 FORBIDDEN_RUN_CLI_HANDLES = {"belgi_cli", "belgi_main", "run_orchestrator"}
 
@@ -31,9 +29,7 @@ def _classify_test_module(relpath: str) -> str:
     parts = Path(relpath).parts
     if len(parts) >= 3 and parts[0] == "tests" and parts[1] in LANE_DIRS:
         return parts[1]
-    lane = LEGACY_TOP_LEVEL_LANE_MAP.get(relpath)
-    assert lane is not None, f"unclassified test module: {relpath}"
-    return lane
+    raise AssertionError(f"unclassified test module: {relpath}")
 
 
 def test_lane_directories_exist_with_readmes() -> None:

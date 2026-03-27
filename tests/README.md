@@ -1,6 +1,6 @@
 Directory lanes under `tests/` are suite authority and state boundaries, not cosmetic folders.
 
-Current repo truth is in transition: heavyweight top-level `tests/test_*.py` modules still exist, but each one is assigned to exactly one lane by `tests/meta/test_lane_contracts.py` until the later split commits move them under their owner directories.
+Current repo truth is physically lane-owned: tracked `test_*.py` modules now live under their owner directories, and `tests/meta/test_lane_contracts.py` enforces that lane identity directly from path.
 
 Lane owners:
 
@@ -26,4 +26,4 @@ Current registered custom vocabulary is only:
 Lane identity comes from path and lane classification, not from a second marker taxonomy.
 Generated `.belgi/README.md` and run-local `RUN.md` stay under `run_cli/`; they are product surfaces tied to runtime behavior, not public-doc owner claims.
 Repo-local BELGI imports for `tests/run_orchestrator/` must come from per-test fresh-import fixture/factory discipline, not module-global cached handles.
-Empty lane directories are intentionally tracked with placeholders until later split commits move real modules under them.
+Empty lane directories are intentionally tracked with placeholders only where the lane remains part of the suite contract even without a current owner module.
