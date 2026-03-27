@@ -399,10 +399,15 @@ def test_run_summary_exists_on_run_tests_failure(
 
     original_invoke_subprocess = run_orchestrator._invoke_module_subprocess
 
-    def _patched_invoke_module_subprocess(module_name: str, argv: list[str]) -> int:
+    def _patched_invoke_module_subprocess(
+        module_name: str,
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+    ) -> int:
         if module_name == "tools.belgi_tools" and argv and argv[0] == "run-tests":
             return 1
-        return original_invoke_subprocess(module_name, argv)
+        return original_invoke_subprocess(module_name, argv, env=env)
 
     monkeypatch.setattr(run_orchestrator, "_invoke_module_subprocess", _patched_invoke_module_subprocess)
 
