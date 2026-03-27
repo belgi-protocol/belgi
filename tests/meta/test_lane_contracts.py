@@ -37,11 +37,7 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_pack_lifecycle.py": "shipped_surface",
     "tests/test_packaging_smoke.py": "shipped_surface",
     "tests/test_policy_stub_cli.py": "tools",
-    "tests/test_protocol_identity_ssot.py": "gates",
     "tests/test_protocol_pack_manifest.py": "shipped_surface",
-    "tests/test_q6_waiver_limits.py": "gates",
-    "tests/test_q_constraints_tolerances_contract.py": "gates",
-    "tests/test_q_hotl_contract.py": "gates",
     "tests/test_r2_r3_diff_capture_integration.py": "gates",
     "tests/test_r6_attestation_signing_integration.py": "gates",
     "tests/test_r7_r8_policy_scan_integration.py": "gates",
@@ -121,6 +117,10 @@ def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> 
 
 def test_gate_hotspot_is_split_into_owner_lanes() -> None:
     assert _classify_test_module("tests/gates/test_gate_q_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_protocol_identity_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_q_waiver_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_q_constraints_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_q_hotl_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_gate_r_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_gate_s_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_objectref_contracts.py") == "gates"
@@ -131,6 +131,10 @@ def test_gate_hotspot_is_split_into_owner_lanes() -> None:
     assert _classify_test_module("tests/tools/test_byte_guard_contracts.py") == "tools"
 
     assert not (TESTS_ROOT / "test_gate_contracts.py").exists()
+    assert not (TESTS_ROOT / "test_protocol_identity_ssot.py").exists()
+    assert not (TESTS_ROOT / "test_q6_waiver_limits.py").exists()
+    assert not (TESTS_ROOT / "test_q_constraints_tolerances_contract.py").exists()
+    assert not (TESTS_ROOT / "test_q_hotl_contract.py").exists()
     assert not (TESTS_ROOT / "test_trust_anchor_contract.py").exists()
 
 
