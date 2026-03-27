@@ -49,14 +49,11 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_run_belgi_smoke_script.py": "run_cli",
     "tests/test_run_manifest_cli.py": "run_cli",
     "tests/test_run_orchestrator_template_hydration.py": "run_orchestrator",
-    "tests/test_schema_authority_contracts.py": "schemas",
     "tests/test_stage_cli_forwarders.py": "tools",
     "tests/test_tier_contract_enforcement.py": "gates",
-    "tests/test_tier_packs_schema.py": "schemas",
     "tests/test_validate_belgi_ref_pin.py": "tools",
     "tests/test_waiver_cli.py": "tools",
     "tests/test_wheel_boundary.py": "shipped_surface",
-    "tests/test_yaml_subset_parser.py": "schemas",
 }
 FORBIDDEN_RUN_CLI_HELPERS = {"tests.helpers.run_cli_harness"}
 FORBIDDEN_RUN_CLI_HANDLES = {"belgi_cli", "belgi_main", "run_orchestrator"}

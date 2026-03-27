@@ -36,7 +36,6 @@ SYSPATH_MUTATION_ALLOWLIST = {
     "tests/test_r2_r3_diff_capture_integration.py",
     "tests/test_r6_attestation_signing_integration.py",
     "tests/test_r7_r8_policy_scan_integration.py",
-    "tests/test_yaml_subset_parser.py",
 }
 SKIP_PATH_PARTS = {
     ".git",

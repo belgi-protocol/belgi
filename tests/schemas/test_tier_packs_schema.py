@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.helpers.repo_imports import reset_repo_local_imports
+from tests.helpers.repo_imports import REPO_ROOT, reset_repo_local_imports
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 reset_repo_local_imports("belgi")
 
 from belgi.core.schema import validate_schema
