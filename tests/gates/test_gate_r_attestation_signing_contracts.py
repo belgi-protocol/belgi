@@ -13,12 +13,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.repo_imports import reset_repo_local_imports
+
 pytestmark = pytest.mark.repo_local
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+reset_repo_local_imports("belgi", "chain")
 
 
 def _run_tool(*, tmp_repo: Path, argv: list[str], check: bool = True) -> subprocess.CompletedProcess[bytes]:

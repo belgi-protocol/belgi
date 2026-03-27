@@ -38,12 +38,8 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_packaging_smoke.py": "shipped_surface",
     "tests/test_policy_stub_cli.py": "tools",
     "tests/test_protocol_pack_manifest.py": "shipped_surface",
-    "tests/test_r2_r3_diff_capture_integration.py": "gates",
-    "tests/test_r6_attestation_signing_integration.py": "gates",
-    "tests/test_r7_r8_policy_scan_integration.py": "gates",
     "tests/test_resolve_belgi_workflow_inputs.py": "tools",
     "tests/test_stage_cli_forwarders.py": "tools",
-    "tests/test_tier_contract_enforcement.py": "gates",
     "tests/test_validate_belgi_ref_pin.py": "tools",
     "tests/test_waiver_cli.py": "tools",
     "tests/test_wheel_boundary.py": "shipped_surface",
@@ -122,9 +118,13 @@ def test_gate_hotspot_is_split_into_owner_lanes() -> None:
     assert _classify_test_module("tests/gates/test_gate_q_constraints_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_gate_q_hotl_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_gate_r_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_r_diff_capture_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_r_attestation_signing_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_gate_r_policy_scan_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_gate_s_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_objectref_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_tier_contracts.py") == "gates"
+    assert _classify_test_module("tests/gates/test_tier_evidence_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_trust_anchor_contracts.py") == "gates"
     assert _classify_test_module("tests/shipped_surface/test_c3_docs_bundle_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/tools/test_sweep_repo_revision_contracts.py") == "tools"
@@ -135,6 +135,10 @@ def test_gate_hotspot_is_split_into_owner_lanes() -> None:
     assert not (TESTS_ROOT / "test_q6_waiver_limits.py").exists()
     assert not (TESTS_ROOT / "test_q_constraints_tolerances_contract.py").exists()
     assert not (TESTS_ROOT / "test_q_hotl_contract.py").exists()
+    assert not (TESTS_ROOT / "test_r2_r3_diff_capture_integration.py").exists()
+    assert not (TESTS_ROOT / "test_r6_attestation_signing_integration.py").exists()
+    assert not (TESTS_ROOT / "test_r7_r8_policy_scan_integration.py").exists()
+    assert not (TESTS_ROOT / "test_tier_contract_enforcement.py").exists()
     assert not (TESTS_ROOT / "test_trust_anchor_contract.py").exists()
 
 
