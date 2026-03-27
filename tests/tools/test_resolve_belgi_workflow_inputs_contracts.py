@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 
+from tests.helpers.script_loader import load_script_module
+
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1] / ".github" / "scripts" / "resolve_belgi_workflow_inputs.py"
+    Path(__file__).resolve().parents[2] / ".github" / "scripts" / "resolve_belgi_workflow_inputs.py"
 )
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("resolve_belgi_workflow_inputs_script", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module("resolve_belgi_workflow_inputs_script", SCRIPT_PATH)
 
 
 def test_resolve_workflow_inputs_prefers_explicit_inputs() -> None:

@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
+from tests.helpers.script_loader import load_script_module
+
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1] / ".github" / "scripts" / "check_external_action_pins.py"
+    Path(__file__).resolve().parents[2] / ".github" / "scripts" / "check_external_action_pins.py"
 )
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("check_external_action_pins_script", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module("check_external_action_pins_script", SCRIPT_PATH)
 
 
 def test_guard_accepts_sha_pinned_external_refs_and_local_refs(tmp_path: Path) -> None:

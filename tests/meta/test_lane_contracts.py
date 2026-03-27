@@ -24,14 +24,10 @@ LANE_DIRS = (
 LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_ci_result_parser.py": "tools",
     "tests/test_cli_usage_error_model.py": "tools",
-    "tests/test_external_action_pin_guard.py": "tools",
-    "tests/test_github_vars_sanitize.py": "tools",
     "tests/test_manifest_init.py": "tools",
     "tests/test_overlay_requirements.py": "tools",
     "tests/test_policy_stub_cli.py": "tools",
-    "tests/test_resolve_belgi_workflow_inputs.py": "tools",
     "tests/test_stage_cli_forwarders.py": "tools",
-    "tests/test_validate_belgi_ref_pin.py": "tools",
     "tests/test_waiver_cli.py": "tools",
 }
 FORBIDDEN_RUN_CLI_HELPERS = {"tests.helpers.run_cli_harness"}
@@ -155,12 +151,20 @@ def test_tools_lane_owner_splits() -> None:
     assert _classify_test_module("tests/tools/test_byte_guard_contracts.py") == "tools"
     assert _classify_test_module("tests/tools/test_codeowners_checker_contracts.py") == "tools"
     assert _classify_test_module("tests/tools/test_ergonomics_helpers_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_external_action_pin_guard_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_github_vars_sanitize_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_resolve_belgi_workflow_inputs_contracts.py") == "tools"
     assert _classify_test_module("tests/tools/test_run_belgi_smoke_script.py") == "tools"
     assert _classify_test_module("tests/tools/test_sweep_repo_revision_contracts.py") == "tools"
+    assert _classify_test_module("tests/tools/test_validate_belgi_ref_pin_contracts.py") == "tools"
 
     assert not (TESTS_ROOT / "test_belgi_tools_run_tests.py").exists()
     assert not (TESTS_ROOT / "test_codeowners_checker.py").exists()
     assert not (TESTS_ROOT / "test_ergonomics_helpers.py").exists()
+    assert not (TESTS_ROOT / "test_external_action_pin_guard.py").exists()
+    assert not (TESTS_ROOT / "test_github_vars_sanitize.py").exists()
+    assert not (TESTS_ROOT / "test_resolve_belgi_workflow_inputs.py").exists()
+    assert not (TESTS_ROOT / "test_validate_belgi_ref_pin.py").exists()
 
 
 def test_run_cli_lane_stays_subprocess_black_box() -> None:

@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / ".github" / "scripts" / "validate_belgi_ref_pin.py"
+from tests.helpers.script_loader import load_script_module
+
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / ".github" / "scripts" / "validate_belgi_ref_pin.py"
 
 
 def _load_validator_module():
-    spec = importlib.util.spec_from_file_location("validate_belgi_ref_pin_script", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module("validate_belgi_ref_pin_script", SCRIPT_PATH)
 
 
 @pytest.mark.parametrize(

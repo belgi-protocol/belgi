@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 from pathlib import Path, PureWindowsPath
+
+from tests.helpers.script_loader import load_script_module
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / ".github" / "scripts" / "run_belgi_smoke.py"
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("run_belgi_smoke_script", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_script_module("run_belgi_smoke_script", SCRIPT_PATH)
 
 
 def _cp(cmd: list[str], rc: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
