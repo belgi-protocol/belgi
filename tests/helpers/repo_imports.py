@@ -27,11 +27,17 @@ def _clear_module_prefix(prefix: str) -> None:
             del sys.modules[name]
 
 
-def _import_fresh(*module_names: str, reset_prefixes: tuple[str, ...]) -> tuple[ModuleType, ...]:
+def reset_repo_local_imports(*prefixes: str) -> None:
+    """Reset selected repo-local module prefixes through the helper allowlist only."""
+
     _ensure_repo_root_on_syspath()
     importlib.invalidate_caches()
-    for prefix in reset_prefixes:
+    for prefix in prefixes:
         _clear_module_prefix(prefix)
+
+
+def _import_fresh(*module_names: str, reset_prefixes: tuple[str, ...]) -> tuple[ModuleType, ...]:
+    reset_repo_local_imports(*reset_prefixes)
     return tuple(importlib.import_module(name) for name in module_names)
 
 
@@ -52,7 +58,7 @@ def import_fresh_belgi_cli_surface() -> BelgiCliSurface:
         "belgi.core.schema",
         "belgi.protocol.pack",
         "belgi.trust_anchor",
-        reset_prefixes=("belgi",),
+        reset_prefixes=("belgi", "chain"),
     )
     return BelgiCliSurface(
         cli=cli,

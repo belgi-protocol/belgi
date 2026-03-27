@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.5 — 2026-03-27
+
+### Summary
+Patch release completing the physical test-suite lane modularization and removing the last root-level lane fallback.
+
+### Changed
+- Moved the remaining root `tests/test_*.py` modules into their owner lanes under `tests/meta/`, `tests/run_cli/`, `tests/run_orchestrator/`, `tests/gates/`, `tests/schemas/`, `tests/shipped_surface/`, and `tests/tools`, so tracked test ownership is now expressed directly by path.
+- Split the old run, gate, shipped-surface, and non-run tooling hotspots into narrower owner files and aligned suite lane assertions to those live paths.
+- Removed the legacy root-lane fallback from `tests/meta/test_lane_contracts.py`; unclassified test modules now fail closed instead of inheriting a root-path mapping.
+- Updated `tests/README.md` and `pytest.ini` to describe and discover the physically lane-owned suite layout while keeping custom marker vocabulary limited to execution-control exceptions.
+- Preserved import hygiene, shared script-loader handling, and serial-only exceptions on the new lane-owned surfaces.
+- Updated repository verification to install `pytest-xdist`, run the full tracked test suite under xdist, and keep wheel-smoke packaging checks aligned with the lane-owned packaging smoke test surface.
+
+### Notes
+- This patch restructures test ownership and discovery surfaces only; application runtime behavior is unchanged.
+
 ## 1.6.4 — 2026-03-25
 
 ### Summary

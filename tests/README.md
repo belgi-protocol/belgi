@@ -1,0 +1,29 @@
+Directory lanes under `tests/` are suite authority and state boundaries, not cosmetic folders.
+
+Current repo truth is physically lane-owned: tracked `test_*.py` modules now live under their owner directories, and `tests/meta/test_lane_contracts.py` enforces that lane identity directly from path.
+
+Lane owners:
+
+- `tests/meta/`: suite governance, duplicate-guard prevention, serial discipline, sweep registry/helper semantics, and bounded xdist-determinism guards
+- `tests/docs_authority/`: owner-doc claims, mirror parity, and thin-entrypoint structural checks only
+- `tests/run_cli/`: subprocess black-box shipped CLI contracts and runtime-owned generated workspace/run guidance
+- `tests/run_orchestrator/`: in-process orchestration and staging contracts
+- `tests/gates/`: Q/R/S, objectref, tier, and trust-anchor gate contracts
+- `tests/schemas/`: schema and loader authority checks
+- `tests/shipped_surface/`: packaged bytes, wheel/install, and shipped-surface integrity
+- `tests/tools/`: non-run BELGI tool surfaces
+- `tests/serial/`: explicit justified exceptions only
+
+This root README is the single lane-owner summary for `tests/`.
+The only per-lane README that remains intentional is `tests/serial/README.md`, because serial is an exception protocol with its own marker, budget, and justification rules.
+
+Custom pytest markers are suite control-plane state, not topic labels.
+Current registered custom vocabulary is only:
+
+- `repo_local`: repo-local import/reset handling
+- `serial`: explicit serial-lane exclusion
+
+Lane identity comes from path and lane classification, not from a second marker taxonomy.
+Generated `.belgi/README.md` and run-local `RUN.md` stay under `run_cli/`; they are product surfaces tied to runtime behavior, not public-doc owner claims.
+Repo-local BELGI imports for `tests/run_orchestrator/` must come from per-test fresh-import fixture/factory discipline, not module-global cached handles.
+Empty lane directories are intentionally tracked with placeholders only where the lane remains part of the suite contract even without a current owner module.
