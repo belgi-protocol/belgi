@@ -12,7 +12,7 @@ from tests.helpers.builders import build_q_repo
 
 pytestmark = pytest.mark.repo_local
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _run_module(module: str, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
