@@ -82,7 +82,9 @@ def validate_schema(instance: object, schema: object, *, root_schema: object, pa
 
 def get_builtin_protocol_context():
     _ensure_repo_root_on_syspath()
-    from belgi.protocol.pack import get_builtin_protocol_context as _get_builtin_protocol_context
+    from belgi.protocol.pack import (
+        get_builtin_protocol_context as _get_builtin_protocol_context,
+    )
 
     return _get_builtin_protocol_context()
 

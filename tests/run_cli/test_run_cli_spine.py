@@ -11,6 +11,7 @@ from tests.helpers import subprocess_cli as cli_subprocess
 run_belgi = cli_subprocess.run_belgi
 validate_schema = cli_subprocess.validate_schema
 get_builtin_protocol_context = cli_subprocess.get_builtin_protocol_context
+_commit_file = cli_subprocess._commit_file
 _fresh_repo_clone = cli_subprocess._fresh_repo_clone
 _git_rev_parse = cli_subprocess._git_rev_parse
 _list_dirs = cli_subprocess._list_dirs

@@ -58,8 +58,14 @@ def test_sweep_repo_revision_ignores_consistency_sweep_outputs(tmp_path: Path) -
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
     _init_git_repo(tmp_path)
 
-    from tools.sweep import CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY, _git_tree_sha_excluding
-    from tools.sweep import _git_tree_sha as sweep_git_tree_sha
+    from tools.sweep import (
+        CANONICAL_SWEEP_OUT,
+        CANONICAL_SWEEP_SUMMARY,
+        _git_tree_sha_excluding,
+    )
+    from tools.sweep import (
+        _git_tree_sha as sweep_git_tree_sha,
+    )
 
     tree_full_1 = sweep_git_tree_sha(tmp_path)
     tree_excluding_1 = _git_tree_sha_excluding(tmp_path, [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY])

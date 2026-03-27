@@ -7,8 +7,6 @@ from typing import Any
 
 import pytest
 
-from tests.helpers import builders
-from tests.helpers.repo_imports import import_fresh_protocol_pack_surface
 from tests.gates.gate_test_support import (
     REPO_ROOT,
     _read_json,
@@ -19,6 +17,8 @@ from tests.gates.gate_test_support import (
     _sync_locked_spec_protocol_identity,
     _tamper_locked_spec_pack_id,
 )
+from tests.helpers import builders
+from tests.helpers.repo_imports import import_fresh_protocol_pack_surface
 
 pytestmark = pytest.mark.repo_local
 

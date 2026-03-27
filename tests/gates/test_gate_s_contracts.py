@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import builders
 from tests.gates.gate_test_support import (
     REPO_ROOT,
     _read_json,
@@ -13,6 +12,7 @@ from tests.gates.gate_test_support import (
     _setup_fake_repo_with_pack,
     _tamper_locked_spec_pack_id,
 )
+from tests.helpers import builders
 
 pytestmark = pytest.mark.repo_local
 

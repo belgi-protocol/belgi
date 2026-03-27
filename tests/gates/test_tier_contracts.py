@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.gates.gate_test_support import REPO_ROOT, _read_json, _run_module, _sha256_hex
+from tests.gates.gate_test_support import (
+    REPO_ROOT,
+    _read_json,
+    _run_module,
+    _sha256_hex,
+)
 
 pytestmark = pytest.mark.repo_local
 

@@ -28,7 +28,7 @@ def test_run_updates_run_workspace_pointer_files_deterministically(tmp_path: Pat
     assert rc_init == 0
     _ = capsys.readouterr()
     run_id = "run-pointers-001"
-    intent_path = _prepare_shared_run_intent(repo, capsys=capsys, run_id=run_id, tier_id="tier-0")
+    _prepare_shared_run_intent(repo, capsys=capsys, run_id=run_id, tier_id="tier-0")
 
     rc_run = run_belgi(
         [
@@ -152,7 +152,7 @@ def test_verify_selection_pointer_and_open_command_targets_real_verdict(tmp_path
 
     assert run_belgi(["init", "--repo", str(repo)]) == 0
     _ = capsys.readouterr()
-    intent_path = _prepare_shared_run_intent(repo, capsys=capsys, run_id=run_id, tier_id="tier-0")
+    _prepare_shared_run_intent(repo, capsys=capsys, run_id=run_id, tier_id="tier-0")
 
     rc_run = run_belgi(
         [

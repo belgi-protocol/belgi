@@ -6,9 +6,13 @@ from typing import Any
 
 import pytest
 
-from chain.logic.s_checks.context import SCheckContext
 from chain.logic.s_checks import s2_objectref_binding
-from tests.gates.gate_test_support import REPO_ROOT, _read_json, _sha256_hex
+from chain.logic.s_checks.context import SCheckContext
+from tests.gates.gate_test_support import (
+    REPO_ROOT,
+    _read_json,
+    _sha256_hex,
+)
 
 pytestmark = pytest.mark.repo_local
 

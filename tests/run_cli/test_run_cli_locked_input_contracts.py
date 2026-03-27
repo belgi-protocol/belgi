@@ -12,6 +12,7 @@ _git_rev_parse = cli_subprocess._git_rev_parse
 _prepare_shared_run_intent = cli_subprocess._prepare_shared_run_intent
 _rewrite_shared_run_intent_for_empty_doc_impact = cli_subprocess._rewrite_shared_run_intent_for_empty_doc_impact
 _unset_upstream_if_present = cli_subprocess._unset_upstream_if_present
+_write_local_json_object = cli_subprocess._write_local_json_object
 _write_toolchain_set_object = cli_subprocess._write_toolchain_set_object
 _write_tolerances_object = cli_subprocess._write_tolerances_object
 
