@@ -58,7 +58,7 @@ def import_fresh_belgi_cli_surface() -> BelgiCliSurface:
         "belgi.core.schema",
         "belgi.protocol.pack",
         "belgi.trust_anchor",
-        reset_prefixes=("belgi",),
+        reset_prefixes=("belgi", "chain"),
     )
     return BelgiCliSurface(
         cli=cli,
