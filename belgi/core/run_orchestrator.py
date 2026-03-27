@@ -270,17 +270,34 @@ def _invoke_module_main(module_name: str, argv: list[str]) -> int:
     return rc
 
 
-def _invoke_module_subprocess(module_name: str, argv: list[str]) -> int:
+def _invoke_module_subprocess(module_name: str, argv: list[str], *, env: dict[str, str] | None = None) -> int:
+    kwargs: dict[str, object] = {
+        "check": False,
+        "shell": False,
+    }
+    if env is not None:
+        kwargs["env"] = env
     cp = subprocess.run(
         [sys.executable, "-m", module_name, *argv],
-        check=False,
-        shell=False,
+        **kwargs,
     )
     return cp.returncode
 
 
 def _run_module_expect_rc(module_name: str, argv: list[str], *, allowed: tuple[int, ...] = (0,)) -> None:
     rc = _invoke_module_main(module_name, argv)
+    if rc not in allowed:
+        raise ValueError(f"{module_name} returned rc={rc}")
+
+
+def _run_module_subprocess_expect_rc(
+    module_name: str,
+    argv: list[str],
+    *,
+    allowed: tuple[int, ...] = (0,),
+    env: dict[str, str] | None = None,
+) -> None:
+    rc = _invoke_module_subprocess(module_name, argv, env=env)
     if rc not in allowed:
         raise ValueError(f"{module_name} returned rc={rc}")
 
@@ -1321,12 +1338,9 @@ def orchestrate_chain_run(
     for waiver_ref in applied_waiver_refs:
         c1_argv.extend(["--waiver-applied", waiver_ref])
 
-    ci_prev = os.environ.pop("CI", None)
-    try:
-        _run_module_expect_rc("chain.compiler_c1_intent", c1_argv)
-    finally:
-        if ci_prev is not None:
-            os.environ["CI"] = ci_prev
+    c1_env = dict(os.environ)
+    c1_env.pop("CI", None)
+    _run_module_subprocess_expect_rc("chain.compiler_c1_intent", c1_argv, env=c1_env)
 
     locked_spec_path = chain_repo_dir / rel_locked
     locked_spec = _load_json_object(locked_spec_path, label="LockedSpec.json")
