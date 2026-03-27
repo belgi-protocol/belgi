@@ -31,13 +31,11 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_github_vars_sanitize.py": "tools",
     "tests/test_manifest_init.py": "tools",
     "tests/test_overlay_requirements.py": "tools",
-    "tests/test_packaging_smoke.py": "shipped_surface",
     "tests/test_policy_stub_cli.py": "tools",
     "tests/test_resolve_belgi_workflow_inputs.py": "tools",
     "tests/test_stage_cli_forwarders.py": "tools",
     "tests/test_validate_belgi_ref_pin.py": "tools",
     "tests/test_waiver_cli.py": "tools",
-    "tests/test_wheel_boundary.py": "shipped_surface",
 }
 FORBIDDEN_RUN_CLI_HELPERS = {"tests.helpers.run_cli_harness"}
 FORBIDDEN_RUN_CLI_HANDLES = {"belgi_cli", "belgi_main", "run_orchestrator"}
@@ -141,14 +139,18 @@ def test_shipped_surface_lane_owner_splits() -> None:
     assert _classify_test_module("tests/shipped_surface/test_c3_docs_bundle_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_c3_engine_canonicals_integration.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_docs_compiler_hash_contract.py") == "shipped_surface"
+    assert _classify_test_module("tests/shipped_surface/test_packaging_smoke_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_protocol_pack_lifecycle_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/shipped_surface/test_protocol_pack_manifest_contracts.py") == "shipped_surface"
+    assert _classify_test_module("tests/shipped_surface/test_wheel_boundary_contracts.py") == "shipped_surface"
 
     assert not (TESTS_ROOT / "test_builtin_protocol_pack.py").exists()
     assert not (TESTS_ROOT / "test_c3_engine_canonicals_integration.py").exists()
     assert not (TESTS_ROOT / "test_docs_compiler_hash_contract.py").exists()
     assert not (TESTS_ROOT / "test_pack_lifecycle.py").exists()
+    assert not (TESTS_ROOT / "test_packaging_smoke.py").exists()
     assert not (TESTS_ROOT / "test_protocol_pack_manifest.py").exists()
+    assert not (TESTS_ROOT / "test_wheel_boundary.py").exists()
 
 
 def test_run_cli_lane_stays_subprocess_black_box() -> None:

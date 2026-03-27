@@ -17,7 +17,8 @@ from tools.wheel_boundary import (
 
 pytestmark = pytest.mark.repo_local
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _build_wheel(out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
