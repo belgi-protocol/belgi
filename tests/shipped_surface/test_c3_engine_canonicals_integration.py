@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from importlib.resources import files as resource_files
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 
 from tests.helpers.repo_imports import reset_repo_local_imports
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 reset_repo_local_imports("belgi")
 
 from belgi.cli import main as belgi_main

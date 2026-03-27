@@ -24,11 +24,9 @@ LANE_DIRS = (
 LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_belgi_tools_run_tests.py": "tools",
     "tests/test_builtin_protocol_pack.py": "shipped_surface",
-    "tests/test_c3_engine_canonicals_integration.py": "shipped_surface",
     "tests/test_ci_result_parser.py": "tools",
     "tests/test_cli_usage_error_model.py": "tools",
     "tests/test_codeowners_checker.py": "tools",
-    "tests/test_docs_compiler_hash_contract.py": "shipped_surface",
     "tests/test_ergonomics_helpers.py": "tools",
     "tests/test_external_action_pin_guard.py": "tools",
     "tests/test_github_vars_sanitize.py": "tools",
@@ -126,7 +124,6 @@ def test_gate_hotspot_is_split_into_owner_lanes() -> None:
     assert _classify_test_module("tests/gates/test_tier_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_tier_evidence_contracts.py") == "gates"
     assert _classify_test_module("tests/gates/test_trust_anchor_contracts.py") == "gates"
-    assert _classify_test_module("tests/shipped_surface/test_c3_docs_bundle_contracts.py") == "shipped_surface"
     assert _classify_test_module("tests/tools/test_sweep_repo_revision_contracts.py") == "tools"
     assert _classify_test_module("tests/tools/test_byte_guard_contracts.py") == "tools"
 
@@ -140,6 +137,15 @@ def test_gate_hotspot_is_split_into_owner_lanes() -> None:
     assert not (TESTS_ROOT / "test_r7_r8_policy_scan_integration.py").exists()
     assert not (TESTS_ROOT / "test_tier_contract_enforcement.py").exists()
     assert not (TESTS_ROOT / "test_trust_anchor_contract.py").exists()
+
+
+def test_shipped_surface_lane_owner_splits() -> None:
+    assert _classify_test_module("tests/shipped_surface/test_c3_docs_bundle_contracts.py") == "shipped_surface"
+    assert _classify_test_module("tests/shipped_surface/test_c3_engine_canonicals_integration.py") == "shipped_surface"
+    assert _classify_test_module("tests/shipped_surface/test_docs_compiler_hash_contract.py") == "shipped_surface"
+
+    assert not (TESTS_ROOT / "test_c3_engine_canonicals_integration.py").exists()
+    assert not (TESTS_ROOT / "test_docs_compiler_hash_contract.py").exists()
 
 
 def test_run_cli_lane_stays_subprocess_black_box() -> None:
