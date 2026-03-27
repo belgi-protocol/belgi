@@ -5,13 +5,12 @@ import json
 import subprocess
 from pathlib import Path, PureWindowsPath
 
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / ".github" / "scripts" / "run_belgi_smoke.py"
+
 
 def _load_module():
-    repo_root = Path(__file__).resolve().parents[1]
-    script_path = repo_root / ".github" / "scripts" / "run_belgi_smoke.py"
-    spec = importlib.util.spec_from_file_location("run_belgi_smoke_script", script_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load run_belgi_smoke.py")
+    spec = importlib.util.spec_from_file_location("run_belgi_smoke_script", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

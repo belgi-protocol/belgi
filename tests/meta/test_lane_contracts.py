@@ -46,9 +46,6 @@ LEGACY_TOP_LEVEL_LANE_MAP = {
     "tests/test_r6_attestation_signing_integration.py": "gates",
     "tests/test_r7_r8_policy_scan_integration.py": "gates",
     "tests/test_resolve_belgi_workflow_inputs.py": "tools",
-    "tests/test_run_belgi_smoke_script.py": "run_cli",
-    "tests/test_run_manifest_cli.py": "run_cli",
-    "tests/test_run_orchestrator_template_hydration.py": "run_orchestrator",
     "tests/test_stage_cli_forwarders.py": "tools",
     "tests/test_tier_contract_enforcement.py": "gates",
     "tests/test_validate_belgi_ref_pin.py": "tools",
@@ -93,7 +90,9 @@ def test_every_test_module_belongs_to_exactly_one_lane() -> None:
 
 
 def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> None:
-    assert _classify_test_module("tests/test_run_manifest_cli.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_init_cli_contracts.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_manifest_cli_contracts.py") == "run_cli"
+    assert _classify_test_module("tests/run_cli/test_run_new_cli_contracts.py") == "run_cli"
     assert _classify_test_module("tests/run_cli/test_run_cli_spine.py") == "run_cli"
     assert _classify_test_module("tests/run_cli/test_run_cli_output_contracts.py") == "run_cli"
     assert _classify_test_module("tests/run_cli/test_verify_cli_contracts.py") == "run_cli"
@@ -101,6 +100,11 @@ def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> 
     assert _classify_test_module("tests/run_cli/test_run_cli_tier1_contracts.py") == "run_cli"
     assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_cli_contracts.py") == "run_orchestrator"
     assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_cli_output_contracts.py") == "run_orchestrator"
+    assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_hydration_contracts.py") == "run_orchestrator"
+    assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_supplychain_contracts.py") == "run_orchestrator"
+    assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_toolchain_input_contracts.py") == "run_orchestrator"
+    assert _classify_test_module("tests/run_orchestrator/test_run_orchestrator_tolerances_contracts.py") == "run_orchestrator"
+    assert _classify_test_module("tests/tools/test_run_belgi_smoke_script.py") == "tools"
     assert _classify_test_module("tests/meta/test_sweep_semantics.py") == "meta"
     assert _classify_test_module("tests/docs_authority/test_template_claim_contracts.py") == "docs_authority"
     assert _classify_test_module("tests/docs_authority/test_workflow_contracts.py") == "docs_authority"
@@ -110,6 +114,9 @@ def test_generated_run_docs_and_sweep_semantics_stay_out_of_docs_authority() -> 
     assert not (TESTS_ROOT / "test_template_claim_contracts.py").exists()
     assert not (TESTS_ROOT / "test_workflow_contracts.py").exists()
     assert not (TESTS_ROOT / "test_run_verify_cli.py").exists()
+    assert not (TESTS_ROOT / "test_run_manifest_cli.py").exists()
+    assert not (TESTS_ROOT / "test_run_belgi_smoke_script.py").exists()
+    assert not (TESTS_ROOT / "test_run_orchestrator_template_hydration.py").exists()
 
 
 def test_gate_hotspot_is_split_into_owner_lanes() -> None:
