@@ -2332,41 +2332,69 @@ def check_cs_wvr_003(root: Path) -> InvariantResult:
     tiers = repo_path(root, "tiers/tier-packs.md")
     q = repo_path(root, "gates/GATE_Q.md")
     ops = repo_path(root, "docs/operations/waivers.md")
+    ops_canon = repo_path(root, "belgi/canonicals/docs/operations/waivers.md")
+    schema_readme = repo_path(root, "schemas/README.md")
     for rel, p in [
         ("tiers/tier-packs.json", tiers_json),
         ("tiers/tier-packs.md", tiers),
         ("gates/GATE_Q.md", q),
         ("docs/operations/waivers.md", ops),
+        ("belgi/canonicals/docs/operations/waivers.md", ops_canon),
+        ("schemas/README.md", schema_readme),
     ]:
         if not p.exists():
             return InvariantResult("CS-WVR-003", "FAIL", [], f"Missing {rel}.")
 
     t_txt = read_text(tiers)
-    missing_t = _missing_needles(t_txt, ["waiver_policy", "max_active_waivers", "tier-3"])
+    missing_t = _missing_needles(t_txt, ["waiver_policy", "max_active_waivers", "requires_HOTL", "tier-3"])
     if missing_t:
         return InvariantResult(
             "CS-WVR-003",
             "FAIL",
             ["tiers/tier-packs.md#24-waiver_policy"],
-            "Ensure tier-packs defines waiver_policy.allowed and max_active_waivers per tier (tier-3 disallows waivers).",
+            "Ensure tier-packs defines waiver_policy.allowed, max_active_waivers, and requires_HOTL per tier.",
         )
 
-    if "max_active_waivers" not in read_text(q) or "Verify tier allows waivers" not in read_text(q):
+    q_txt = read_text(q)
+    if (
+        "max_active_waivers" not in q_txt
+        or "Verify tier allows waivers" not in q_txt
+        or "waiver_policy.requires_HOTL" not in q_txt
+    ):
         return InvariantResult(
             "CS-WVR-003",
             "FAIL",
-            ["gates/GATE_Q.md#q6--waivers-validity-if-present"],
-            "Ensure Gate Q Q6 references tier waiver_policy and enforces allowance and max_active_waivers.",
+            [
+                "gates/GATE_Q.md#q6--waivers-validity-if-present",
+                "gates/GATE_Q.md#q-hotl-001--human-on-the-loop-approval-artifact-role-confusion-prevention",
+            ],
+            "Ensure Gate Q Q6 references tier waiver_policy and Q-HOTL-001 reads waiver_policy.requires_HOTL from tier policy.",
         )
 
-    ops_txt = read_text(ops).lower()
-    if "limits per tier" not in ops_txt or ("tier 3" not in ops_txt and "tier-3" not in ops_txt):
-        return InvariantResult(
-            "CS-WVR-003",
-            "FAIL",
-            ["docs/operations/waivers.md#51-limits-per-tier"],
-            "Ensure waivers.md repeats the tier waiver limits and disallows waivers for tier-3.",
+    def _parse_waiver_policy_lines(doc_path: Path, doc_ref: str) -> tuple[dict[str, tuple[bool, int, bool, int]], str | None]:
+        doc_txt = read_text(doc_path)
+        lowered = doc_txt.lower()
+        if "limits per tier" not in lowered or ("tier 3" not in lowered and "tier-3" not in lowered):
+            return {}, f"{doc_ref}: missing limits-per-tier section"
+
+        observed: dict[str, tuple[bool, int, bool, int]] = {}
+        tier_line_re = re.compile(
+            r"^\s*-\s*Tier\s+([0-3])\s*:\s*waivers\s+(allowed|not allowed)"
+            r"(?:,\s*max\s+([0-9]+)\s+active)?(?:,\s*(.*))?\s*$",
+            flags=re.IGNORECASE,
         )
+        for line_no, line in enumerate(doc_txt.splitlines(), start=1):
+            m = tier_line_re.match(line)
+            if m is None:
+                continue
+            tid = f"tier-{m.group(1)}"
+            allowed = m.group(2).lower() == "allowed"
+            max_active_raw = m.group(3)
+            max_active = int(max_active_raw) if max_active_raw is not None else 0
+            tail = (m.group(4) or "").lower()
+            hotl_required = "hotl required" in tail
+            observed[tid] = (allowed, max_active, hotl_required, line_no)
+        return observed, None
 
     try:
         tiers_obj = load_json(tiers_json)
@@ -2387,7 +2415,7 @@ def check_cs_wvr_003(root: Path) -> InvariantResult:
             "tiers/tier-packs.json must define an object at /tiers.",
         )
 
-    expected_limits: dict[str, tuple[bool, int]] = {}
+    expected_limits: dict[str, tuple[bool, int, bool]] = {}
     for tid in ("tier-0", "tier-1", "tier-2", "tier-3"):
         tier_entry = tier_map.get(tid)
         if not isinstance(tier_entry, dict):
@@ -2407,6 +2435,7 @@ def check_cs_wvr_003(root: Path) -> InvariantResult:
             )
         allowed = waiver_policy.get("allowed")
         max_active = waiver_policy.get("max_active_waivers")
+        requires_hotl = waiver_policy.get("requires_HOTL")
         if not isinstance(allowed, bool):
             return InvariantResult(
                 "CS-WVR-003",
@@ -2421,44 +2450,85 @@ def check_cs_wvr_003(root: Path) -> InvariantResult:
                 [f"tiers/tier-packs.json#/tiers/{tid}/waiver_policy/max_active_waivers"],
                 f"tiers/tier-packs.json waiver_policy.max_active_waivers must be a non-negative integer for {tid}.",
             )
-        expected_limits[tid] = (allowed, max_active)
+        if not isinstance(requires_hotl, bool):
+            return InvariantResult(
+                "CS-WVR-003",
+                "FAIL",
+                [f"tiers/tier-packs.json#/tiers/{tid}/waiver_policy/requires_HOTL"],
+                f"tiers/tier-packs.json waiver_policy.requires_HOTL must be boolean for {tid}.",
+            )
+        expected_limits[tid] = (allowed, max_active, requires_hotl)
 
-    observed_limits: dict[str, tuple[bool, int, int]] = {}
-    tier_line_re = re.compile(
-        r"^\s*-\s*Tier\s+([0-3])\s*:\s*waivers\s+(allowed|not allowed)"
-        r"(?:,\s*max\s+([0-9]+)\s+active)?(?:,\s*.*)?\s*$",
-        flags=re.IGNORECASE,
+    observed_limits, parse_error = _parse_waiver_policy_lines(ops, "docs/operations/waivers.md#51-limits-per-tier")
+    if parse_error is not None:
+        return InvariantResult(
+            "CS-WVR-003",
+            "FAIL",
+            ["docs/operations/waivers.md#51-limits-per-tier"],
+            "Ensure waivers.md repeats the tier waiver limits and HOTL-required tiers.",
+        )
+
+    observed_canon_limits, canon_parse_error = _parse_waiver_policy_lines(
+        ops_canon,
+        "belgi/canonicals/docs/operations/waivers.md#51-limits-per-tier",
     )
-    for line_no, line in enumerate(read_text(ops).splitlines(), start=1):
-        m = tier_line_re.match(line)
-        if m is None:
-            continue
-        tid = f"tier-{m.group(1)}"
-        allowed_token = m.group(2).lower()
-        allowed = allowed_token == "allowed"
-        max_active_raw = m.group(3)
-        max_active = int(max_active_raw) if max_active_raw is not None else 0
-        observed_limits[tid] = (allowed, max_active, line_no)
+    if canon_parse_error is not None:
+        return InvariantResult(
+            "CS-WVR-003",
+            "FAIL",
+            ["belgi/canonicals/docs/operations/waivers.md#51-limits-per-tier"],
+            "Ensure the packaged waivers doc repeats the tier waiver limits and HOTL-required tiers.",
+        )
+
+    schema_txt = read_text(schema_readme)
+    schema_missing = _missing_needles(
+        schema_txt,
+        [
+            "waiver_policy.requires_HOTL == true",
+            "FAIL if `requires_HOTL == true` and no `hotl_approval` artifact is found.",
+        ],
+    )
+    if schema_missing or "Tier-1 runs trigger a warning if missing." in schema_txt:
+        return InvariantResult(
+            "CS-WVR-003",
+            "FAIL",
+            ["schemas/README.md#hotlapproval-purpose"],
+            "Ensure schemas/README.md describes HOTLApproval scope and enforcement from tier policy, not stale Tier-1 warning prose.",
+        )
 
     drift: list[str] = []
     for tid in ("tier-0", "tier-1", "tier-2", "tier-3"):
         if tid not in observed_limits:
             drift.append(f"{tid}:missing in docs/operations/waivers.md#5.1")
             continue
-        expected_allowed, expected_max = expected_limits[tid]
-        observed_allowed, observed_max, observed_line = observed_limits[tid]
-        if (expected_allowed, expected_max) != (observed_allowed, observed_max):
+        expected_allowed, expected_max, expected_hotl = expected_limits[tid]
+        observed_allowed, observed_max, observed_hotl, observed_line = observed_limits[tid]
+        if (expected_allowed, expected_max, expected_hotl) != (observed_allowed, observed_max, observed_hotl):
             drift.append(
                 f"{tid}@docs/operations/waivers.md:{observed_line}:"
-                f"expected allowed={expected_allowed},max_active_waivers={expected_max};"
-                f"found allowed={observed_allowed},max_active_waivers={observed_max}"
+                f"expected allowed={expected_allowed},max_active_waivers={expected_max},requires_HOTL={expected_hotl};"
+                f"found allowed={observed_allowed},max_active_waivers={observed_max},requires_HOTL={observed_hotl}"
+            )
+        if tid not in observed_canon_limits:
+            drift.append(f"{tid}:missing in belgi/canonicals/docs/operations/waivers.md#5.1")
+            continue
+        canon_allowed, canon_max, canon_hotl, canon_line = observed_canon_limits[tid]
+        if (expected_allowed, expected_max, expected_hotl) != (canon_allowed, canon_max, canon_hotl):
+            drift.append(
+                f"{tid}@belgi/canonicals/docs/operations/waivers.md:{canon_line}:"
+                f"expected allowed={expected_allowed},max_active_waivers={expected_max},requires_HOTL={expected_hotl};"
+                f"found allowed={canon_allowed},max_active_waivers={canon_max},requires_HOTL={canon_hotl}"
             )
     if drift:
         return InvariantResult(
             "CS-WVR-003",
             "FAIL",
-            ["tiers/tier-packs.json#/tiers", "docs/operations/waivers.md#51-limits-per-tier"],
-            "Ensure docs/operations/waivers.md §5.1 limits exactly match tiers/tier-packs.json waiver_policy. "
+            [
+                "tiers/tier-packs.json#/tiers",
+                "docs/operations/waivers.md#51-limits-per-tier",
+                "belgi/canonicals/docs/operations/waivers.md#51-limits-per-tier",
+            ],
+            "Ensure waivers tier-policy docs exactly match tiers/tier-packs.json waiver_policy, including requires_HOTL. "
             + "; ".join(drift),
             {"drift": drift},
         )
@@ -2470,7 +2540,10 @@ def check_cs_wvr_003(root: Path) -> InvariantResult:
             "tiers/tier-packs.json#/tiers",
             "tiers/tier-packs.md#24-waiver_policy",
             "gates/GATE_Q.md#q6--waivers-validity-if-present",
+            "gates/GATE_Q.md#q-hotl-001--human-on-the-loop-approval-artifact-role-confusion-prevention",
             "docs/operations/waivers.md#51-limits-per-tier",
+            "belgi/canonicals/docs/operations/waivers.md#51-limits-per-tier",
+            "schemas/README.md#hotlapproval-purpose",
         ],
         "",
     )

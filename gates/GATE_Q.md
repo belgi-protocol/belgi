@@ -95,7 +95,7 @@ Remediation loop (operator contract):
 - The run MUST NOT proceed to C2 until Gate Q returns **GO**.
 
 Deterministic selection rule for `GateVerdict.failure_category`:
-- Set it to the category of the **first failing check** in the ordered check list (PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q7 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002).
+- Set it to the category of the **first failing check** in the ordered check list (PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q7 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002).
 
 ### 3.2 LockedSpec (locked)
 Gate Q MUST emit (or reference) the locked, immutable LockedSpec used for later stages.
@@ -119,7 +119,7 @@ Gate Q MUST NOT:
 - modify the repo beyond producing/locking the LockedSpec and producing evidence artifacts
 
 ## 5. Deterministic Checks (Executable Doc)
-All checks below are evaluated in order PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q7 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002.
+All checks below are evaluated in order PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q7 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002.
 
 Each check specifies: `check_id`, required inputs, deterministic procedure, failure category, required evidence kinds, and remediation template.
 
@@ -374,18 +374,20 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
 - deterministic procedure (v1, deterministic):
   1) If `waivers_applied` is absent or empty: pass.
   2) If present:
-    - Verify tier allows waivers (per [../tiers/tier-packs.json](../tiers/tier-packs.json)). If not allowed: fail.
-     - Verify the count of active waivers does not exceed `max_active_waivers`.
-     - Verify `EvidenceManifest.anchored_time_utc` is present and RFC3339-valid; this is the waiver expiry `as_of` anchor. If missing/invalid: fail closed.
-     - For each waiver document:
-       - Validate it against Waiver schema.
-       - Verify `status == "active"`.
-       - Reject placeholder/template content in critical fields (`scope`, `justification`, `mitigation`, `approver`). Standalone markers such as `TODO`, `TBD`, `REPLACE_ME`, or `<...>` template tokens are invalid.
-       - Verify `gate_id` is either `"Q"` or `"R"` (schema-enforced) and is consistent with the referenced waived rule’s gate.
-       - Verify `expires_at` is after `EvidenceManifest.anchored_time_utc` (not ambient wall-clock time).
-       - Enforce v1 human-authorship heuristic:
-         - `approver` MUST NOT contain the substrings `llm` or `agent` (case-insensitive).
-         - `audit_trail_ref.id` and `audit_trail_ref.storage_ref` MUST be non-empty (schema-required; Gate Q MUST treat any schema failure as NO-GO).
+    - Load `tiers[<tier_id>].waiver_policy` from [../tiers/tier-packs.json](../tiers/tier-packs.json).
+    - Verify tier allows waivers (`waiver_policy.allowed`). If not allowed: fail.
+    - Verify the count of active waivers does not exceed `waiver_policy.max_active_waivers`.
+    - Verify `EvidenceManifest.anchored_time_utc` is present and RFC3339-valid; this is the waiver expiry `as_of` anchor. If missing/invalid: fail closed.
+    - For each waiver document:
+      - Validate it against Waiver schema.
+      - Verify `status == "active"`.
+      - Reject placeholder/template content in critical fields (`scope`, `justification`, `mitigation`, `approver`). Standalone markers such as `TODO`, `TBD`, `REPLACE_ME`, or `<...>` template tokens are invalid.
+      - Verify `gate_id` is either `"Q"` or `"R"` (schema-enforced) and is consistent with the referenced waived rule’s gate.
+      - Verify `expires_at` is after `EvidenceManifest.anchored_time_utc` (not ambient wall-clock time).
+      - Enforce v1 human-authorship heuristic:
+        - `approver` MUST NOT contain the substrings `llm` or `agent` (case-insensitive).
+        - `audit_trail_ref.id` and `audit_trail_ref.storage_ref` MUST be non-empty (schema-required; Gate Q MUST treat any schema failure as NO-GO).
+    - If `waiver_policy.requires_HOTL == true`, HOTL approval remains separately enforced by `Q-HOTL-001`.
 - failure category: `FQ-WAIVER-INVALID`
 - required evidence kinds: `schema_validation`, `policy_report`
 - remediation.next_instruction template: `Do edit waiver waiver_id to be eligible (set status="active", replace placeholder fields, and ensure expires_at is after EvidenceManifest.anchored_time_utc), or remove it, then re-run Q.`
@@ -396,8 +398,9 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
   - `LockedSpec.tier.tier_id` (LockedSpec schema)
   - Supported tier IDs (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
 - deterministic procedure:
-  1) Verify `tier_id` is one of: `tier-0`, `tier-1`, `tier-2`, `tier-3`.
-  2) If not: fail.
+  1) Load the declared tier registry from [../tiers/tier-packs.json](../tiers/tier-packs.json).
+  2) Verify `tier_id` is a key in `tiers`.
+  3) If not: fail.
 - failure category: `FQ-TIER-UNKNOWN`
 - required evidence kinds: `policy_report`, `schema_validation`
 - remediation.next_instruction template: `Do select a supported tier_id (<tier_id_value>) then re-run Q.`
@@ -408,21 +411,20 @@ Note (deterministic substitution): `<tier_id_value>` is the observed unsupported
 - check_id: `Q-HOTL-001`
 - required inputs:
   - `LockedSpec.tier.tier_id` (LockedSpec schema)
+  - Tier policy reference (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
   - EvidenceManifest (`EvidenceManifest.artifacts[]`)
 - deterministic procedure (v1, deterministic):
-  1) Determine tier enforcement level from `tier_id`:
-     - `tier-2`, `tier-3` (audit-grade): HOTL artifact REQUIRED.
-     - `tier-1`: HOTL artifact RECOMMENDED (warning only if missing).
-     - `tier-0`: No HOTL requirement.
-  2) If HOTL required or recommended:
+  1) Load `tiers[<tier_id>].waiver_policy.requires_HOTL` from [../tiers/tier-packs.json](../tiers/tier-packs.json).
+  2) If `waiver_policy.requires_HOTL == true`:
      - Search `EvidenceManifest.artifacts[]` for an artifact with `kind == "hotl_approval"`.
-     - For tier-2/3: FAIL if no `hotl_approval` artifact found.
-     - For tier-1: WARN if missing (do not fail; allow run to proceed).
-  3) If `hotl_approval` artifact is found:
+     - FAIL if no `hotl_approval` artifact is found.
+  3) If `waiver_policy.requires_HOTL == false`:
+     - Pass without requiring HOTL evidence.
+  4) If `hotl_approval` artifact is found:
      - Verify artifact references a document that validates against [../schemas/HOTLApproval.schema.json](../schemas/HOTLApproval.schema.json).
      - Verify `approver` matches pattern `^human:[A-Za-z0-9_.@+-]+$` (role confusion prevention).
 - failure category: `FQ-HOTL-MISSING`
-- required evidence kinds: `hotl_approval` (for tier-2/3)
+- required evidence kinds: `hotl_approval` (when `waiver_policy.requires_HOTL == true`)
 - remediation.next_instruction template: `Do produce hotl_approval artifact with valid human approver then re-run Q.`
 
 ### Q-DOC-001 — doc_impact.required_paths format validation (if present)

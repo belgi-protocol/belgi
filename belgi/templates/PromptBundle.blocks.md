@@ -38,9 +38,9 @@ Registry rules:
 | PB-006 | Tolerances: Scope Budgets Object | constraints | LockedSpec field: `tier.tolerances_ref` | always | internal | Provides the locked Tolerances object reference that governs scope-budget ceilings. |
 | PB-007 | Invariants Contract | output_contract | LockedSpec fields: `invariants[]` | always | internal | Requires proposer to treat invariants as acceptance checks; content does not include bypass patterns. |
 | PB-008 | Evidence Obligations (Category Level) | output_contract | Tier defaults: `../../tiers/tier-packs.json` (`required_evidence_kinds`); Gate R refs: `../../gates/GATE_R.md#4-evidence-sufficiency-rule-deterministic` | always | public | States evidence kinds must exist for verification; does not describe private detection logic. |
-| PB-009 | Command Log Mode Reminder | constraints | LockedSpec field: `tier.tier_id` (for deriving `command_log_mode` via `../../tiers/tier-packs.json`) | tier>=tier-1 | public | Reminds structured command records are required at higher tiers. |
-| PB-010 | Tests Policy Reminder | constraints | Tier defaults: `../../tiers/tier-packs.json` (`test_policy`); Gate R ref: `../../gates/GATE_R.md#r5--tests-policy-satisfied` | tier>=tier-1 | public | Category-level: tests required at tiers 1–3. |
-| PB-011 | Envelope Attestation Reminder | constraints | Tier defaults: `../../tiers/tier-packs.json` (`envelope_policy`); Gate R ref: `../../gates/GATE_R.md#r6--envelope-attestation-satisfied` | tier>=tier-1 | public | Category-level: attestation required at tiers 1–3. |
+| PB-009 | Command Log Mode Reminder | constraints | Tier defaults: `../../tiers/tier-packs.json` (`command_log_mode`) | `command_log_mode == "structured"` | public | Reminds structured command records are required when the selected tier policy enables them. |
+| PB-010 | Tests Policy Reminder | constraints | Tier defaults: `../../tiers/tier-packs.json` (`test_policy`); Gate R ref: `../../gates/GATE_R.md#r5--tests-policy-satisfied` | `test_policy.required == true` | public | Category-level: test evidence is required when the selected tier policy enables it. |
+| PB-011 | Envelope Attestation Reminder | constraints | Tier defaults: `../../tiers/tier-packs.json` (`envelope_policy`); Gate R ref: `../../gates/GATE_R.md#r6--envelope-attestation-satisfied` | `envelope_policy.requires_attestation == true` | public | Category-level: attestation is required when the selected tier policy enables it. |
 | PB-012 | Supply Chain Evidence Obligation | safety | Gate R ref: `../../gates/GATE_R.md#r7--supply-chain-changes-detected-and-accounted-for` | tier>=tier-0 | public | Category-level: require scan command + policy report; no signatures or patterns published. |
 | PB-013 | Adversarial Scan Evidence Obligation | safety | Gate R ref: `../../gates/GATE_R.md#r8--adversarial-diff-scan-category-level` | tier>=tier-0 | public | Category-level: require scan command + policy report; no signatures or patterns published. |
 | PB-014 | Output Format Contract | output_contract | Static text; schema pointer: `../../schemas/GateVerdict.schema.json` (format awareness only) | always | public | Requires proposer outputs to be structured and auditable (plans, file lists, no hidden steps). |
@@ -72,14 +72,16 @@ The C1 Prompt Compiler’s PromptBundle output is deterministic **iff** it is a 
 If any additional inputs affect assembly (environment variables, timestamps, model outputs), the run is **NO-GO** for “deterministic compiler” claims.
 
 ### A3.2 Deterministic selection (no model discretion)
-Compute `tier_id = LockedSpec.tier.tier_id`.
+Compute the selected tier policy from `LockedSpec.tier.tier_id`.
 
-Selection function `selected_blocks(tier_id)`:
+Selection function `selected_blocks(tier_policy)`:
 - Always include: PB-001, PB-002, PB-003, PB-004, PB-005, PB-006, PB-007, PB-008, PB-012, PB-013, PB-014.
-- If `tier_id` is one of `tier-1`, `tier-2`, `tier-3`, additionally include: PB-009, PB-010, PB-011.
+- If `tier_policy.command_log_mode == "structured"`, additionally include: PB-009.
+- If `tier_policy.test_policy.required == true`, additionally include: PB-010.
+- If `tier_policy.envelope_policy.requires_attestation == true`, additionally include: PB-011.
 - Optional blocks (e.g., PB-015) MUST NOT be included unless the compiler invocation includes an explicit, recorded flag (see A5) that deterministically selects them.
 
-If `tier_id` is unknown or unsupported, C1 must fail and the run must be **NO-GO** at Gate Q (see `../../gates/GATE_Q.md` Q7).
+If `LockedSpec.tier.tier_id` is unknown or unsupported, C1 must fail and the run must be **NO-GO** at Gate Q (see `../../gates/GATE_Q.md` Q7).
 
 ### A3.3 Explicit block ordering key (no discretion)
 Ordering is fixed by ascending `block_id` numeric suffix (e.g., PB-001 before PB-010).

@@ -208,7 +208,7 @@ def test_gate_q_q5_missing_pinned_refs_is_primary(tmp_path: Path) -> None:
     assert failures[0]["rule_id"] == "Q5"
 
 
-def test_gate_q_q7_unsupported_tier_is_primary(tmp_path: Path) -> None:
+def test_gate_q_q7_uses_tier_policy_override_as_supported_owner(tmp_path: Path) -> None:
     paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q7_tier_unsupported", run_id="q7-tier")
 
     intent_path = tmp_path / paths["intent"]
@@ -243,6 +243,48 @@ def test_gate_q_q7_unsupported_tier_is_primary(tmp_path: Path) -> None:
         locked_rel=paths["locked"],
         evidence_rel=paths["evidence"],
         tiers_rel=tiers_rel,
+    )
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+
+    verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
+    assert verdict["verdict"] == "GO"
+    assert verdict["failure_category"] is None
+    failures = verdict.get("failures")
+    assert isinstance(failures, list)
+    assert failures == []
+
+
+def test_gate_q_q7_unknown_tier_still_fails_when_not_in_policy(tmp_path: Path) -> None:
+    paths = builders.build_q_repo(tmp_path, rel_root="gate_q/q7_tier_unknown", run_id="q7-tier-unknown")
+
+    intent_path = tmp_path / paths["intent"]
+    locked_path = tmp_path / paths["locked"]
+
+    locked = _read_json(locked_path)
+    tier = locked.get("tier")
+    assert isinstance(tier, dict)
+    tolerances_ref = tier.get("tolerances_ref")
+    assert isinstance(tolerances_ref, dict)
+    tolerances_storage_ref = tolerances_ref.get("storage_ref")
+    assert isinstance(tolerances_storage_ref, str) and tolerances_storage_ref
+    tolerances_path = tmp_path / tolerances_storage_ref
+    tolerances = _read_json(tolerances_path)
+    tolerances["tier_id"] = "tier-99"
+    tolerances_bytes = (json.dumps(tolerances, indent=2, sort_keys=True) + "\n").encode("utf-8", errors="strict")
+    tolerances_path.write_bytes(tolerances_bytes)
+    tolerances_ref["hash"] = _sha256_hex(tolerances_bytes)
+    tier["tier_id"] = "tier-99"
+    tier["tier_name"] = "Tier 99"
+    locked_path.write_text(json.dumps(locked, indent=2, sort_keys=True) + "\n", encoding="utf-8", errors="strict")
+
+    intent_text = intent_path.read_text(encoding="utf-8", errors="strict").replace('tier_pack_id: "tier-0"', 'tier_pack_id: "tier-99"')
+    intent_path.write_text(intent_text, encoding="utf-8", errors="strict")
+
+    cp = builders.run_gate_q(
+        tmp_path,
+        intent_rel=paths["intent"],
+        locked_rel=paths["locked"],
+        evidence_rel=paths["evidence"],
     )
     assert cp.returncode == 2, (cp.returncode, cp.stdout, cp.stderr)
 

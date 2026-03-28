@@ -65,6 +65,13 @@ class TierParamsLoadResult:
         return out
 
 
+@dataclass(frozen=True)
+class TierAdmissionLoadResult:
+    tier_ids: tuple[str, ...] | None
+    hotl_required_tier_ids: tuple[str, ...] | None
+    parse_error: str | None = None
+
+
 def _parse_tier_params_from_json(tier_packs_json: str, tier_id: str) -> dict[str, Any]:
     """Deterministic tier parameter extraction from tiers/tier-packs.json (canonical SSOT).
 
@@ -479,3 +486,79 @@ def parse_tier_params(tiers_text: str, tier_id: str) -> dict[str, Any]:
     """
 
     return load_tier_params(tiers_text, tier_id).to_legacy_map()
+
+
+def _load_tier_admission_from_json(tiers_text: str) -> TierAdmissionLoadResult:
+    try:
+        obj = json.loads(tiers_text)
+    except Exception as e:
+        return TierAdmissionLoadResult(None, None, parse_error=f"tier-packs.json is not valid JSON: {e}")
+
+    if not isinstance(obj, dict):
+        return TierAdmissionLoadResult(None, None, parse_error="tier-packs.json must be a JSON object")
+
+    tier_ids_raw = obj.get("tier_ids")
+    if not isinstance(tier_ids_raw, list) or not tier_ids_raw:
+        return TierAdmissionLoadResult(None, None, parse_error="tier-packs.json missing/invalid top-level tier_ids list")
+
+    tier_ids: list[str] = []
+    seen: set[str] = set()
+    for raw in tier_ids_raw:
+        if not isinstance(raw, str) or not raw:
+            return TierAdmissionLoadResult(None, None, parse_error="tier-packs.json tier_ids must be non-empty strings")
+        if raw in seen:
+            return TierAdmissionLoadResult(None, None, parse_error=f"tier-packs.json tier_ids contains duplicate value: {raw}")
+        seen.add(raw)
+        tier_ids.append(raw)
+
+    tiers = obj.get("tiers")
+    if not isinstance(tiers, dict):
+        return TierAdmissionLoadResult(None, None, parse_error="tier-packs.json missing/invalid top-level tiers map")
+
+    hotl_required: list[str] = []
+    for tier_id in tier_ids:
+        tier_obj = tiers.get(tier_id)
+        if not isinstance(tier_obj, dict):
+            return TierAdmissionLoadResult(None, None, parse_error=f"tier-packs.json missing tier object for {tier_id}")
+        waiver = tier_obj.get("waiver_policy")
+        if not isinstance(waiver, dict):
+            return TierAdmissionLoadResult(None, None, parse_error=f"tier-packs.json missing waiver_policy for {tier_id}")
+        requires_hotl = waiver.get("requires_HOTL")
+        if not isinstance(requires_hotl, bool):
+            return TierAdmissionLoadResult(None, None, parse_error=f"tier-packs.json missing/invalid waiver_policy.requires_HOTL for {tier_id}")
+        if requires_hotl:
+            hotl_required.append(tier_id)
+
+    return TierAdmissionLoadResult(tuple(tier_ids), tuple(hotl_required), parse_error=None)
+
+
+def load_tier_admission_policy(tiers_text: str) -> TierAdmissionLoadResult:
+    """Load supported tier IDs and HOTL-required tier IDs from tier packs."""
+
+    s = (tiers_text or "").lstrip()
+    if not s.startswith("{"):
+        return TierAdmissionLoadResult(
+            None,
+            None,
+            parse_error=(
+                "tier admission policy requires canonical JSON SSOT "
+                "(tiers/tier-packs.json); markdown generated view is not runtime authority"
+            ),
+        )
+    return _load_tier_admission_from_json(tiers_text)
+
+
+def supported_tier_ids(tiers_text: str) -> tuple[str, ...]:
+    loaded = load_tier_admission_policy(tiers_text)
+    if loaded.tier_ids is None:
+        raise ValueError(loaded.parse_error or "tier admission policy parse failed")
+    return loaded.tier_ids
+
+
+def tier_requires_hotl(tiers_text: str, tier_id: str) -> bool:
+    loaded = load_tier_admission_policy(tiers_text)
+    if loaded.tier_ids is None or loaded.hotl_required_tier_ids is None:
+        raise ValueError(loaded.parse_error or "tier admission policy parse failed")
+    if tier_id not in loaded.tier_ids:
+        raise ValueError(f"unknown tier_id: {tier_id}")
+    return tier_id in loaded.hotl_required_tier_ids

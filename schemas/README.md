@@ -333,7 +333,7 @@ Deterministic rule (schema-enforced): if `doc_impact.required_paths` is empty `[
 
 HOTLApproval artifacts enforce **human-on-the-loop (HOTL) approvals** for audit-grade runs, preventing role confusion where LLM/agent decisions might be attributed to humans.
 
-**Scope:** Tier-2+ (audit-grade) runs MUST include a valid HOTLApproval artifact in EvidenceManifest. Tier-1 runs trigger a warning if missing.
+**Scope:** Tiers where `waiver_policy.requires_HOTL == true` in `tiers/tier-packs.json` MUST include a valid HOTLApproval artifact in EvidenceManifest. In the current v1 tier policy, this means Tier-2 and Tier-3.
 
 **Key fields:**
 - `approver`: **MUST** use format `human:<identity>` (regex: `^human:[A-Za-z0-9_.@+-]+$`) to prevent LLM/agent spoofing.
@@ -343,9 +343,9 @@ HOTLApproval artifacts enforce **human-on-the-loop (HOTL) approvals** for audit-
 - `conditions`: Array of strings describing approval conditions (required when decision="approved-with-conditions").
 
 **Enforcement (Gate Q-HOTL-001):**
-- Tier-2/3: FAIL if no `hotl_approval` artifact found.
-- Tier-1: WARNING if missing (backward compatibility).
-- Tier-0: No requirement.
+- Read `tiers[<tier_id>].waiver_policy.requires_HOTL` from `tiers/tier-packs.json`.
+- FAIL if `requires_HOTL == true` and no `hotl_approval` artifact is found.
+- When a `hotl_approval` artifact is present, validate it against the HOTLApproval schema and require a human-shaped approver.
 
 ## Schema ↔ Canonicals Mapping
 

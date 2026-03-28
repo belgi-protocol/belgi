@@ -69,8 +69,13 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     tier_id = tier_obj.get("tier_id")
     assert isinstance(tier_id, str) and tier_id
     c1 = importlib.import_module("chain.compiler_c1_intent")
-    selector = c1._prompt_block_ids_for_tier
-    expected_selected = set(selector(tier_id))
+    tier_logic = importlib.import_module("chain.logic.tier_packs")
+    pack = importlib.import_module("belgi.protocol.pack")
+    selector = c1._prompt_block_ids_for_tier_policy
+    tiers_text = pack.get_builtin_protocol_context().read_text("tiers/tier-packs.json")
+    loaded_tier = tier_logic.load_tier_params(tiers_text, tier_id)
+    assert loaded_tier.params is not None, loaded_tier.parse_error
+    expected_selected = set(selector(loaded_tier.params))
     assert set(prompt_hashes.keys()) == expected_selected
 
     rc_verify_1 = run_belgi(["verify", "--repo", str(repo)])

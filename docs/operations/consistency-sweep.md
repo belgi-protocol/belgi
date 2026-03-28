@@ -738,19 +738,23 @@ Canonical trigger:
 
 #### CS-WVR-003 — Tier waiver policy is consistent and enforced
 - invariant_id: CS-WVR-003
-- statement: Tier waiver allowances/limits MUST match tier-packs and be enforced by Gate Q (and used by Gate R where applicable).
+- statement: Tier waiver allowances/limits and HOTL requirement semantics MUST match tier-packs, Gate Q, waivers docs, and HOTLApproval schema guidance.
 - source-of-truth (file/section):
   - tiers/tier-packs.json (canonical SSOT; generated view: tiers/tier-packs.md#24-waiver_policy and #3-tier-parameter-sets)
   - gates/GATE_Q.md#q6--waivers-validity-if-present
+  - gates/GATE_Q.md#q-hotl-001--human-on-the-loop-approval-artifact-role-confusion-prevention
   - docs/operations/waivers.md#51-limits-per-tier
+  - belgi/canonicals/docs/operations/waivers.md#51-limits-per-tier
+  - schemas/README.md#hotlapproval-purpose
 - check procedure (deterministic):
-  1) Confirm tiers/tier-packs.json defines `waiver_policy.allowed` and `max_active_waivers` per tier (tier-3 disallows waivers).
-  2) Confirm Gate Q Q6 references tier policy and enforces count and allowance.
-  3) Confirm waivers.md repeats the same limits.
+  1) Confirm tiers/tier-packs.json defines `waiver_policy.allowed`, `max_active_waivers`, and `requires_HOTL` per tier (tier-3 disallows waivers).
+  2) Confirm Gate Q Q6 references tier policy and enforces count and allowance, and confirm Q-HOTL-001 reads `waiver_policy.requires_HOTL` from tier policy.
+  3) Confirm both waivers docs repeat the same limits and HOTL-required tiers.
+  4) Confirm schemas/README describes HOTLApproval enforcement from tier policy rather than stale tier-specific warning prose.
 - required evidence/artifacts (schema kinds): LockedSpec.json; Waiver.json
 - pass/fail criteria:
-  - PASS if all three sources agree.
-  - FAIL if any tier’s allowance/limit differs across sources.
+  - PASS if all sources agree.
+  - FAIL if any tier’s allowance/limit or HOTL requirement differs across sources.
 
 #### CS-WVR-004 — Waivers are visible in sealing and replay bundles
 - invariant_id: CS-WVR-004
@@ -1140,7 +1144,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - [ ] CS-TIER-005: doc_impact_required name + tier mapping consistent across tier-packs/gates/runbook.
 - [ ] CS-WVR-001: waiver lifecycle is LLM-closed (human-only actions).
 - [ ] CS-WVR-002: waivers are time-bounded + auditable and gate-enforced.
-- [ ] CS-WVR-003: tier waiver policy limits match everywhere.
+- [ ] CS-WVR-003: tier waiver policy limits + HOTL semantics match everywhere.
 - [ ] CS-WVR-004: waivers appear in sealing/replay artifacts when applied.
 - [ ] CS-WVR-005: doc_impact enforcement introduces no waiver bypass.
 - [ ] CS-TPL-001: PromptBundle policy_report fields/hashes required and schema-indexable.

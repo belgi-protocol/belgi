@@ -234,7 +234,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help=(
             "DEV ONLY: repo-relative path to tiers/tier-packs.json (canonical; default: from active protocol pack). "
-            "For legacy debugging you may also point to tiers/tier-packs.md."
+            "Generated markdown views are not runtime authority for tier admission/HOTL policy."
         ),
     )
     return ap.parse_args(argv)

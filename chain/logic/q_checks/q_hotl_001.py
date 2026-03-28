@@ -8,6 +8,7 @@ from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_storage_ref
 from belgi.core.schema import validate_schema
 from chain.logic.base import CheckResult
+from chain.logic.tier_packs import tier_requires_hotl
 
 from .context import QCheckContext
 
@@ -38,8 +39,19 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
         ]
 
     tier_id = ctx.tier_id
-    hotl_required = tier_id in ("tier-2", "tier-3")
-    hotl_recommended = tier_id == "tier-1"
+    try:
+        hotl_required = tier_requires_hotl(ctx.tiers_md, str(tier_id or ""))
+    except Exception as e:
+        return [
+            CheckResult(
+                check_id="Q-HOTL-001",
+                status="FAIL",
+                message=f"tier HOTL policy missing/invalid for tier_id={tier_id!r}: {e}",
+                pointers=[str(ctx.locked_spec_path)],
+                category="FQ-HOTL-MISSING",
+                remediation_next_instruction="Do restore a valid tier HOTL policy then re-run Q.",
+            )
+        ]
 
     art = _find_hotl_artifact(ctx.evidence_manifest)
     if art is None:
@@ -54,20 +66,11 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
                     remediation_next_instruction="Do produce hotl_approval artifact with valid human approver then re-run Q.",
                 )
             ]
-        if hotl_recommended:
-            return [
-                CheckResult(
-                    check_id="Q-HOTL-001",
-                    status="PASS",
-                    message="Q-HOTL-001 warning: HOTL approval artifact recommended for tier-1 but not found.",
-                    pointers=[str(ctx.evidence_manifest_path)],
-                )
-            ]
         return [
             CheckResult(
                 check_id="Q-HOTL-001",
                 status="PASS",
-                message="Q-HOTL-001 satisfied: tier does not require HOTL approval.",
+                message="Q-HOTL-001 satisfied: tier policy does not require HOTL approval.",
                 pointers=[str(ctx.evidence_manifest_path)],
             )
         ]
