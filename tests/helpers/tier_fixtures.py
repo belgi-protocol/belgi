@@ -63,8 +63,8 @@ def tier_contract(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> d
     return contract
 
 
-def tier_policy(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    return tier_contract(tier_id, tiers_obj=tiers_obj)
+def tier_policy(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> Any:
+    return _load_tier_params(tier_id, tiers_obj=tiers_obj)
 
 
 def _load_tier_params(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> Any:
