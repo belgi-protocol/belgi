@@ -189,16 +189,28 @@ def test_orchestrate_stages_run_local_toolchain_set_ref_before_scan_and_c1(
         captured["declared_toolchain_refs"] = list(declared_toolchain_refs)
         return 0
 
-    def _fake_run_module_expect_rc(module_name: str, argv: list[str]) -> None:
+    def _fake_run_module_subprocess_expect_rc(
+        module_name: str,
+        argv: list[str],
+        *,
+        allowed: tuple[int, ...] = (0,),
+        env: dict[str, str] | None = None,
+    ) -> None:
         captured["module_name"] = module_name
         captured["argv"] = list(argv)
+        captured["allowed"] = allowed
+        captured["env"] = None if env is None else dict(env)
         raise _StopAfterC1("stop after c1")
 
     monkeypatch.setattr(run_orchestrator, "_command_log_mode_for_tier", lambda **_: "strings")
     monkeypatch.setattr(run_orchestrator, "_git_clone_at_commit", _fake_clone_at_commit)
     monkeypatch.setattr(run_orchestrator, "run_supplychain_scan", _fake_supplychain_scan)
     monkeypatch.setattr(run_orchestrator, "ensure_chain_templates", lambda **_: None)
-    monkeypatch.setattr(run_orchestrator, "_run_module_expect_rc", _fake_run_module_expect_rc)
+    monkeypatch.setattr(
+        run_orchestrator,
+        "_run_module_subprocess_expect_rc",
+        _fake_run_module_subprocess_expect_rc,
+    )
 
     with pytest.raises(_StopAfterC1, match="stop after c1"):
         run_orchestrator.orchestrate_chain_run(

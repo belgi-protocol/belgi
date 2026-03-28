@@ -397,16 +397,19 @@ def test_run_summary_exists_on_run_tests_failure(
     assert rc_init == 0
     _ = capsys.readouterr()
 
-    original_run_tools = run_orchestrator._run_tools_belgi
+    original_invoke_subprocess = run_orchestrator._invoke_module_subprocess
 
-    def _patched_run_tools(repo_root: Path, argv: list[str], *, allowed: tuple[int, ...] = (0,)) -> int:
-        if argv and argv[0] == "run-tests":
-            raise ValueError(
-                "tools.belgi_tools run-tests --run-id run-test-001 --out out/artifacts/tests.report.json --deterministic returned rc=1"
-            )
-        return original_run_tools(repo_root, argv, allowed=allowed)
+    def _patched_invoke_module_subprocess(
+        module_name: str,
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+    ) -> int:
+        if module_name == "tools.belgi_tools" and argv and argv[0] == "run-tests":
+            return 1
+        return original_invoke_subprocess(module_name, argv, env=env)
 
-    monkeypatch.setattr(run_orchestrator, "_run_tools_belgi", _patched_run_tools)
+    monkeypatch.setattr(run_orchestrator, "_invoke_module_subprocess", _patched_invoke_module_subprocess)
 
     _unset_upstream_if_present(repo)
     head_sha = _git_rev_parse(repo, "HEAD")

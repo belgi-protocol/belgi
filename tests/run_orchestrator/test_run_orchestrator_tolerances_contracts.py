@@ -30,7 +30,13 @@ def test_orchestrate_generates_default_tolerances_object_for_c1(
         source_repo.mkdir(parents=True, exist_ok=True)
         dest_repo.mkdir(parents=True, exist_ok=True)
 
-    def _fake_run_module_expect_rc(module_name: str, argv: list[str]) -> None:
+    def _fake_run_module_subprocess_expect_rc(
+        module_name: str,
+        argv: list[str],
+        *,
+        allowed: tuple[int, ...] = (0,),
+        env: dict[str, str] | None = None,
+    ) -> None:
         captured["module_name"] = module_name
         captured["argv"] = list(argv)
         raise _StopAfterC1("stop after c1")
@@ -39,7 +45,11 @@ def test_orchestrate_generates_default_tolerances_object_for_c1(
     monkeypatch.setattr(run_orchestrator, "_git_clone_at_commit", _fake_clone_at_commit)
     monkeypatch.setattr(run_orchestrator, "run_supplychain_scan", lambda **_: 0)
     monkeypatch.setattr(run_orchestrator, "ensure_chain_templates", lambda **_: None)
-    monkeypatch.setattr(run_orchestrator, "_run_module_expect_rc", _fake_run_module_expect_rc)
+    monkeypatch.setattr(
+        run_orchestrator,
+        "_run_module_subprocess_expect_rc",
+        _fake_run_module_subprocess_expect_rc,
+    )
 
     with pytest.raises(_StopAfterC1, match="stop after c1"):
         run_orchestrator.orchestrate_chain_run(
@@ -170,7 +180,13 @@ def test_orchestrate_stages_run_local_tolerances_ref_before_c1(
         source_repo.mkdir(parents=True, exist_ok=True)
         dest_repo.mkdir(parents=True, exist_ok=True)
 
-    def _fake_run_module_expect_rc(module_name: str, argv: list[str]) -> None:
+    def _fake_run_module_subprocess_expect_rc(
+        module_name: str,
+        argv: list[str],
+        *,
+        allowed: tuple[int, ...] = (0,),
+        env: dict[str, str] | None = None,
+    ) -> None:
         captured["module_name"] = module_name
         captured["argv"] = list(argv)
         raise _StopAfterC1("stop after c1")
@@ -179,7 +195,11 @@ def test_orchestrate_stages_run_local_tolerances_ref_before_c1(
     monkeypatch.setattr(run_orchestrator, "_git_clone_at_commit", _fake_clone_at_commit)
     monkeypatch.setattr(run_orchestrator, "run_supplychain_scan", lambda **_: 0)
     monkeypatch.setattr(run_orchestrator, "ensure_chain_templates", lambda **_: None)
-    monkeypatch.setattr(run_orchestrator, "_run_module_expect_rc", _fake_run_module_expect_rc)
+    monkeypatch.setattr(
+        run_orchestrator,
+        "_run_module_subprocess_expect_rc",
+        _fake_run_module_subprocess_expect_rc,
+    )
 
     with pytest.raises(_StopAfterC1, match="stop after c1"):
         run_orchestrator.orchestrate_chain_run(

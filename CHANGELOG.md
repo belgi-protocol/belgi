@@ -2,6 +2,22 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.6 — 2026-03-28
+
+### Summary
+Patch release aligning the README quickstart with the shipped operator spine and hardening the shared run-orchestrator execution spine without widening BELGI's public CLI contract.
+
+### Changed
+- Reworked `README.md` into the repo overview/entrypoint, pointed exact shipped CLI syntax, operator quickstart, and `NO-GO` triage to `docs/operations/cli.md`, and replaced the old `pip install belgi` assumption with source-checkout install guidance until publication.
+- Narrowed the README quickstart onto the canonical `belgi about` / `belgi init` / `belgi run` / `belgi verify` operator path, and documented the generated `.belgi/README.md`, run-local `RUN.md`, command-surface tiers, and repo-local `./scripts/dev_sync.ps1` repair entrypoint instead of the older broad command catalog.
+- Routed `tools.belgi_tools` helper execution from `belgi/core/run_orchestrator.py` through child-process `python -m tools.belgi_tools` invocation while preserving orchestrator-facing rc handling.
+- Replaced parent-process `CI` mutation around `chain.compiler_c1_intent` with explicit child-process env handling, so the C1 path no longer depends on ambient parent-env rewrites.
+- Updated run-orchestrator owner tests so ToolchainSet, Tolerances, and CLI failure-path proofs intercept the explicit subprocess seam rather than the retired in-process helper shape.
+- Added a dedicated execution-spine guard owner test surface for the helper/C1 seam family and aligned the run-orchestrator owner proofs to that boundary.
+
+### Notes
+- This patch updates public README/operator guidance and hardens run-orchestrator execution and proof surfaces only; shipped CLI contract, tier semantics, and locked-object schema remain unchanged.
+
 ## 1.6.5 — 2026-03-27
 
 ### Summary
