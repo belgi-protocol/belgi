@@ -753,7 +753,7 @@ Canonical trigger:
   4) Confirm schemas/README describes HOTLApproval enforcement from tier policy rather than stale tier-specific warning prose.
 - required evidence/artifacts (schema kinds): LockedSpec.json; Waiver.json
 - pass/fail criteria:
-  - PASS if all five sources agree.
+  - PASS if all sources agree.
   - FAIL if any tier’s allowance/limit or HOTL requirement differs across sources.
 
 #### CS-WVR-004 — Waivers are visible in sealing and replay bundles
