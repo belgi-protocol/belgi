@@ -23,6 +23,7 @@ from belgi.protocol.pack import (
     load_protocol_context_from_dir,
 )
 from chain.logic.base import load_json, verify_protocol_identity
+from chain.logic.tier_packs import load_tier_params
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 COMPILER_ID = "chain/compiler_c3_docs.py"
@@ -200,20 +201,33 @@ def _resolve_c3_source_root(
     return materialized, materialized
 
 
-def _select_prompt_block_ids_for_locked(*, locked_spec: dict[str, Any]) -> list[str]:
+def _select_prompt_block_ids_for_locked(*, protocol: ProtocolContext, locked_spec: dict[str, Any]) -> list[str]:
     tier_obj = locked_spec.get("tier")
     if not isinstance(tier_obj, dict):
         raise _UserInputError("LockedSpec.tier missing/invalid for selected prompt block resolution")
     tier_id = tier_obj.get("tier_id")
     if not isinstance(tier_id, str) or not tier_id.strip():
         raise _UserInputError("LockedSpec.tier.tier_id missing/invalid for selected prompt block resolution")
+    tier_id = tier_id.strip()
+
+    try:
+        tiers_text = protocol.read_text("tiers/tier-packs.json")
+    except Exception as e:
+        raise _UserInputError(f"active protocol tier policy unavailable for selected prompt block resolution: {e}") from e
+
+    loaded_tier = load_tier_params(tiers_text, tier_id)
+    if loaded_tier.params is None:
+        raise _UserInputError(
+            "active protocol tier policy invalid for selected prompt block resolution: "
+            f"{loaded_tier.parse_error or 'unknown tier parameter parse failure'}"
+        )
 
     c1_module = importlib.import_module("chain.compiler_c1_intent")
-    selector = getattr(c1_module, "_prompt_block_ids_for_tier", None)
+    selector = getattr(c1_module, "_prompt_block_ids_for_tier_policy", None)
     if not callable(selector):
         raise _UserInputError("C1 prompt block selector unavailable")
 
-    ids = selector(tier_id)
+    ids = selector(loaded_tier.params)
     if not isinstance(ids, list) or not ids or any(not isinstance(x, str) or not x.strip() for x in ids):
         raise _UserInputError("selected prompt block ids missing/invalid")
     return [str(x) for x in ids]
@@ -963,7 +977,7 @@ def main() -> int:
         if not isinstance(block_hashes_obj, dict):
             raise _UserInputError("prompt-block-hashes must be a JSON object mapping block_id -> sha256")
 
-        selected_block_ids = _select_prompt_block_ids_for_locked(locked_spec=locked)
+        selected_block_ids = _select_prompt_block_ids_for_locked(protocol=protocol, locked_spec=locked)
         selected_expected_hashes = _expected_selected_prompt_hashes(
             locked_spec=locked,
             selected_ids=selected_block_ids,

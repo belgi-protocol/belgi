@@ -116,6 +116,22 @@ def tier_contract(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> d
 
 def write_tiers_override(repo_root: Path, tiers_obj: dict[str, Any]) -> str:
     rel = "tiers.override.json"
+    tiers = tiers_obj.get("tiers")
+    if isinstance(tiers, dict):
+        ordered_ids: list[str] = []
+        seen: set[str] = set()
+        existing_ids = tiers_obj.get("tier_ids")
+        if isinstance(existing_ids, list):
+            for raw in existing_ids:
+                if isinstance(raw, str) and raw in tiers and raw not in seen:
+                    ordered_ids.append(raw)
+                    seen.add(raw)
+        for raw in tiers.keys():
+            if isinstance(raw, str) and raw not in seen:
+                ordered_ids.append(raw)
+                seen.add(raw)
+        tiers_obj = dict(tiers_obj)
+        tiers_obj["tier_ids"] = ordered_ids
     write_json(repo_root / rel, tiers_obj)
     return rel
 

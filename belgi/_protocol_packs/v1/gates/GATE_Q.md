@@ -95,7 +95,7 @@ Remediation loop (operator contract):
 - The run MUST NOT proceed to C2 until Gate Q returns **GO**.
 
 Deterministic selection rule for `GateVerdict.failure_category`:
-- Set it to the category of the **first failing check** in the ordered check list (PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q7 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002).
+- Set it to the category of the **first failing check** in the ordered check list (PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q7 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002).
 
 ### 3.2 LockedSpec (locked)
 Gate Q MUST emit (or reference) the locked, immutable LockedSpec used for later stages.
@@ -119,7 +119,7 @@ Gate Q MUST NOT:
 - modify the repo beyond producing/locking the LockedSpec and producing evidence artifacts
 
 ## 5. Deterministic Checks (Executable Doc)
-All checks below are evaluated in order PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q7 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002.
+All checks below are evaluated in order PROTOCOL-IDENTITY-001 → Q-INTENT-001 → Q-INTENT-002 → Q-INTENT-003 → Q1 → Q-PROMPT-001 → Q-EVIDENCE-001 → Q7 → Q-EVIDENCE-002 → Q2 → Q3 → Q4 → Q-CONSTRAINT-001 → Q5 → Q6 → Q-HOTL-001 → Q-DOC-001 → Q-DOC-002.
 
 Each check specifies: `check_id`, required inputs, deterministic procedure, failure category, required evidence kinds, and remediation template.
 

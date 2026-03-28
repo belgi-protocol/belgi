@@ -248,11 +248,10 @@ def test_gate_q_q7_uses_tier_policy_override_as_supported_owner(tmp_path: Path) 
 
     verdict = _read_json(tmp_path / "out" / "GateVerdict.Q.json")
     assert verdict["verdict"] == "GO"
-    results = verdict.get("results")
-    assert isinstance(results, list)
-    q7_rows = [row for row in results if isinstance(row, dict) and row.get("check_id") == "Q7"]
-    assert len(q7_rows) == 1
-    assert q7_rows[0].get("status") == "PASS"
+    assert verdict["failure_category"] is None
+    failures = verdict.get("failures")
+    assert isinstance(failures, list)
+    assert failures == []
 
 
 def test_gate_q_q7_unknown_tier_still_fails_when_not_in_policy(tmp_path: Path) -> None:

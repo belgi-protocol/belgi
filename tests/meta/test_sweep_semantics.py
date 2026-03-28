@@ -737,14 +737,14 @@ def _write_cs_wvr_003_fixture(
                 f"- Tier 0: waivers allowed, max {tier0_max} active\n"
                 f"- Tier 1: waivers allowed, max {tier1_max} active{tier1_hotl_suffix}\n"
                 f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
-                "- Tier 3: waivers not allowed\n"
+                "- Tier 3: waivers not allowed, HOTL required (policy-level)\n"
             ),
             "belgi/canonicals/docs/operations/waivers.md": (
                 "## 5.1 Limits per tier\n"
                 f"- Tier 0: waivers allowed, max {tier0_max} active\n"
                 f"- Tier 1: waivers allowed, max {tier1_max} active{tier1_hotl_suffix}\n"
                 f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
-                "- Tier 3: waivers not allowed\n"
+                "- Tier 3: waivers not allowed, HOTL required (policy-level)\n"
             ),
             "schemas/README.md": (
                 "#### HOTLApproval Purpose\n\n"

@@ -9,6 +9,7 @@ Patch release converging shipped tier admission and HOTL authority on canonical 
 
 ### Changed
 - Added a shared runtime tier authority surface in `chain/logic/tier_packs.py` for supported-tier admission and HOTL requirement reads from the active protocol-pack `tiers/tier-packs.json`, and rewired shipped `belgi run`, the run parser, Gate Q Q7, and `q_hotl_001.py` to consume that owner instead of duplicated fixed tier tuples.
+- Moved Gate Q tier-support admission ahead of tier-derived validations so unsupported tiers fail deterministically as Q7 / `FQ-TIER-UNKNOWN` before evidence, waiver, HOTL, or envelope checks try to read policy for an invalid tier.
 - Corrected Tier-1 HOTL policy to match the shipped tier owner surface, then propagated that alignment through `tiers/tier-packs.json`, generated `tiers/tier-packs.md`, `gates/GATE_Q.md`, `schemas/README.md`, `docs/operations/waivers.md`, built-in protocol-pack mirrors, and the consistency-sweep contract.
 - Reworked PromptBundle block selection so PB-009, PB-010, and PB-011 derive from the actual tier-policy fields (`command_log_mode`, `test_policy.required`, and `envelope_policy.requires_attestation`) instead of a blanket `tier-1`/`tier-2`/`tier-3` branch.
 - Updated owner-lane and sweep-semantic tests so they prove the surviving owner surfaces directly, including tier-policy override coverage, HOTL contract coverage, PromptBundle selection contracts, and stale-surface consistency checks.
