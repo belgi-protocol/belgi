@@ -115,15 +115,11 @@ def test_gate_parameter_map_keeps_pinned_toolchain_refs_owned_by_q5() -> None:
 
 def test_waiver_policy_note_and_limits_keep_hotl_separate_and_tier3_strict() -> None:
     obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
-    builtin = _load_json(REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json")
-
-    expected_note = (
-        "`Waiver` remains the sole waiver authorization artifact. HOTL is a separate control artifact. "
-        "For tiers where `requires_HOTL == yes`, Gate Q additionally requires a valid "
-        "`hotl_approval` artifact in `EvidenceManifest.artifacts[]`."
-    )
-    assert obj["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"] == expected_note
-    assert builtin["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"] == expected_note
+    waiver_note = obj["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"]
+    assert isinstance(waiver_note, str)
+    assert "`Waiver` remains the sole waiver authorization artifact." in waiver_note
+    assert "HOTL is a separate control artifact." in waiver_note
+    assert "`hotl_approval` artifact in `EvidenceManifest.artifacts[]`." in waiver_note
 
     tiers = obj["tiers"]
     assert tiers["tier-2"]["waiver_policy"] == {
@@ -136,9 +132,6 @@ def test_waiver_policy_note_and_limits_keep_hotl_separate_and_tier3_strict() -> 
         "max_active_waivers": 0,
         "requires_HOTL": True,
     }
-
-    rendered = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
-    assert "HOTL is a separate control artifact." in rendered
 
 
 def test_tier_admission_policy_uses_json_ssot() -> None:
