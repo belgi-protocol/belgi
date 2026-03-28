@@ -29,7 +29,6 @@ DEFAULT_WORKSPACE_REL = ".belgi"
 RUN_SUMMARY_FILENAME = "run.summary.json"
 ATTEMPT_ID_PATTERN = re.compile(r"^attempt-(\d+)$")
 RUN_KEY_DIR_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-ALLOWED_RUN_TIERS = {"tier-0", "tier-1", "tier-2", "tier-3"}
 RUN_INPUTS_DIRNAME = "inputs"
 RUN_ANCHORS_DIRNAME = "anchors"
 RUN_ANCHORS_APPROVALS_DIRNAME = "approvals"
@@ -222,10 +221,17 @@ def _discover_base_revision(
         "`--base-revision <40-hex SHA>`."
     )
 
-def _validate_tier_id(raw: str) -> str:
+def _supported_run_tier_ids(protocol: object) -> tuple[str, ...]:
+    from chain.logic.tier_packs import supported_tier_ids
+
+    tiers_text = protocol.read_text("tiers/tier-packs.json")
+    return supported_tier_ids(tiers_text)
+
+
+def _validate_tier_id(raw: str, *, supported_tier_ids: tuple[str, ...]) -> str:
     tier_id = str(raw or "").strip()
-    if tier_id not in ALLOWED_RUN_TIERS:
-        raise ValueError("--tier must be one of: tier-0, tier-1, tier-2, tier-3")
+    if tier_id not in supported_tier_ids:
+        raise ValueError("--tier must be one of: " + ", ".join(supported_tier_ids))
     return tier_id
 
 def _normalize_workspace_rel(raw: str | None) -> str:
@@ -2344,8 +2350,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         if repo_root.is_symlink():
             raise _UserInputError(f"symlink repo root not allowed: {repo_root}")
 
+        protocol = get_builtin_protocol_context()
         try:
-            tier_id = _validate_tier_id(str(getattr(args, "tier", "")))
+            run_tier_ids = _supported_run_tier_ids(protocol)
+            tier_id = _validate_tier_id(
+                str(getattr(args, "tier", "")),
+                supported_tier_ids=run_tier_ids,
+            )
         except ValueError as e:
             raise _UserInputError(str(e)) from e
 
@@ -2413,7 +2424,6 @@ def cmd_run(args: argparse.Namespace) -> int:
             intent_bytes = render_default_intent_spec(tier_id=tier_id)
             intent_source_rel = "(auto)"
 
-        protocol = get_builtin_protocol_context()
         if tier_id == "tier-3":
             tier3_missing_reason = _tier3_missing_input_reason(args)
             if tier3_missing_reason is not None:

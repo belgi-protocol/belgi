@@ -90,7 +90,9 @@ def _compute_bundle_root_sha256(*, docs_bundle_manifest_sha256: str, bundle_sha2
 
 def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dict[str, str]:
     c1 = importlib.import_module("chain.compiler_c1_intent")
-    selector = c1._prompt_block_ids_for_tier
+    tier_logic = importlib.import_module("chain.logic.tier_packs")
+    pack = importlib.import_module("belgi.protocol.pack")
+    selector = c1._prompt_block_ids_for_tier_policy
     render = c1._render_prompt_block
 
     tier_obj = locked_spec.get("tier")
@@ -98,7 +100,11 @@ def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dic
     tier_id = tier_obj.get("tier_id")
     assert isinstance(tier_id, str) and tier_id
 
-    selected_ids = selector(tier_id)
+    tiers_text = pack.get_builtin_protocol_context().read_text("tiers/tier-packs.json")
+    loaded_tier = tier_logic.load_tier_params(tiers_text, tier_id)
+    assert loaded_tier.params is not None, loaded_tier.parse_error
+
+    selected_ids = selector(loaded_tier.params)
     assert isinstance(selected_ids, list) and selected_ids
 
     locked_preimage = dict(locked_spec)

@@ -697,28 +697,61 @@ def _write_cs_wvr_003_fixture(
     tier0_max: int,
     tier1_max: int,
     tier2_max: int,
+    tier1_hotl_required: bool = False,
+    schema_readme_stale_tier1_warning: bool = False,
 ) -> None:
+    tier1_hotl_suffix = ", HOTL required (policy-level)" if tier1_hotl_required else ""
+    schema_scope = (
+        "**Scope:** Tier-2+ (audit-grade) runs MUST include a valid HOTLApproval artifact in EvidenceManifest. "
+        "Tier-1 runs trigger a warning if missing.\n"
+        if schema_readme_stale_tier1_warning
+        else
+        "**Scope:** Tiers where `waiver_policy.requires_HOTL == true` in `tiers/tier-packs.json` MUST include "
+        "a valid HOTLApproval artifact in EvidenceManifest. In the current v1 tier policy, this means Tier-2 and Tier-3.\n"
+    )
+    schema_enforcement = (
+        "- Tier-2/3: FAIL if no `hotl_approval` artifact found.\n"
+        "- Tier-1: WARNING if missing (backward compatibility).\n"
+        if schema_readme_stale_tier1_warning
+        else
+        "- Read `tiers[<tier_id>].waiver_policy.requires_HOTL` from `tiers/tier-packs.json`.\n"
+        "- FAIL if `requires_HOTL == true` and no `hotl_approval` artifact is found.\n"
+    )
     _init_tracked_temp_repo(
         root,
         {
             "tiers/tier-packs.json": (
                 "{\n"
                 "  \"tiers\": {\n"
-                "    \"tier-0\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 20}},\n"
-                "    \"tier-1\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 10}},\n"
-                "    \"tier-2\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 1}},\n"
-                "    \"tier-3\": {\"waiver_policy\": {\"allowed\": false, \"max_active_waivers\": 0}}\n"
+                "    \"tier-0\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 20, \"requires_HOTL\": false}},\n"
+                "    \"tier-1\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 10, \"requires_HOTL\": false}},\n"
+                "    \"tier-2\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 1, \"requires_HOTL\": true}},\n"
+                "    \"tier-3\": {\"waiver_policy\": {\"allowed\": false, \"max_active_waivers\": 0, \"requires_HOTL\": true}}\n"
                 "  }\n"
                 "}\n"
             ),
-            "tiers/tier-packs.md": "waiver_policy\nmax_active_waivers\ntier-3\n",
-            "gates/GATE_Q.md": "Q6\nVerify tier allows waivers\nmax_active_waivers\n",
+            "tiers/tier-packs.md": "waiver_policy\nmax_active_waivers\nrequires_HOTL\ntier-3\n",
+            "gates/GATE_Q.md": "Q6\nVerify tier allows waivers\nmax_active_waivers\nwaiver_policy.requires_HOTL\n",
             "docs/operations/waivers.md": (
                 "## 5.1 Limits per tier\n"
                 f"- Tier 0: waivers allowed, max {tier0_max} active\n"
-                f"- Tier 1: waivers allowed, max {tier1_max} active, HOTL required (policy-level)\n"
+                f"- Tier 1: waivers allowed, max {tier1_max} active{tier1_hotl_suffix}\n"
                 f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
                 "- Tier 3: waivers not allowed\n"
+            ),
+            "belgi/canonicals/docs/operations/waivers.md": (
+                "## 5.1 Limits per tier\n"
+                f"- Tier 0: waivers allowed, max {tier0_max} active\n"
+                f"- Tier 1: waivers allowed, max {tier1_max} active{tier1_hotl_suffix}\n"
+                f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
+                "- Tier 3: waivers not allowed\n"
+            ),
+            "schemas/README.md": (
+                "#### HOTLApproval Purpose\n\n"
+                "HOTLApproval artifacts enforce **human-on-the-loop (HOTL) approvals** for audit-grade runs.\n\n"
+                + schema_scope
+                + "\n**Enforcement (Gate Q-HOTL-001):**\n"
+                + schema_enforcement
             ),
         },
     )
@@ -743,3 +776,37 @@ def test_cs_wvr_003_fails_when_ops_limits_drift_from_tiers_json(tmp_path: Path) 
     assert res.invariant_id == "CS-WVR-003"
     assert res.status == "FAIL"
     assert "tier-1@" in res.remediation
+
+
+def test_cs_wvr_003_fails_when_ops_hotl_requirement_drifts_from_tiers_json(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_cs_wvr_003_fixture(
+        tmp_path,
+        tier0_max=20,
+        tier1_max=10,
+        tier2_max=1,
+        tier1_hotl_required=True,
+    )
+
+    res = sweep_mod.check_cs_wvr_003(tmp_path)
+    assert res.invariant_id == "CS-WVR-003"
+    assert res.status == "FAIL"
+    assert "requires_HOTL=True" in res.remediation
+
+
+def test_cs_wvr_003_fails_when_schema_readme_keeps_stale_tier1_warning(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_cs_wvr_003_fixture(
+        tmp_path,
+        tier0_max=20,
+        tier1_max=10,
+        tier2_max=1,
+        schema_readme_stale_tier1_warning=True,
+    )
+
+    res = sweep_mod.check_cs_wvr_003(tmp_path)
+    assert res.invariant_id == "CS-WVR-003"
+    assert res.status == "FAIL"
+    assert "schemas/README.md" in res.remediation

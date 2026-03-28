@@ -9,7 +9,10 @@ from belgi.cli_app.registry import RunRegistry
 def add_run_parsers(subparsers: Any) -> RunRegistry:
     p_run = subparsers.add_parser("run", help="[Tier A] Run workspace helper commands")
     p_run.add_argument("--repo", default=".", help="Repo root (default: .)")
-    p_run.add_argument("--tier", choices=sorted(run_commands.ALLOWED_RUN_TIERS), help="Tier ID for deterministic run scaffolding")
+    p_run.add_argument(
+        "--tier",
+        help="Tier ID for deterministic run scaffolding (validated against active protocol-pack tiers).",
+    )
     p_run.add_argument(
         "--workspace",
         default=run_commands.DEFAULT_WORKSPACE_REL,

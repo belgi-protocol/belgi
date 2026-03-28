@@ -162,7 +162,7 @@
       "waiver_policy": {
         "allowed": true,
         "max_active_waivers": 10,
-        "requires_HOTL": true
+        "requires_HOTL": false
       },
       "adversarial_policy": {
         "findings_mode": "fail"

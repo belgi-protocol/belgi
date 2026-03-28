@@ -46,6 +46,7 @@ from belgi.protocol.pack import (
     get_builtin_protocol_context,
     load_protocol_context_from_dir,
 )
+from chain.logic.tier_packs import TierParams, load_tier_params, supported_tier_ids
 
 EVALUATED_AT = "1970-01-01T00:00:00Z"
 COMPILER_ID = "chain/compiler_c1_intent.py"
@@ -493,7 +494,7 @@ def _pb_sort_key(block_id: str) -> tuple[int, str]:
     return (int(m.group(1)), block_id)
 
 
-def _prompt_block_ids_for_tier(tier_id: str) -> list[str]:
+def _prompt_block_ids_for_tier_policy(tier_policy: TierParams) -> list[str]:
     base = [
         "PB-001",
         "PB-002",
@@ -507,10 +508,12 @@ def _prompt_block_ids_for_tier(tier_id: str) -> list[str]:
         "PB-013",
         "PB-014",
     ]
-    if tier_id in ("tier-1", "tier-2", "tier-3"):
-        base.extend(["PB-009", "PB-010", "PB-011"])
-    if tier_id not in ("tier-0", "tier-1", "tier-2", "tier-3"):
-        raise _UserInputError(f"unsupported tier_id for PromptBundle assembly: {tier_id!r}")
+    if tier_policy.command_log_mode == "structured":
+        base.append("PB-009")
+    if tier_policy.test_policy_required == "yes":
+        base.append("PB-010")
+    if tier_policy.envelope_policy_requires_attestation == "yes":
+        base.append("PB-011")
     return sorted(set(base), key=_pb_sort_key)
 
 
@@ -606,6 +609,7 @@ def _render_prompt_block(*, block_id: str, locked_spec_preimage: dict[str, Any])
 def _assemble_prompt_bundle(
     *,
     locked_spec_preimage: dict[str, Any],
+    tier_policy: TierParams,
 ) -> tuple[list[str], dict[str, str], bytes, str, str]:
     tier_obj = locked_spec_preimage.get("tier")
     if not isinstance(tier_obj, dict):
@@ -614,7 +618,7 @@ def _assemble_prompt_bundle(
     if not isinstance(tier_id, str) or not tier_id.strip():
         raise _UserInputError("LockedSpec.tier.tier_id missing/invalid")
 
-    block_ids = _prompt_block_ids_for_tier(tier_id)
+    block_ids = _prompt_block_ids_for_tier_policy(tier_policy)
     blocks: list[bytes] = []
     block_hashes: dict[str, str] = {}
 
@@ -703,7 +707,25 @@ def main(argv: list[str] | None = None) -> int:
         tier_id = tier_obj.get("tier_pack_id")
         if not isinstance(tier_id, str) or not tier_id.strip():
             raise _UserInputError("IntentSpec.tier.tier_pack_id missing/invalid")
+        tier_id = tier_id.strip()
 
+        tiers_text = protocol.read_text("tiers/tier-packs.json")
+        try:
+            known_tier_ids = supported_tier_ids(tiers_text)
+        except Exception as e:
+            raise _UserInputError(f"cannot resolve supported tier IDs from active protocol pack: {e}") from e
+        if tier_id not in known_tier_ids:
+            raise _UserInputError(
+                "unsupported tier_id for PromptBundle assembly: "
+                f"{tier_id!r} (supported: {', '.join(known_tier_ids)})"
+            )
+
+        loaded_tier = load_tier_params(tiers_text, tier_id)
+        if loaded_tier.params is None:
+            raise _UserInputError(
+                "tier parameter parse failed for PromptBundle assembly: "
+                f"{loaded_tier.parse_error or 'unknown parse failure'}"
+            )
         # Align with Gate Q non-authoritative field enforcement early.
         if tier_id in ("tier-1", "tier-2", "tier-3"):
             proj_ext = parsed.get("project_extension")
@@ -946,7 +968,8 @@ def main(argv: list[str] | None = None) -> int:
             # Bind prompt bundle to LockedSpec preimage (excluding prompt_bundle_ref) to prevent self-reference.
             preimage = dict(locked_spec)
             block_ids, block_hashes, pb_bytes, pb_manifest_hash, pb_bytes_hash = _assemble_prompt_bundle(
-                locked_spec_preimage=preimage
+                locked_spec_preimage=preimage,
+                tier_policy=loaded_tier.params,
             )
 
             assert pb_hashes_out_path is not None

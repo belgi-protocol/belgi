@@ -143,7 +143,7 @@ Notes:
 - waiver_policy:
   - allowed: `yes`
   - max_active_waivers: `10`
-  - requires_HOTL: `yes`
+  - requires_HOTL: `no`
 - adversarial_policy:
   - findings_mode: `fail`
 - envelope_policy:

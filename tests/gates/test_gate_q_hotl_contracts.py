@@ -12,12 +12,16 @@ from belgi.core.hash import sha256_bytes
 from belgi.protocol.pack import get_builtin_protocol_context
 from chain.logic.q_checks import q_hotl_001
 from chain.logic.q_checks.context import QCheckContext
+from chain.logic.tier_packs import load_tier_params
 
 
 def _build_ctx(*, tmp_path: Path, tier_id: str, evidence_manifest: dict[str, object]) -> QCheckContext:
     protocol = get_builtin_protocol_context()
     hotl_schema = protocol.read_json("schemas/HOTLApproval.schema.json")
     assert isinstance(hotl_schema, dict)
+    tiers_text = protocol.read_text("tiers/tier-packs.json")
+    loaded_tier = load_tier_params(tiers_text, tier_id)
+    assert loaded_tier.params is not None, loaded_tier.parse_error
 
     tmp_path.mkdir(parents=True, exist_ok=True)
     intent_path = tmp_path / "IntentSpec.core.md"
@@ -50,9 +54,9 @@ def _build_ctx(*, tmp_path: Path, tier_id: str, evidence_manifest: dict[str, obj
         yaml_parse_error=None,
         locked_spec={"run_id": "run-tier2", "tier": {"tier_id": tier_id}},
         evidence_manifest=evidence_manifest,
-        tiers_md="",
+        tiers_md=tiers_text,
         tier_id=tier_id,
-        tier_params={},
+        tier_params=loaded_tier.to_legacy_map(),
         schemas={"HOTLApproval": hotl_schema},
     )
 
@@ -68,6 +72,19 @@ def test_q_hotl_missing_artifact_fails_closed_for_tier2(tmp_path: Path) -> None:
     assert len(results) == 1
     assert results[0].status == "FAIL"
     assert results[0].category == "FQ-HOTL-MISSING"
+
+
+def test_q_hotl_missing_artifact_passes_for_tier1(tmp_path: Path) -> None:
+    ctx = _build_ctx(
+        tmp_path=tmp_path / "missing_hotl_tier1",
+        tier_id="tier-1",
+        evidence_manifest={"schema_version": "1.0.0", "run_id": "run-tier2", "artifacts": []},
+    )
+
+    results = q_hotl_001.run(ctx)
+    assert len(results) == 1
+    assert results[0].status == "PASS"
+    assert "does not require HOTL approval" in results[0].message
 
 
 def test_q_hotl_valid_artifact_passes_for_tier2(tmp_path: Path) -> None:

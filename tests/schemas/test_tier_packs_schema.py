@@ -8,7 +8,12 @@ from tests.helpers.repo_imports import REPO_ROOT, reset_repo_local_imports
 reset_repo_local_imports("belgi")
 
 from belgi.core.schema import validate_schema
-from chain.logic.tier_packs import load_tier_params
+from chain.logic.tier_packs import (
+    load_tier_admission_policy,
+    load_tier_params,
+    supported_tier_ids,
+    tier_requires_hotl,
+)
 
 
 def _load_json(path: Path) -> dict:
@@ -134,6 +139,33 @@ def test_waiver_policy_note_and_limits_keep_hotl_separate_and_tier3_strict() -> 
 
     rendered = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
     assert "HOTL is a separate control artifact." in rendered
+
+
+def test_tier_admission_policy_uses_json_ssot() -> None:
+    canonical_json = (REPO_ROOT / "tiers" / "tier-packs.json").read_text(encoding="utf-8", errors="strict")
+    builtin_json = (REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json").read_text(
+        encoding="utf-8",
+        errors="strict",
+    )
+    assert supported_tier_ids(canonical_json) == ("tier-0", "tier-1", "tier-2", "tier-3")
+    assert supported_tier_ids(builtin_json) == ("tier-0", "tier-1", "tier-2", "tier-3")
+
+
+def test_tier_admission_policy_rejects_generated_markdown_view() -> None:
+    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
+    loaded = load_tier_admission_policy(tiers_md)
+    assert loaded.tier_ids is None
+    assert loaded.hotl_required_tier_ids is None
+    assert isinstance(loaded.parse_error, str)
+    assert "canonical JSON SSOT" in loaded.parse_error
+
+
+def test_hotl_requirement_is_loaded_from_json_policy() -> None:
+    canonical_json = (REPO_ROOT / "tiers" / "tier-packs.json").read_text(encoding="utf-8", errors="strict")
+    assert tier_requires_hotl(canonical_json, "tier-0") is False
+    assert tier_requires_hotl(canonical_json, "tier-1") is False
+    assert tier_requires_hotl(canonical_json, "tier-2") is True
+    assert tier_requires_hotl(canonical_json, "tier-3") is True
 
 
 def test_tier_packs_markdown_requires_explicit_findings_mode() -> None:

@@ -77,6 +77,38 @@ def test_promptbundle_template_removes_tier_pack_exact_bytes_claim() -> None:
     ]
 
 
+def test_promptbundle_template_selects_policy_blocks_from_owner_values() -> None:
+    text = _read_text("belgi/templates/PromptBundle.blocks.md")
+
+    assert (
+        '| PB-009 | Command Log Mode Reminder | constraints | Tier defaults: '
+        '`../../tiers/tier-packs.json` (`command_log_mode`) | `command_log_mode == "structured"` | public |'
+    ) in text
+    assert (
+        '| PB-010 | Tests Policy Reminder | constraints | Tier defaults: '
+        '`../../tiers/tier-packs.json` (`test_policy`); Gate R ref: '
+        '`../../gates/GATE_R.md#r5--tests-policy-satisfied` | `test_policy.required == true` | public |'
+    ) in text
+    assert (
+        '| PB-011 | Envelope Attestation Reminder | constraints | Tier defaults: '
+        '`../../tiers/tier-packs.json` (`envelope_policy`); Gate R ref: '
+        '`../../gates/GATE_R.md#r6--envelope-attestation-satisfied` | '
+        '`envelope_policy.requires_attestation == true` | public |'
+    ) in text
+
+    a32_start = text.index("### A3.2")
+    a33_start = text.index("### A3.3")
+    a32 = text[a32_start:a33_start]
+    assert "Selection function `selected_blocks(tier_policy)`:" in a32
+    assert '- If `tier_policy.command_log_mode == "structured"`, additionally include: PB-009.' in a32
+    assert '- If `tier_policy.test_policy.required == true`, additionally include: PB-010.' in a32
+    assert (
+        '- If `tier_policy.envelope_policy.requires_attestation == true`, additionally include: PB-011.'
+        in a32
+    )
+    assert "If `tier_id` is one of `tier-1`, `tier-2`, `tier-3`, additionally include: PB-009, PB-010, PB-011." not in a32
+
+
 def test_docscompiler_template_routes_per_file_hashes_to_manifest() -> None:
     text_lc = _read_text("belgi/templates/DocsCompiler.template.md").lower()
     assert "for each file: normalized output hash" not in text_lc

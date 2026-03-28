@@ -182,9 +182,9 @@ Note: Gate R does not consume SealManifest (Seal occurs after R). Seal inclusion
 ### 5.1 Limits per tier
 From `../../tiers/tier-packs.json` (canonical SSOT; see `../../tiers/tier-packs.md` for the generated view):
 - Tier 0: waivers allowed, max 20 active
-- Tier 1: waivers allowed, max 10 active, HOTL required (policy-level)
+- Tier 1: waivers allowed, max 10 active
 - Tier 2: waivers allowed, max 1 active, HOTL required (policy-level)
-- Tier 3: waivers not allowed
+- Tier 3: waivers not allowed, HOTL required (policy-level)
 
 ### 5.2 Strict vs relaxed forbidden-path waivability
 From R3 and tier defaults:

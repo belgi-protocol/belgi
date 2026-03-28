@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.7 — 2026-03-28
+
+### Summary
+Patch release converging shipped tier admission and HOTL authority on canonical tier policy, and making PromptBundle block selection follow tier-policy owner fields instead of broad tier-literal branching.
+
+### Changed
+- Added a shared runtime tier authority surface in `chain/logic/tier_packs.py` for supported-tier admission and HOTL requirement reads from the active protocol-pack `tiers/tier-packs.json`, and rewired shipped `belgi run`, the run parser, Gate Q Q7, and `q_hotl_001.py` to consume that owner instead of duplicated fixed tier tuples.
+- Corrected Tier-1 HOTL policy to match the shipped tier owner surface, then propagated that alignment through `tiers/tier-packs.json`, generated `tiers/tier-packs.md`, `gates/GATE_Q.md`, `schemas/README.md`, `docs/operations/waivers.md`, built-in protocol-pack mirrors, and the consistency-sweep contract.
+- Reworked PromptBundle block selection so PB-009, PB-010, and PB-011 derive from the actual tier-policy fields (`command_log_mode`, `test_policy.required`, and `envelope_policy.requires_attestation`) instead of a blanket `tier-1`/`tier-2`/`tier-3` branch.
+- Updated owner-lane and sweep-semantic tests so they prove the surviving owner surfaces directly, including tier-policy override coverage, HOTL contract coverage, PromptBundle selection contracts, and stale-surface consistency checks.
+
+### Notes
+- This patch converges existing tier and prompt authority surfaces only; no new CLI flags or locked-object schema changes are introduced.
+
 ## 1.6.6 — 2026-03-28
 
 ### Summary
