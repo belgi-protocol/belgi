@@ -465,6 +465,42 @@ def test_managed_sweep_surfaces_include_package_canonicals(tmp_path: Path) -> No
     assert "belgi/canonicals/docs/operations/running-belgi.md" in managed
 
 
+def test_managed_sweep_surfaces_classify_owned_categories_without_repo_parity(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _init_tracked_temp_repo(
+        tmp_path,
+        {
+            "README.md": "# readme\n",
+            "docs/operations/workflows.md": "# workflows\n",
+            "belgi/canonicals/docs/operations/running-belgi.md": "# mirror\n",
+            ".github/workflows/pull-request-proof.yml": "name: proof\n",
+            ".github/scripts/validate_belgi_ref_pin.py": "print('ok')\n",
+            "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
+            "templates/ci/github/belgi-tier1.yml": "name: template\n",
+            "tools/README.md": "# tools\n",
+            "belgi/cli_app/commands/run.py": "# run\n",
+            "docs/research/README.md": "# research\n",
+            "scripts/not_belgi.sh": "#!/usr/bin/env bash\n",
+        },
+    )
+
+    managed = set(sweep_mod._sweep_managed_surface_files(tmp_path))
+    assert {
+        "README.md",
+        "docs/operations/workflows.md",
+        "belgi/canonicals/docs/operations/running-belgi.md",
+        ".github/workflows/pull-request-proof.yml",
+        ".github/scripts/validate_belgi_ref_pin.py",
+        "scripts/belgi_latest_run.sh",
+        "templates/ci/github/belgi-tier1.yml",
+        "tools/README.md",
+        "belgi/cli_app/commands/run.py",
+    }.issubset(managed)
+    assert "docs/research/README.md" not in managed
+    assert "scripts/not_belgi.sh" not in managed
+
+
 def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from tools import sweep as sweep_mod
 
@@ -550,15 +586,6 @@ def test_cs_sweep_002_fails_when_repo_root_markdown_is_unlisted(
     assert res.invariant_id == "CS-SWEEP-002"
     assert res.status == "FAIL"
     assert "NEW_CANONICAL.md" in res.remediation
-
-
-def test_managed_sweep_surfaces_are_covered_in_repo() -> None:
-    from tools import sweep as sweep_mod
-
-    managed = sweep_mod._sweep_managed_surface_files(REPO_ROOT)
-    canon = set(sweep_mod._canonical_inputs(REPO_ROOT))
-    missing = sorted(set(managed) - canon)
-    assert missing == []
 
 
 def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(
@@ -691,76 +718,39 @@ def test_cs_run_002_fails_when_non_owner_docs_reintroduce_cli_catalogs(
     assert "docs/operations/operator-anchors.md" in str(res.details)
 
 
-def _write_cs_wvr_003_fixture(
-    root: Path,
-    *,
-    tier0_max: int,
-    tier1_max: int,
-    tier2_max: int,
-    tier1_hotl_required: bool = False,
-    schema_readme_stale_tier1_warning: bool = False,
-) -> None:
-    tier1_hotl_suffix = ", HOTL required (policy-level)" if tier1_hotl_required else ""
-    schema_scope = (
-        "**Scope:** Tier-2+ (audit-grade) runs MUST include a valid HOTLApproval artifact in EvidenceManifest. "
-        "Tier-1 runs trigger a warning if missing.\n"
-        if schema_readme_stale_tier1_warning
-        else
-        "**Scope:** Tiers where `waiver_policy.requires_HOTL == true` in `tiers/tier-packs.json` MUST include "
-        "a valid HOTLApproval artifact in EvidenceManifest. In the current v1 tier policy, this means Tier-2 and Tier-3.\n"
-    )
-    schema_enforcement = (
-        "- Tier-2/3: FAIL if no `hotl_approval` artifact found.\n"
-        "- Tier-1: WARNING if missing (backward compatibility).\n"
-        if schema_readme_stale_tier1_warning
-        else
-        "- Read `tiers[<tier_id>].waiver_policy.requires_HOTL` from `tiers/tier-packs.json`.\n"
-        "- FAIL if `requires_HOTL == true` and no `hotl_approval` artifact is found.\n"
-    )
-    _init_tracked_temp_repo(
-        root,
-        {
-            "tiers/tier-packs.json": (
-                "{\n"
-                "  \"tiers\": {\n"
-                "    \"tier-0\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 20, \"requires_HOTL\": false}},\n"
-                "    \"tier-1\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 10, \"requires_HOTL\": false}},\n"
-                "    \"tier-2\": {\"waiver_policy\": {\"allowed\": true, \"max_active_waivers\": 1, \"requires_HOTL\": true}},\n"
-                "    \"tier-3\": {\"waiver_policy\": {\"allowed\": false, \"max_active_waivers\": 0, \"requires_HOTL\": true}}\n"
-                "  }\n"
-                "}\n"
-            ),
-            "tiers/tier-packs.md": "waiver_policy\nmax_active_waivers\nrequires_HOTL\ntier-3\n",
-            "gates/GATE_Q.md": "Q6\nVerify tier allows waivers\nmax_active_waivers\nwaiver_policy.requires_HOTL\n",
-            "docs/operations/waivers.md": (
-                "## 5.1 Limits per tier\n"
-                f"- Tier 0: waivers allowed, max {tier0_max} active\n"
-                f"- Tier 1: waivers allowed, max {tier1_max} active{tier1_hotl_suffix}\n"
-                f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
-                "- Tier 3: waivers not allowed, HOTL required (policy-level)\n"
-            ),
-            "belgi/canonicals/docs/operations/waivers.md": (
-                "## 5.1 Limits per tier\n"
-                f"- Tier 0: waivers allowed, max {tier0_max} active\n"
-                f"- Tier 1: waivers allowed, max {tier1_max} active{tier1_hotl_suffix}\n"
-                f"- Tier 2: waivers allowed, max {tier2_max} active, HOTL required (policy-level)\n"
-                "- Tier 3: waivers not allowed, HOTL required (policy-level)\n"
-            ),
-            "schemas/README.md": (
-                "#### HOTLApproval Purpose\n\n"
-                "HOTLApproval artifacts enforce **human-on-the-loop (HOTL) approvals** for audit-grade runs.\n\n"
-                + schema_scope
-                + "\n**Enforcement (Gate Q-HOTL-001):**\n"
-                + schema_enforcement
-            ),
-        },
-    )
+_CS_WVR_003_AUTHORITY_INPUTS = (
+    "tiers/tier-packs.json",
+    "tiers/tier-packs.md",
+    "gates/GATE_Q.md",
+    "docs/operations/waivers.md",
+    "belgi/canonicals/docs/operations/waivers.md",
+    "schemas/README.md",
+)
+
+
+def _seed_owner_files(root: Path, relpaths: tuple[str, ...]) -> None:
+    for rel in relpaths:
+        src = REPO_ROOT / rel
+        dst = root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(src.read_text(encoding="utf-8", errors="strict"), encoding="utf-8", errors="strict", newline="\n")
+
+
+def _replace_fixture_text(root: Path, rel: str, old: str, new: str) -> None:
+    path = root / rel
+    text = path.read_text(encoding="utf-8", errors="strict")
+    assert old in text, f"expected to find fixture text in {rel!r}: {old!r}"
+    path.write_text(text.replace(old, new, 1), encoding="utf-8", errors="strict", newline="\n")
+
+
+def _seed_cs_wvr_003_owner_fixture(root: Path) -> None:
+    _seed_owner_files(root, _CS_WVR_003_AUTHORITY_INPUTS)
 
 
 def test_cs_wvr_003_passes_when_ops_limits_match_tiers_json(tmp_path: Path) -> None:
     from tools import sweep as sweep_mod
 
-    _write_cs_wvr_003_fixture(tmp_path, tier0_max=20, tier1_max=10, tier2_max=1)
+    _seed_cs_wvr_003_owner_fixture(tmp_path)
 
     res = sweep_mod.check_cs_wvr_003(tmp_path)
     assert res.invariant_id == "CS-WVR-003"
@@ -770,7 +760,13 @@ def test_cs_wvr_003_passes_when_ops_limits_match_tiers_json(tmp_path: Path) -> N
 def test_cs_wvr_003_fails_when_ops_limits_drift_from_tiers_json(tmp_path: Path) -> None:
     from tools import sweep as sweep_mod
 
-    _write_cs_wvr_003_fixture(tmp_path, tier0_max=20, tier1_max=2, tier2_max=1)
+    _seed_cs_wvr_003_owner_fixture(tmp_path)
+    _replace_fixture_text(
+        tmp_path,
+        "docs/operations/waivers.md",
+        "- Tier 1: waivers allowed, max 10 active",
+        "- Tier 1: waivers allowed, max 2 active",
+    )
 
     res = sweep_mod.check_cs_wvr_003(tmp_path)
     assert res.invariant_id == "CS-WVR-003"
@@ -781,12 +777,12 @@ def test_cs_wvr_003_fails_when_ops_limits_drift_from_tiers_json(tmp_path: Path) 
 def test_cs_wvr_003_fails_when_ops_hotl_requirement_drifts_from_tiers_json(tmp_path: Path) -> None:
     from tools import sweep as sweep_mod
 
-    _write_cs_wvr_003_fixture(
+    _seed_cs_wvr_003_owner_fixture(tmp_path)
+    _replace_fixture_text(
         tmp_path,
-        tier0_max=20,
-        tier1_max=10,
-        tier2_max=1,
-        tier1_hotl_required=True,
+        "docs/operations/waivers.md",
+        "- Tier 1: waivers allowed, max 10 active",
+        "- Tier 1: waivers allowed, max 10 active, HOTL required (policy-level)",
     )
 
     res = sweep_mod.check_cs_wvr_003(tmp_path)
@@ -798,12 +794,18 @@ def test_cs_wvr_003_fails_when_ops_hotl_requirement_drifts_from_tiers_json(tmp_p
 def test_cs_wvr_003_fails_when_schema_readme_keeps_stale_tier1_warning(tmp_path: Path) -> None:
     from tools import sweep as sweep_mod
 
-    _write_cs_wvr_003_fixture(
+    _seed_cs_wvr_003_owner_fixture(tmp_path)
+    _replace_fixture_text(
         tmp_path,
-        tier0_max=20,
-        tier1_max=10,
-        tier2_max=1,
-        schema_readme_stale_tier1_warning=True,
+        "schemas/README.md",
+        "**Scope:** Tiers where `waiver_policy.requires_HOTL == true` in `tiers/tier-packs.json` MUST include a valid HOTLApproval artifact in EvidenceManifest. In the current v1 tier policy, this means Tier-2 and Tier-3.",
+        "**Scope:** Tier-2+ (audit-grade) runs MUST include a valid HOTLApproval artifact in EvidenceManifest. Tier-1 runs trigger a warning if missing.",
+    )
+    _replace_fixture_text(
+        tmp_path,
+        "schemas/README.md",
+        "- Read `tiers[<tier_id>].waiver_policy.requires_HOTL` from `tiers/tier-packs.json`.\n- FAIL if `requires_HOTL == true` and no `hotl_approval` artifact is found.\n",
+        "- Tier-2/3: FAIL if no `hotl_approval` artifact found.\n- Tier-1: WARNING if missing (backward compatibility).\n",
     )
 
     res = sweep_mod.check_cs_wvr_003(tmp_path)
