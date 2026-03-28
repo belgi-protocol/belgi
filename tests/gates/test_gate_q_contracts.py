@@ -20,8 +20,8 @@ from tests.gates.gate_test_support import (
     _tamper_locked_spec_pack_id,
 )
 from tests.helpers import builders
-from tests.helpers.tier_fixtures import write_hotl_approval_fixture
 from tests.helpers.repo_imports import import_fresh_protocol_pack_surface
+from tests.helpers.tier_fixtures import write_hotl_approval_fixture
 
 pytestmark = pytest.mark.repo_local
 

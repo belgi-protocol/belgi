@@ -139,28 +139,6 @@ def test_r8_public_docs_match_runtime_contract() -> None:
         "If findings are present but all findings are covered by applicable active waivers allowed by the selected "
         "tier, `R8` PASSes."
     )
-    running_docs_command = (
-        "R8 command success is satisfied only by a `belgi adversarial-scan` command record with `exit_code == 0`."
-    )
-    running_docs_diff_subject = (
-        "Current shipped R8 producer uses changed Python lines from the actual `base_revision -> evaluated_revision` "
-        "diff as the primary scan subject."
-    )
-    running_docs_diff_guard = (
-        "Findings outside the actual diff do not by themselves produce `FR-ADVERSARIAL-DIFF-SUSPECT`."
-    )
-    running_docs_warn = (
-        'When `adversarial_policy.findings_mode == "warn"`, findings do not themselves cause `R8` to fail if '
-        "command/report/waiver structure is otherwise valid."
-    )
-    running_docs_fail = (
-        'When `adversarial_policy.findings_mode == "fail"`, unwaived findings can produce '
-        "`FR-ADVERSARIAL-DIFF-SUSPECT`."
-    )
-    running_docs_waiver = (
-        "If findings are present but all findings are covered by applicable active waivers allowed by the selected "
-        "tier, `R8` can PASS."
-    )
     stale_rc2 = "rc=2"
     stale_flat_fail = "if the accepted report indicates failures (`summary.failed != 0`) => fail `FR-ADVERSARIAL-DIFF-SUSPECT`."
 
@@ -188,31 +166,9 @@ def test_r2_public_docs_match_locked_tolerances_contract() -> None:
     gate_r_locked_object = "Resolve `LockedSpec.tier.tolerances_ref` and read the locked ceiling values:"
     gate_r_no_tier_defaults = "`max_touched_files` = `LockedSpec.constraints.max_touched_files` if present else tier default."
     gate_r_no_hotl = "adjust tier/constraints with HOTL"
-    cli_tolerances_flag = "`--tolerances-ref <object_id>=<repo-relative-path>` (singular)"
-    cli_tolerances_binding = "binds a real locked tolerances object into `LockedSpec.tier.tolerances_ref`"
-    cli_tolerances_pre_lock = "the referenced Tolerances file is a pre-lock operator input"
-    cli_tolerances_tier_match = "`Tolerances.tier_id` must match the selected tier"
-    cli_tolerances_tighten = (
-        "may equal or tighten the selected tier ceilings, but BELGI rejects wider values"
-    )
-    running_default = (
-        "if shipped `belgi run` omits Tolerances, orchestration generates the canonical tolerances object "
-        "from the selected tier pack before lock"
-    )
-    running_boundary = (
-        "on the shipped `belgi run` spine, current-run ToolchainSet/Tolerances inputs are staged into "
-        "locked/store authority before C1"
-    )
-    running_manual_boundary = (
-        "manual C1 uses repo-relative `--toolchain-set` / `--tolerances` inputs instead of shipped `belgi run` refs"
-    )
     gate_q_tighten = "to be equal to or stricter than the selected tier ceilings; reject any wider value"
     gate_q_remediation = (
         "Do lock a valid tier.tolerances_ref object for the selected tier that stays within the selected tier ceilings, then re-run Q."
-    )
-    running_numeric_retired = (
-        "Numeric scope budgets no longer live in `IntentSpec`; schema and runtime both reject legacy "
-        "`IntentSpec.scope.max_*` fields with migration guidance."
     )
     failure_taxonomy_line = (
         "`Do reduce scope to within the locked tolerances ceilings or change the locked Tolerances object / "
@@ -241,38 +197,10 @@ def test_r7_public_docs_match_runtime_contract() -> None:
         "using `LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` as the accounting context "
         "derived from the locked ToolchainSet plus built-in `toolchain.main`."
     )
-    running_docs_meaning = (
-        "Current shipped R7 producer uses the actual `base_revision -> evaluated_revision` diff and limits "
-        "`FR-SUPPLYCHAIN-CHANGE-UNACCOUNTED` to bounded dependency/toolchain declaration paths plus declared "
-        "ToolchainSet paths."
-    )
-    running_docs_accounting = (
-        "The current R7 accounting context is the declared "
-        "`LockedSpec.environment_envelope.pinned_toolchain_refs[].storage_ref` set derived from the locked ToolchainSet "
-        "plus built-in `toolchain.main`."
-    )
-    cli_binding = (
-        "binds an authoritative ToolchainSet object into `LockedSpec.environment_envelope.toolchain_set_ref`"
-    )
-    cli_pre_lock = "the referenced ToolchainSet file is a pre-lock operator input"
-    cli_member_guard = (
-        "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain "
-        "declaration surfaces in the evaluated revision truth envelope"
-    )
-    running_ingress = (
-        "For the shared environment objects on the shipped spine, keep only this execution boundary in mind: "
-        "current-run ToolchainSet/Tolerances inputs are staged into locked/store authority before C1, while "
-        "manual C1 still uses repo-relative `--toolchain-set` / `--tolerances` inputs."
-    )
-    running_member_guard = (
-        "Shorthand `--toolchain-ref` declaration paths, and ToolchainSet member declaration paths inside "
-        "the locked object, must still exist in the evaluated revision truth envelope."
-    )
     gate_r_shipped_ingress = (
         "explicit ToolchainSet refs are pre-lock operator inputs accepted only at "
         "`.belgi/runs/<run_id>/inputs/environment/toolchain-set.json` for the current run"
     )
-    reserved_main = "`toolchain.main` is reserved for the built-in generated run toolchain input"
 
     assert bounded_meaning in gate_r
     assert declaration_surface_line in gate_r

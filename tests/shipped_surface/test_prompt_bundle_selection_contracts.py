@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from tests.helpers.tier_fixtures import tier_policy
 from tests.helpers.repo_imports import reset_repo_local_imports
+from tests.helpers.tier_fixtures import tier_policy
 
 reset_repo_local_imports("belgi", "chain")
 

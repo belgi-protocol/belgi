@@ -503,6 +503,7 @@ def build_r_repo(
 ) -> dict[str, str]:
     if tiers_obj is None:
         tiers_obj = builtin_tiers()
+    contract = tier_fixtures.tier_contract(tier_id, tiers_obj=tiers_obj)
     q_paths = build_q_repo(
         repo_root,
         rel_root=rel_root,

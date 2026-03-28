@@ -6,8 +6,7 @@ import subprocess
 from pathlib import Path
 
 from belgi.core.schema import validate_schema
-from tests.helpers import builders
-from tests.helpers import tier_fixtures
+from tests.helpers import builders, tier_fixtures
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
