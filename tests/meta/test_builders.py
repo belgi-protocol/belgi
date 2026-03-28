@@ -7,6 +7,7 @@ from pathlib import Path
 
 from belgi.core.schema import validate_schema
 from tests.helpers import builders
+from tests.helpers import tier_fixtures
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -70,6 +71,18 @@ def test_builders_public_api_is_explicit_and_narrow() -> None:
         "write_json",
         "write_text",
         "write_tiers_override",
+    ]
+
+
+def test_tier_fixtures_public_api_is_explicit_and_narrow() -> None:
+    assert tier_fixtures.__all__ == [
+        "builtin_tiers",
+        "hotl_approval_doc",
+        "prompt_block_hashes_for_locked",
+        "prompt_block_ids_for_tier_policy",
+        "tier_contract",
+        "tier_policy",
+        "write_hotl_approval_fixture",
     ]
 
 
@@ -239,7 +252,7 @@ def test_build_q_repo_does_not_repair_a_q3_invalid_request(tmp_path: Path) -> No
 
 def test_build_r_repo_does_not_mask_r_doc_001_ownership(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
-    tiers = builders.builtin_tiers()
+    tiers = tier_fixtures.builtin_tiers()
     tiers["tiers"]["tier-1"]["doc_impact_required"] = True
     paths = builders.build_r_repo(
         repo_root,

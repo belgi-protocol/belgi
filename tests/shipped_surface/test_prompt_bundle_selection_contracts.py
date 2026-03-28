@@ -2,20 +2,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from tests.helpers.tier_fixtures import tier_policy
 from tests.helpers.repo_imports import reset_repo_local_imports
 
 reset_repo_local_imports("belgi", "chain")
 
 import chain.compiler_c1_intent as c1
-from belgi.protocol.pack import get_builtin_protocol_context
-from chain.logic.tier_packs import load_tier_params
 
 
 def _tier_policy(tier_id: str):
-    tiers_text = get_builtin_protocol_context().read_text("tiers/tier-packs.json")
-    loaded = load_tier_params(tiers_text, tier_id)
-    assert loaded.params is not None, loaded.parse_error
-    return loaded.params
+    return tier_policy(tier_id)
 
 
 def test_prompt_bundle_selection_matches_current_tier1_policy() -> None:

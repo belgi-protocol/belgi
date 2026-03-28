@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import shutil
@@ -14,6 +13,7 @@ from typing import Any
 import pytest
 
 from tests.helpers import builders
+from tests.helpers.tier_fixtures import prompt_block_hashes_for_locked
 
 pytestmark = pytest.mark.repo_local
 
@@ -89,33 +89,7 @@ def _compute_bundle_root_sha256(*, docs_bundle_manifest_sha256: str, bundle_sha2
 
 
 def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dict[str, str]:
-    c1 = importlib.import_module("chain.compiler_c1_intent")
-    tier_logic = importlib.import_module("chain.logic.tier_packs")
-    pack = importlib.import_module("belgi.protocol.pack")
-    selector = c1._prompt_block_ids_for_tier_policy
-    render = c1._render_prompt_block
-
-    tier_obj = locked_spec.get("tier")
-    assert isinstance(tier_obj, dict)
-    tier_id = tier_obj.get("tier_id")
-    assert isinstance(tier_id, str) and tier_id
-
-    tiers_text = pack.get_builtin_protocol_context().read_text("tiers/tier-packs.json")
-    loaded_tier = tier_logic.load_tier_params(tiers_text, tier_id)
-    assert loaded_tier.params is not None, loaded_tier.parse_error
-
-    selected_ids = selector(loaded_tier.params)
-    assert isinstance(selected_ids, list) and selected_ids
-
-    locked_preimage = dict(locked_spec)
-    locked_preimage.pop("prompt_bundle_ref", None)
-
-    out: dict[str, str] = {}
-    for block_id in selected_ids:
-        rendered = render(block_id=block_id, locked_spec_preimage=locked_preimage)
-        assert isinstance(rendered, (bytes, bytearray))
-        out[str(block_id)] = _sha256_hex(bytes(rendered))
-    return out
+    return prompt_block_hashes_for_locked(locked_spec)
 
 
 def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> None:
