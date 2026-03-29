@@ -1,24 +1,16 @@
-"""Tests for repo-root jail and command logging.
-
-These tests verify:
-- Path validation rejects escapes, symlinks, absolute paths, NUL bytes, traversal
-- Command logging works correctly in both strings and structured modes
-- Command matching (command_satisfied) is deterministic and strict
-- Behavior is consistent across all validation functions
-"""
+"""Runtime helper contracts for repo-root jail and command logging."""
 
 from __future__ import annotations
 
 import json
-
-import pytest
-
-pytestmark = pytest.mark.repo_local
-
 import os
 from pathlib import Path
 
+import pytest
+
 from tests.helpers.repo_imports import reset_repo_local_imports
+
+pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 reset_repo_local_imports("belgi")
@@ -41,13 +33,8 @@ from chain.logic.base import (
     load_json,
 )
 
-# ---------------------------------------------------------------------------
-# Path jail tests
-# ---------------------------------------------------------------------------
 
 class TestNormalizeRepoRel:
-    """Tests for normalize_repo_rel path validation."""
-
     def test_valid_simple_path(self) -> None:
         assert normalize_repo_rel("foo/bar.txt", allow_backslashes=False) == "foo/bar.txt"
 
@@ -91,8 +78,6 @@ class TestNormalizeRepoRel:
 
 
 class TestResolveRepoRelPath:
-    """Tests for resolve_repo_rel_path with symlink hardening."""
-
     def test_valid_path_resolves(self, tmp_path: Path) -> None:
         (tmp_path / "test.txt").write_text("content")
         result = resolve_repo_rel_path(
@@ -137,8 +122,6 @@ class TestResolveRepoRelPath:
 
 
 class TestResolveStorageRef:
-    """Tests for resolve_storage_ref (EvidenceManifest storage_ref resolution)."""
-
     def test_valid_storage_ref(self, tmp_path: Path) -> None:
         (tmp_path / "evidence").mkdir()
         (tmp_path / "evidence" / "report.json").write_text("{}")
@@ -167,11 +150,8 @@ class TestResolveStorageRef:
 
 
 class TestEnsureWithinRoot:
-    """Tests for ensure_within_root boundary enforcement."""
-
     def test_path_within_root_passes(self, tmp_path: Path) -> None:
         child = tmp_path / "subdir" / "file.txt"
-        # Should not raise
         ensure_within_root(tmp_path, child)
 
     def test_path_escape_fails(self, tmp_path: Path) -> None:
@@ -180,13 +160,7 @@ class TestEnsureWithinRoot:
             ensure_within_root(tmp_path, escape)
 
 
-# ---------------------------------------------------------------------------
-# Command logging tests
-# ---------------------------------------------------------------------------
-
 class TestCommandSatisfied:
-    """Tests for command_satisfied matching rule."""
-
     def test_strings_mode_exact_match(self) -> None:
         commands = ["belgi invariant-eval", "belgi run-tests"]
         assert command_satisfied(commands, mode="strings", subcommand="invariant-eval") is True
@@ -194,7 +168,6 @@ class TestCommandSatisfied:
         assert command_satisfied(commands, mode="strings", subcommand="verify-attestation") is False
 
     def test_strings_mode_no_substring_gaming(self) -> None:
-        # Should NOT match substring
         commands = ["belgi invariant-eval-extended"]
         assert command_satisfied(commands, mode="strings", subcommand="invariant-eval") is False
 
@@ -232,8 +205,6 @@ class TestCommandSatisfied:
 
 
 class TestFormatCommandString:
-    """Tests for format_command_string."""
-
     def test_belgi_command_format(self) -> None:
         assert format_command_string(["belgi", "invariant-eval"]) == "belgi invariant-eval"
 
@@ -245,8 +216,6 @@ class TestFormatCommandString:
 
 
 class TestMakeCommandRecord:
-    """Tests for make_command_record factory."""
-
     def test_creates_valid_record(self) -> None:
         record = make_command_record(["belgi", "test"], 0)
         assert record.argv == ["belgi", "test"]
@@ -264,8 +233,6 @@ class TestMakeCommandRecord:
 
 
 class TestCommandRecordToDict:
-    """Tests for command_record_to_dict serialization."""
-
     def test_converts_to_dict(self) -> None:
         record = make_command_record(["belgi", "test"], 0)
         d = command_record_to_dict(record)
@@ -276,8 +243,6 @@ class TestCommandRecordToDict:
 
 
 class TestAppendCommandToManifest:
-    """Tests for append_command_to_manifest."""
-
     def test_append_strings_mode(self) -> None:
         existing = ["belgi c1-compile"]
         result = append_command_to_manifest(
@@ -286,7 +251,6 @@ class TestAppendCommandToManifest:
         )
         assert len(result) == 2
         assert result[1] == "belgi invariant-eval"
-        # Original not mutated
         assert len(existing) == 1
 
     def test_append_structured_mode(self) -> None:
@@ -299,7 +263,6 @@ class TestAppendCommandToManifest:
         )
         assert len(result) == 2
         assert result[1]["argv"] == ["belgi", "test"]
-        # Original not mutated
         assert len(existing) == 1
 
     def test_invalid_mode_raises(self) -> None:
@@ -307,21 +270,17 @@ class TestAppendCommandToManifest:
             append_command_to_manifest([], mode="invalid", argv=["test"], exit_code=0)
 
     def test_mode_mismatch_strings_raises(self) -> None:
-        # Trying to append in strings mode to a structured list
         existing = [{"argv": ["belgi", "c1"], "exit_code": 0, "started_at": "x", "finished_at": "x"}]
         with pytest.raises(ValueError, match="non-string"):
             append_command_to_manifest(existing, mode="strings", argv=["test"], exit_code=0)
 
     def test_mode_mismatch_structured_raises(self) -> None:
-        # Trying to append in structured mode to a strings list
         existing = ["belgi c1"]
         with pytest.raises(ValueError, match="non-dict"):
             append_command_to_manifest(existing, mode="structured", argv=["test"], exit_code=0)
 
 
 class TestDetectCommandLogMode:
-    """Tests for detect_command_log_mode."""
-
     def test_detects_strings_mode(self) -> None:
         commands = ["belgi c1", "belgi test"]
         assert detect_command_log_mode(commands) == "strings"
@@ -343,34 +302,21 @@ class TestDetectCommandLogMode:
         assert detect_command_log_mode("not a list") is None
         assert detect_command_log_mode(None) is None
 
-# ---------------------------------------------------------------------------
-# R3 waiver path resolution jail consistency tests
-# ---------------------------------------------------------------------------
 
 class TestR3WaiverPathJail:
-    """Tests for R3 waiver path resolution using resolve_storage_ref (jail-safe).
-
-    R3 must use the same resolve_storage_ref as Q6 to prevent jail bypass when
-    loading waiver documents from LockedSpec.waivers_applied[].
-    """
-
     def test_r3_waiver_path_backslash_rejected(self, tmp_path: Path) -> None:
-        """Backslash in waiver path should be rejected by resolve_storage_ref."""
         with pytest.raises(ValueError):
             resolve_storage_ref(tmp_path, "waivers\\waiver-001.json")
 
     def test_r3_waiver_path_traversal_rejected(self, tmp_path: Path) -> None:
-        """Path traversal in waiver path should be rejected."""
         with pytest.raises(ValueError):
             resolve_storage_ref(tmp_path, "waivers/../../../etc/passwd")
 
     def test_r3_waiver_path_absolute_rejected(self, tmp_path: Path) -> None:
-        """Absolute paths should be rejected."""
         with pytest.raises(ValueError):
             resolve_storage_ref(tmp_path, "/etc/passwd")
 
     def test_r3_waiver_path_valid_posix(self, tmp_path: Path) -> None:
-        """Valid POSIX path should resolve correctly."""
         (tmp_path / "waivers").mkdir()
         (tmp_path / "waivers" / "waiver-001.json").write_text('{"status": "active"}')
         result = resolve_storage_ref(tmp_path, "waivers/waiver-001.json")
@@ -378,7 +324,6 @@ class TestR3WaiverPathJail:
         assert result.name == "waiver-001.json"
 
     def test_r3_waiver_allows_path_uses_resolve_storage_ref(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """R3 waiver resolution must go through resolve_storage_ref (regression guard)."""
         from types import SimpleNamespace
 
         from chain.logic.r_checks import r3_policy_invariants as r3
@@ -404,7 +349,6 @@ class TestR3WaiverPathJail:
         called = {"count": 0}
         real_resolve = r3.resolve_storage_ref
 
-        # Assert R3 uses resolve_storage_ref to bind waiver paths to repo_root.
         def _spy_resolve(repo_root: Path, storage_ref: str) -> Path:
             called["count"] += 1
             return real_resolve(repo_root, storage_ref)
@@ -428,7 +372,6 @@ class TestR3WaiverPathJail:
         assert called["count"] >= 1
 
     def test_r3_waiver_allows_path_unsafe_ref_fails_closed(self, tmp_path: Path) -> None:
-        """Unsafe waiver refs must fail-closed (no silent skip)."""
         from types import SimpleNamespace
 
         from chain.logic.r_checks import r3_policy_invariants as r3
@@ -452,7 +395,6 @@ class TestR3WaiverPathJail:
         assert exc.value.storage_ref == "waivers\\waiver-001.json"
 
     def test_r3_relaxed_mode_does_not_accept_substring_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Relaxed mode must require normalized prefix match; literal substring is not enough."""
         from types import SimpleNamespace
 
         from belgi.core.hash import sha256_bytes
@@ -522,7 +464,6 @@ class TestR3WaiverPathJail:
         assert "no active waiver matches scope" in results[0].message
 
     def test_r3_waiver_invalid_json_fails_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Invalid waiver JSON must be a deterministic FAIL with index pointer."""
         from types import SimpleNamespace
 
         from belgi.core.hash import sha256_bytes

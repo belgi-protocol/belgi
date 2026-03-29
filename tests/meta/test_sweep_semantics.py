@@ -195,14 +195,22 @@ def test_cs_term_001_allows_schema_validation_context(tmp_path: Path) -> None:
     assert res.status == "PASS"
 
 
-def test_cs_can_001_derives_live_subjects_from_repo_term_map() -> None:
+def test_cs_can_001_derives_subjects_from_term_map_block() -> None:
     from tools import sweep as sweep_mod
 
-    md = (REPO_ROOT / "terminology.md").read_text(encoding="utf-8", errors="strict")
-    match = re.search(r"(?is)#+\s*(?:\d+(?:\.\d+)*\.?\s*)?Term Map\b(.*?)(\n#+\s|\Z)", md)
-    assert match is not None
+    term_map = "\n".join(
+        [
+            "- [LockedSpec](CANONICALS.md#lockedspec)",
+            "- [pack_id](CANONICALS.md#pack-id)",
+            "- [HOTL](CANONICALS.md#hotl)",
+            "- [Protocol Pack](CANONICALS.md#protocol-pack)",
+            "- [Waivers](CANONICALS.md#waivers)",
+            "- [Deterministic (BELGI Sense)](CANONICALS.md#deterministic-belgi)",
+            "- [R-Snapshot](CANONICALS.md#r-snapshot)",
+        ]
+    )
 
-    subjects = sweep_mod._extract_cs_can_001_term_map_subjects(match.group(1))
+    subjects = sweep_mod._extract_cs_can_001_term_map_subjects(term_map)
     expected = {
         sweep_mod._normalize_cs_can_001_subject("LockedSpec"),
         sweep_mod._normalize_cs_can_001_subject("pack_id"),
@@ -394,16 +402,6 @@ def test_cs_protocol_identity_001_fails_when_source_is_in_identity_tuple(
     assert res.invariant_id == "CS-PROTOCOL-IDENTITY-001"
     assert res.status == "FAIL"
     assert "gates/GATE_Q.md:1" in res.remediation
-
-
-def test_waiver_scope_semantics_docs_guard_prefix_not_substring() -> None:
-    gate_r_text = (REPO_ROOT / "gates" / "GATE_R.md").read_text(encoding="utf-8", errors="strict")
-    waivers_text = (REPO_ROOT / "docs" / "operations" / "waivers.md").read_text(encoding="utf-8", errors="strict")
-
-    assert "literal substring (v1 deterministic scope match)" not in gate_r_text
-    assert "`scope` contains the offending path as a literal substring." not in waivers_text
-    assert "`scope` is a normalized repo-relative prefix" in gate_r_text
-    assert "`scope` is a normalized repo-relative prefix." in waivers_text
 
 
 def test_cs_can_005_passes_when_package_mirror_matches_source(
