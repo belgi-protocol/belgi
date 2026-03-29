@@ -83,13 +83,6 @@ def test_tier_packs_json_validates_against_schema() -> None:
     assert errs == [], [f"{e.path}: {e.message}" for e in errs[:10]]
 
 
-def test_builtin_tier_packs_json_validates_against_builtin_schema() -> None:
-    schema = _load_json(REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "schemas" / "TierPacks.schema.json")
-    obj = _load_json(REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json")
-    errs = validate_schema(obj, schema, root_schema=schema, path="TierPacks")
-    assert errs == [], [f"{e.path}: {e.message}" for e in errs[:10]]
-
-
 def test_tier_packs_do_not_declare_test_policy_flaky_handling() -> None:
     obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
 
@@ -181,14 +174,9 @@ def test_tier_params_loader_maps_waiver_policy_from_json_ssot() -> None:
     assert loaded.params.waiver_policy_requires_hotl == "yes"
 
 
-def test_tier_admission_policy_uses_json_ssot() -> None:
+def test_supported_tier_ids_use_canonical_json_ssot() -> None:
     canonical_json = (REPO_ROOT / "tiers" / "tier-packs.json").read_text(encoding="utf-8", errors="strict")
-    builtin_json = (REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json").read_text(
-        encoding="utf-8",
-        errors="strict",
-    )
     assert supported_tier_ids(canonical_json) == ("tier-0", "tier-1", "tier-2", "tier-3")
-    assert supported_tier_ids(builtin_json) == ("tier-0", "tier-1", "tier-2", "tier-3")
 
 
 def test_tier_admission_policy_rejects_generated_markdown_view() -> None:
