@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -25,26 +26,62 @@ def _git_tree_sha(repo_root: Path) -> str:
     return result.stdout.strip()
 
 
-def test_sweep_repo_revision_uses_tree_sha_stable_under_empty_commit(tmp_path: Path) -> None:
+def _run_minimal_consistency_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    import tools.sweep as sweep
+
+    monkeypatch.setattr(sweep, "_extract_spec_invariant_ids", lambda root: ["CS-SWEEP-001"])
+    monkeypatch.setattr(
+        sweep,
+        "_invariant_registry",
+        lambda: {
+            "CS-SWEEP-001": lambda root: sweep.InvariantResult(
+                "CS-SWEEP-001",
+                "PASS",
+                ["tools/sweep.py"],
+                "",
+                {"surface": "synthetic repo-revision contract"},
+            )
+        },
+    )
+    monkeypatch.setattr(sweep, "_canonical_inputs", lambda root: ["a.txt"])
+
+    rc = sweep.main(["consistency", "--repo", str(tmp_path)])
+    assert rc == 0
+
+    report_path = tmp_path / "policy" / "consistency_sweep.json"
+    return json.loads(report_path.read_text(encoding="utf-8", errors="strict"))
+
+
+def test_consistency_sweep_repo_revision_stable_under_empty_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
     head_1 = _init_git_repo(tmp_path)
     tree_1 = _git_tree_sha(tmp_path)
+    report_1 = _run_minimal_consistency_sweep(tmp_path, monkeypatch)
 
     head_2 = _git_commit_allow_empty(tmp_path, "empty")
     tree_2 = _git_tree_sha(tmp_path)
+    report_2 = _run_minimal_consistency_sweep(tmp_path, monkeypatch)
 
     assert head_2 != head_1
     assert tree_2 == tree_1
-
-    from tools.sweep import _git_tree_sha as sweep_git_tree_sha
-
-    assert sweep_git_tree_sha(tmp_path) == tree_1
+    assert report_1["repo_revision"] == tree_1
+    assert report_2["repo_revision"] == tree_1
 
 
-def test_sweep_repo_revision_ignores_consistency_sweep_outputs(tmp_path: Path) -> None:
+def test_consistency_sweep_repo_revision_ignores_committed_sweep_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
+    _init_git_repo(tmp_path)
+    report_1 = _run_minimal_consistency_sweep(tmp_path, monkeypatch)
+
     (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
     (tmp_path / "policy" / "consistency_sweep.json").write_text(
-        "{\"artifact_id\":\"policy.consistency_sweep\"}\n",
+        "{\"artifact_id\":\"policy.consistency_sweep\",\"v\":2}\n",
         encoding="utf-8",
         errors="strict",
         newline="\n",
@@ -55,38 +92,15 @@ def test_sweep_repo_revision_ignores_consistency_sweep_outputs(tmp_path: Path) -
         errors="strict",
         newline="\n",
     )
-    (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
-    _init_git_repo(tmp_path)
-
-    from tools.sweep import (
-        CANONICAL_SWEEP_OUT,
-        CANONICAL_SWEEP_SUMMARY,
-        _git_tree_sha_excluding,
-    )
-    from tools.sweep import (
-        _git_tree_sha as sweep_git_tree_sha,
-    )
-
-    tree_full_1 = sweep_git_tree_sha(tmp_path)
-    tree_excluding_1 = _git_tree_sha_excluding(tmp_path, [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY])
-
-    (tmp_path / "policy" / "consistency_sweep.json").write_text(
-        "{\"artifact_id\":\"policy.consistency_sweep\",\"v\":2}\n",
-        encoding="utf-8",
-        errors="strict",
-        newline="\n",
-    )
     subprocess.run(["git", "add", "policy/consistency_sweep.json"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "add", "policy/consistency_sweep.summary.md"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "update sweep"], cwd=tmp_path, check=True, capture_output=True)
+    report_2 = _run_minimal_consistency_sweep(tmp_path, monkeypatch)
 
-    tree_full_2 = sweep_git_tree_sha(tmp_path)
-    tree_excluding_2 = _git_tree_sha_excluding(tmp_path, [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY])
-
-    assert tree_full_2 != tree_full_1
-    assert tree_excluding_2 == tree_excluding_1
+    assert report_2["repo_revision"] == report_1["repo_revision"]
 
 
-def test_sweep_repo_revision_blob_override_changes_tree(tmp_path: Path) -> None:
+def test_git_tree_sha_excluding_blob_override_changes_repo_revision_input(tmp_path: Path) -> None:
     (tmp_path / "policy").mkdir(parents=True, exist_ok=True)
     (tmp_path / "policy" / "consistency_sweep.json").write_text(
         "{\"artifact_id\":\"policy.consistency_sweep\"}\n",
