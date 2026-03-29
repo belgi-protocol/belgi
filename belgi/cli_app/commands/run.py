@@ -47,10 +47,6 @@ RUN_POINTER_RUN_KEY_REPO_REL = "run_key.txt"
 RUN_POINTER_LAST_ATTEMPT_REPO_REL = "last_attempt.txt"
 RUN_POINTER_OPEN_VERDICT_REPO_REL = "open_verdict.txt"
 RUN_POINTER_OPEN_EVIDENCE_REPO_REL = "open_evidence.txt"
-RC_GO = 0
-RC_NO_GO = 10
-RC_USER_ERROR = 20
-RC_INTERNAL_ERROR = 30
 _RUN_NO_GO_GENERIC_NEXT = "Do inspect the reported reason, fix inputs, then rerun `belgi run`."
 _SHA1_40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _RFC3339_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
@@ -71,7 +67,7 @@ _STAGE_FORWARDER_NOTE = (
 )
 
 class _UserInputError(ValueError):
-    """User-facing input/configuration issue (mapped to RC_USER_ERROR)."""
+    """User-facing input/configuration issue (mapped to public CLI user error)."""
 
 def cmd_about(_: argparse.Namespace) -> int:
     """Print concise package/protocol identity info."""
@@ -2632,7 +2628,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             open_paths=_collect_open_paths(),
             verbose=verbose,
         )
-        return RC_USER_ERROR
+        return cli_render.RC_USER_ERROR
     except ValueError as e:
         reason = str(e)
         try:
@@ -2692,7 +2688,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             open_paths=_collect_open_paths(),
             verbose=verbose,
         )
-        return RC_NO_GO
+        return cli_render.RC_NO_GO
     except Exception as e:
         reason = str(e)
         try:
@@ -2753,7 +2749,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             open_paths=_collect_open_paths(),
             verbose=verbose,
         )
-        return RC_INTERNAL_ERROR
+        return cli_render.RC_INTERNAL_ERROR
 
     cli_render._emit_machine_result(
         ok=True,
@@ -2779,4 +2775,4 @@ def cmd_run(args: argparse.Namespace) -> int:
         intent_open_path=intent_open_path,
         verbose=verbose,
     )
-    return RC_GO
+    return cli_render.RC_GO
