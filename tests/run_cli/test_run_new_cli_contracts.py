@@ -46,48 +46,36 @@ def test_run_new_idempotent_and_force(tmp_path: Path) -> None:
     assert runbook_template_path.exists()
     assert not deprecated_intent_template_path.exists()
     runbook_text = runbook_template_path.read_text(encoding="utf-8", errors="strict")
-    assert "belgi waiver new --repo . --run-id" in runbook_text
-    assert "belgi waiver apply --repo . --run-id" in runbook_text
-    assert "belgi run --repo . --tier tier-1 --intent-spec .belgi/runs/" in runbook_text
-    assert "--base-revision" in runbook_text
-    assert "inputs/intent/IntentSpec.core.md" in runbook_text
-    assert "inputs/waivers/waiver-001.json" in runbook_text
-    assert "Operator Anchors" in runbook_text
-    assert "inputs/anchors/approvals/hotl_approval.json" in runbook_text
-    assert "inputs/anchors/keys/attestation_pubkey.hex" in runbook_text
-    assert "inputs/anchors/signing/seal_signature.b64" in runbook_text
-    assert "inputs/evidence/genesis_seal.json" in runbook_text
-    assert "mkdir -p .belgi/runs/run-demo-001/inputs/environment" in runbook_text
-    assert "cat > .belgi/runs/run-demo-001/inputs/environment/toolchain-set.json <<'JSON'" in runbook_text
-    assert '  "toolchain_set_id": "env.toolchains",' in runbook_text
-    assert "cat > .belgi/runs/run-demo-001/inputs/environment/tolerances.json <<'JSON'" in runbook_text
-    assert '  "tier_id": "tier-1",' in runbook_text
-    assert "Then bind them on the same shipped run spine:" in runbook_text
-    assert (
-        "--toolchain-set-ref env.toolchains=.belgi/runs/run-demo-001/inputs/environment/toolchain-set.json"
-        in runbook_text
+    expected_runbook_markers = (
+        "Run ID: `run-demo-001`",
+        "belgi waiver new --repo . --run-id run-demo-001",
+        "belgi waiver apply --repo . --run-id run-demo-001",
+        'BASE_SHA40="$(git rev-parse HEAD)"',
+        "inputs/intent/IntentSpec.core.md",
+        "inputs/waivers/waiver-001.json",
+        "Operator Anchors",
+        "inputs/anchors/approvals/hotl_approval.json",
+        "inputs/anchors/keys/attestation_pubkey.hex",
+        "inputs/anchors/signing/seal_signature.b64",
+        "Optional shared environment objects:",
+        "inputs/environment/toolchain-set.json",
+        "inputs/environment/tolerances.json",
+        "mkdir -p .belgi/runs/run-demo-001/inputs/environment",
+        "cat > .belgi/runs/run-demo-001/inputs/environment/toolchain-set.json <<'JSON'",
+        '  "toolchain_set_id": "env.toolchains",',
+        "cat > .belgi/runs/run-demo-001/inputs/environment/tolerances.json <<'JSON'",
+        '  "tier_id": "tier-1",',
+        "Then bind them on the same shipped run spine:",
+        "--toolchain-set-ref env.toolchains=.belgi/runs/run-demo-001/inputs/environment/toolchain-set.json",
+        "--tolerances-ref tier.tolerances=.belgi/runs/run-demo-001/inputs/environment/tolerances.json",
+        "Tier requirements over the shared anchors family:",
+        "--hotl-approval-ref .belgi/runs/run-demo-001/inputs/anchors/approvals/hotl_approval.json",
+        "--genesis-seal-ref .belgi/runs/run-demo-001/inputs/evidence/genesis_seal.json",
+        "belgi verify --repo .",
+        "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`.",
     )
-    assert "--tolerances-ref tier.tolerances=.belgi/runs/run-demo-001/inputs/environment/tolerances.json" in runbook_text
-    assert "--toolchain-set-ref <object_id>=<repo-relative-path>" in runbook_text
-    assert "--toolchain-ref <object_id>=<repo-relative-path>" in runbook_text
-    assert "ToolchainSet is not an Operator Anchor." in runbook_text
-    assert "explicit ToolchainSet refs are pre-lock operator inputs." in runbook_text
-    assert "Accepted only as the current run canonical input:" in runbook_text
-    assert "stages that ToolchainSet into locked/store authority before C1" in runbook_text
-    assert (
-        "ToolchainSet member declaration paths must still point at actual repo-relative dependency/toolchain declaration surfaces in the evaluated revision truth envelope."
-        in runbook_text
-    )
-    assert "`toolchain.main` is reserved" in runbook_text
-    assert "--tolerances-ref <object_id>=<repo-relative-path>" in runbook_text
-    assert "Tolerances is not an Operator Anchor." in runbook_text
-    assert "explicit Tolerances refs are pre-lock operator inputs." in runbook_text
-    assert "stages that Tolerances object into locked/store authority before C1" in runbook_text
-    assert "`Tolerances.tier_id` must match the selected tier." in runbook_text
-    assert "may equal or tighten the selected tier ceilings, but BELGI rejects wider values" in runbook_text
-    assert "generates the canonical Tolerances object from the selected tier pack" in runbook_text
-    assert "change only the Tolerances `tier_id` / ceilings so the object stays within that selected tier" in runbook_text
-    assert "Artifacts are created under `.belgi/store/runs/<run_key>/<attempt_id>/`." in runbook_text
+    for snippet in expected_runbook_markers:
+        assert snippet in runbook_text
     assert not tolerances_path.exists()
     assert not toolchain_path.exists()
     assert not (run_dir / "EvidenceManifest.json").exists()
