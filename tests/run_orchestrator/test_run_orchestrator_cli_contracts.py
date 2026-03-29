@@ -35,6 +35,26 @@ _write_operator_anchors = harness._write_operator_anchors
 _write_run_evidence_inputs = harness._write_run_evidence_inputs
 
 
+def test_run_orchestrator_harness_alias_bundle_matches_helper_surface() -> None:
+    alias_bundle = {
+        "_assert_no_persisted_signing_material": _assert_no_persisted_signing_material,
+        "_commit_file": _commit_file,
+        "_fresh_repo_clone": _fresh_repo_clone,
+        "_git_rev_parse": _git_rev_parse,
+        "_pin_shared_path_anchor_time": _pin_shared_path_anchor_time,
+        "_prepare_shared_run_intent": _prepare_shared_run_intent,
+        "_rewrite_shared_run_intent_for_empty_doc_impact": _rewrite_shared_run_intent_for_empty_doc_impact,
+        "_remove_tests_tree_and_commit": _remove_tests_tree_and_commit,
+        "_run_tier1_and_get_attempt": _run_tier1_and_get_attempt,
+        "_unset_upstream_if_present": _unset_upstream_if_present,
+        "_write_operator_anchors": _write_operator_anchors,
+        "_write_run_evidence_inputs": _write_run_evidence_inputs,
+    }
+
+    for name, aliased in alias_bundle.items():
+        assert aliased is getattr(harness, name)
+
+
 def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_passes(
     tmp_path: Path,
     capsys: object,

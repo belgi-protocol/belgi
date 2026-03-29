@@ -85,6 +85,42 @@ def test_tier_fixtures_public_api_is_explicit_and_narrow() -> None:
     ]
 
 
+def test_tier_policy_returns_tier_params_shape_and_matches_owner_path() -> None:
+    from chain.logic.tier_packs import TierParams, load_tier_params
+
+    tiers = tier_fixtures.builtin_tiers()
+    tiers_text = json.dumps(tiers, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+    owner = load_tier_params(tiers_text, "tier-1")
+    assert owner.params is not None, owner.parse_error
+
+    helper = tier_fixtures.tier_policy("tier-1", tiers_obj=tiers)
+    assert isinstance(helper, TierParams)
+    assert helper == owner.params
+
+
+def test_tier_policy_preserves_override_semantics_against_owner_path() -> None:
+    from chain.logic.tier_packs import TierParams, load_tier_params
+
+    tiers = tier_fixtures.builtin_tiers()
+    tier0 = tiers["tiers"]["tier-0"]
+    assert isinstance(tier0, dict)
+    tier0["command_log_mode"] = "structured"
+    tier0["test_policy"]["required"] = True
+    tier0["envelope_policy"]["requires_attestation"] = True
+
+    tiers_text = json.dumps(tiers, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    owner = load_tier_params(tiers_text, "tier-0")
+    assert owner.params is not None, owner.parse_error
+
+    helper = tier_fixtures.tier_policy("tier-0", tiers_obj=tiers)
+    assert isinstance(helper, TierParams)
+    assert helper == owner.params
+    assert helper.command_log_mode == "structured"
+    assert helper.test_policy_required == "yes"
+    assert helper.envelope_policy_requires_attestation == "yes"
+
+
 def test_build_q_repo_is_deterministic_for_same_explicit_inputs(tmp_path: Path) -> None:
     common_kwargs = {
         "rel_root": "synthetic/q",

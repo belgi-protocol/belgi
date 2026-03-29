@@ -10,7 +10,10 @@ operator authority.
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from chain.logic.tier_packs import TierParams
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -63,11 +66,11 @@ def tier_contract(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> d
     return contract
 
 
-def tier_policy(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> Any:
+def tier_policy(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> "TierParams":
     return _load_tier_params(tier_id, tiers_obj=tiers_obj)
 
 
-def _load_tier_params(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> Any:
+def _load_tier_params(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> "TierParams":
     from chain.logic.tier_packs import load_tier_params
 
     tiers_source = builtin_tiers() if tiers_obj is None else tiers_obj
