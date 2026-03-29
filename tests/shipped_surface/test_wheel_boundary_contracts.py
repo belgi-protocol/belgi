@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -18,6 +18,12 @@ from tools.wheel_boundary import (
 pytestmark = pytest.mark.repo_local
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FORBIDDEN_NESTED_SEGMENTS = frozenset({
+    "tests",
+    "housekeeping",
+    "__pycache__",
+    ".pytest_cache",
+})
 
 
 def _build_wheel(out_dir: Path) -> Path:
@@ -44,7 +50,7 @@ def _build_wheel(out_dir: Path) -> Path:
     return wheels[-1]
 
 
-def test_built_wheel_matches_publish_boundary_ssot(tmp_path: Path) -> None:
+def test_built_wheel_matches_publish_boundary_prefix_ssot(tmp_path: Path) -> None:
     wheel_path = _build_wheel(tmp_path / "dist")
 
     entries_first = list_wheel_entries(wheel_path)
@@ -60,3 +66,22 @@ def test_built_wheel_matches_publish_boundary_ssot(tmp_path: Path) -> None:
         assert prefix in prefixes
     for prefix in FORBIDDEN_MODULE_PREFIXES:
         assert prefix not in prefixes
+
+
+def test_built_wheel_excludes_forbidden_nested_repo_only_segments(tmp_path: Path) -> None:
+    wheel_path = _build_wheel(tmp_path / "dist")
+    entries = list_wheel_entries(wheel_path)
+
+    unexpected_nested: list[str] = []
+    for entry in entries:
+        parts = PurePosixPath(entry.rstrip("/")).parts
+        if len(parts) < 2:
+            continue
+        head = parts[0]
+        if head.endswith(".dist-info") or head.endswith(".data"):
+            continue
+        nested = set(parts[1:])
+        if nested & FORBIDDEN_NESTED_SEGMENTS:
+            unexpected_nested.append(entry)
+
+    assert unexpected_nested == []

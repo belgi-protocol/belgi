@@ -2,6 +2,21 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.8 — 2026-03-29
+
+### Summary
+Patch release resetting the repo-wide test versus sweep boundary, tightening suite owner-lane governance, and hardening two shipped run-path regressions uncovered during that cleanup.
+
+### Changed
+- Centralized owner-derived semantic fixtures and retired stale docs-authority, meta, and static-parity tests so repo-live mirror/parity policing stays on sweep or `check_drift`, while runtime/helper semantics stay in their owner lanes.
+- Narrowed run-cli, gate, schema, shipped-surface, and tools contract tests to published owner behavior and published tool/output surfaces, replacing brittle prose freezes, regex/source policing, and wrong-surface helper coupling with owner-path or tool-surface proofs.
+- Added shared seam shape contracts for tier fixtures, direct `tools.check_drift` and emitted sweep-report coverage, and repo-wide suite governance that locks parity-root targeting to sweep/tools lanes while keeping `tests/meta/` on suite-governance duties only.
+- Hardened precomputed seal-signature replay on the shared `belgi run --seal-signature-ref` path so replay signatures are generated from the exact failed-at-seal payload that the retry verifies.
+- Removed install/package metadata from `belgi run` key derivation so repeated runs on the same logical run identity keep a stable `run_key` while `attempt_id` continues to advance.
+
+### Notes
+- This patch primarily resets test and sweep ownership boundaries and their supporting proofs; public CLI surface and locked-object schema remain unchanged.
+
 ## 1.6.7 — 2026-03-28
 
 ### Summary

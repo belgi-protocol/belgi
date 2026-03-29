@@ -21,6 +21,7 @@ from tests.gates.gate_test_support import (
 )
 from tests.helpers import builders
 from tests.helpers.repo_imports import import_fresh_protocol_pack_surface
+from tests.helpers.tier_fixtures import write_hotl_approval_fixture
 
 pytestmark = pytest.mark.repo_local
 
@@ -420,46 +421,22 @@ def test_gate_q_missing_protocol_pack_field(tmp_path: Path) -> None:
 
 
 def _append_hotl_approval_artifact(repo_root: Path, *, evidence_rel: str, rel_root: str, run_id: str) -> None:
-    hotl_rel = f"{rel_root}/hotl_approval.json"
-    audit_rel = f"{rel_root}/hotl_approval.log"
-    locked_rel = f"{rel_root}/LockedSpec.json"
-    builders.write_text(repo_root / audit_rel, "synthetic HOTL audit trail\n")
-    hotl_payload = {
-        "schema_version": "1.0.0",
-        "run_id": run_id,
-        "approval_id": "hotl.synthetic",
-        "approver": "human:operator@example.com",
-        "approval_type": "pre-proposal",
-        "reviewed_artifacts": [
-            {
-                "id": "locked.synthetic",
-                "hash": _sha256_hex((repo_root / locked_rel).read_bytes()),
-                "storage_ref": locked_rel,
-            }
-        ],
-        "decision": "approved",
-        "approved_at": "1970-01-01T00:00:00Z",
-        "justification": "synthetic HOTL approval for tier-2 coverage",
-        "audit_trail_ref": {
-            "id": "audit.hotl.synthetic",
-            "storage_ref": audit_rel,
-        },
-    }
-    builders.write_json(repo_root / hotl_rel, hotl_payload)
+    fixture = write_hotl_approval_fixture(
+        repo_root,
+        rel_root=rel_root,
+        run_id=run_id,
+        locked_rel=f"{rel_root}/LockedSpec.json",
+        approver="human:operator@example.com",
+        approval_id="hotl.synthetic",
+        audit_id="audit.hotl.synthetic",
+    )
 
     evidence_path = repo_root / evidence_rel
     evidence = _read_json(evidence_path)
     artifacts = evidence.get("artifacts")
     assert isinstance(artifacts, list)
     artifacts.append(
-        {
-            "kind": "hotl_approval",
-            "id": "hotl.synthetic",
-            "hash": _sha256_hex((repo_root / hotl_rel).read_bytes()),
-            "media_type": "application/json",
-            "produced_by": "C1",
-            "storage_ref": hotl_rel,
-        }
+        fixture["artifact"]
     )
     evidence_path.write_text(
         json.dumps(evidence, indent=2, sort_keys=True) + "\n",

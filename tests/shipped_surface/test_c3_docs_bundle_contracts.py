@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import json
 import os
 import shutil
@@ -88,39 +87,82 @@ def _compute_bundle_root_sha256(*, docs_bundle_manifest_sha256: str, bundle_sha2
     return _sha256_hex(payload)
 
 
-def _selected_prompt_block_hashes_for_locked(locked_spec: dict[str, Any]) -> dict[str, str]:
-    c1 = importlib.import_module("chain.compiler_c1_intent")
-    tier_logic = importlib.import_module("chain.logic.tier_packs")
-    pack = importlib.import_module("belgi.protocol.pack")
-    selector = c1._prompt_block_ids_for_tier_policy
-    render = c1._render_prompt_block
+def _write_manual_c1_builtin_toolchain(repo_root: Path, *, expected_runner: str) -> str:
+    rel = "out/inputs/toolchain.json"
+    path = repo_root / Path(*rel.split("/"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "python_version": sys.version.split()[0],
+                "runner": expected_runner,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+    )
+    return f"toolchain.main={rel}"
 
-    tier_obj = locked_spec.get("tier")
-    assert isinstance(tier_obj, dict)
-    tier_id = tier_obj.get("tier_id")
-    assert isinstance(tier_id, str) and tier_id
 
-    tiers_text = pack.get_builtin_protocol_context().read_text("tiers/tier-packs.json")
-    loaded_tier = tier_logic.load_tier_params(tiers_text, tier_id)
-    assert loaded_tier.params is not None, loaded_tier.parse_error
-
-    selected_ids = selector(loaded_tier.params)
-    assert isinstance(selected_ids, list) and selected_ids
-
-    locked_preimage = dict(locked_spec)
-    locked_preimage.pop("prompt_bundle_ref", None)
-
-    out: dict[str, str] = {}
-    for block_id in selected_ids:
-        rendered = render(block_id=block_id, locked_spec_preimage=locked_preimage)
-        assert isinstance(rendered, (bytes, bytearray))
-        out[str(block_id)] = _sha256_hex(bytes(rendered))
-    return out
+def _generate_prompt_block_hashes_via_c1(
+    repo_root: Path,
+    *,
+    rel_root: str,
+    run_id: str,
+    out_locked_rel: str,
+    builtin_toolchain_ref: str,
+) -> tuple[str, dict[str, str]]:
+    prompt_bundle_rel = f"{rel_root}/generated/prompt_bundle.txt"
+    prompt_block_hashes_rel = f"{rel_root}/generated/prompt_block_hashes.json"
+    cp = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "chain.compiler_c1_intent",
+            "--repo",
+            str(repo_root),
+            "--intent-spec",
+            f"{rel_root}/IntentSpec.core.md",
+            "--out",
+            out_locked_rel,
+            "--run-id",
+            run_id,
+            "--repo-ref",
+            "synthetic",
+            "--prompt-bundle-out",
+            prompt_bundle_rel,
+            "--prompt-block-hashes-out",
+            prompt_block_hashes_rel,
+            "--tolerances",
+            f"tier.tolerances={rel_root}/tolerances.json",
+            "--envelope-id",
+            "env.synthetic",
+            "--envelope-description",
+            "synthetic envelope",
+            "--expected-runner",
+            "ci:synthetic",
+            "--toolchain-set",
+            f"env.toolchains={rel_root}/toolchain-set.json",
+            "--toolchain-ref",
+            builtin_toolchain_ref,
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert cp.returncode == 0, (cp.returncode, cp.stdout, cp.stderr)
+    hashes_obj = _read_json(repo_root / Path(*prompt_block_hashes_rel.split("/")))
+    return prompt_block_hashes_rel, {str(k): str(v) for k, v in hashes_obj.items()}
 
 
 def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> None:
     fake_root = tmp_path / "c3_bundle_repo"
     _clean_dir(fake_root)
+    rel_root = "inputs/r_pass_tier1"
 
     def _copy_rel(rel: str) -> None:
         src = REPO_ROOT / Path(*rel.split("/"))
@@ -145,7 +187,7 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
         _copy_rel(rel)
     assert not (fake_root / ".belgi" / "engine" / "c3_canonicals").exists()
 
-    synthetic_r = builders.build_r_repo(fake_root, rel_root="inputs/r_pass_tier1", run_id="c3-bundle")
+    synthetic_r = builders.build_r_repo(fake_root, rel_root=rel_root, run_id="c3-bundle")
     locked_rel = synthetic_r["locked"]
     q_rel = "inputs/GateVerdict.Q.json"
     r_rel = "inputs/GateVerdict.R.json"
@@ -155,13 +197,14 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
     run_id = _read_json(fake_root / Path(*locked_rel.split("/"))).get("run_id")
     assert isinstance(run_id, str) and run_id
 
-    locked_obj = _read_json(fake_root / Path(*locked_rel.split("/")))
-    prompt_block_hashes = _selected_prompt_block_hashes_for_locked(locked_obj)
-    prompt_block_hashes_rel = "inputs/prompt_block_hashes.json"
-    (fake_root / Path(*prompt_block_hashes_rel.split("/"))).write_text(
-        json.dumps(prompt_block_hashes, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        errors="strict",
+    builtin_toolchain_ref = _write_manual_c1_builtin_toolchain(fake_root, expected_runner="ci:synthetic")
+    builders.init_git_repo(fake_root)
+    prompt_block_hashes_rel, prompt_block_hashes = _generate_prompt_block_hashes_via_c1(
+        fake_root,
+        rel_root=rel_root,
+        run_id=run_id,
+        out_locked_rel=locked_rel,
+        builtin_toolchain_ref=builtin_toolchain_ref,
     )
 
     def _write_json(root: Path, rel: str, obj: dict[str, Any]) -> None:
@@ -443,7 +486,11 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
         errors="strict",
     )
 
-    assert not (bundle_dir1 / "belgi" / "research").exists()
+    public_manifest = json.loads(manifest_bytes_1.decode("utf-8"))
+    public_inputs = public_manifest.get("inputs")
+    assert isinstance(public_inputs, list)
+    assert all(not str(path).startswith("docs/research/") for path in public_inputs)
+    assert not (bundle_dir1 / "docs" / "research").exists()
 
     r_snapshot_loaded = _read_json(fake_root / Path(*rsnap_rel.split("/")))
     final_loaded = _read_json(fake_root / Path(*outs1["out_final_rel"].split("/")))
@@ -524,6 +571,22 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
     outs3 = _outs("out/internal")
     cp3 = _run_c3("internal", **outs3)
     assert cp3.returncode == 0, (cp3.returncode, cp3.stdout, cp3.stderr)
+    bundle_dir3 = fake_root / Path(*outs3["out_bundle_dir_rel"].split("/"))
+    internal_manifest = _read_json(bundle_dir3 / "docs_bundle_manifest.json")
+    internal_inputs = internal_manifest.get("inputs")
+    internal_files = internal_manifest.get("files")
+    assert isinstance(internal_inputs, list)
+    assert isinstance(internal_files, list)
+    research_inputs = sorted(str(path) for path in internal_inputs if str(path).startswith("docs/research/"))
+    research_files = sorted(
+        str(row.get("path"))
+        for row in internal_files
+        if isinstance(row, dict) and isinstance(row.get("path"), str) and str(row.get("path")).startswith("docs/research/")
+    )
+    assert research_inputs
+    assert research_files
+    for rel in research_files:
+        assert (bundle_dir3 / Path(*rel.split("/"))).is_file()
 
     rsnap_obj_missing_q = {
         "schema_version": "1.0.0",

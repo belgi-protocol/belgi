@@ -11,6 +11,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 from tests.helpers.builders import build_q_repo
+from tests.helpers.tier_fixtures import builtin_tiers
 
 pytestmark = pytest.mark.repo_local
 
@@ -72,7 +73,7 @@ def _prepare_gate_q_repo(
 
 
 def _write_tiers_override(repo: Path, *, max_active_waivers: int) -> None:
-    tiers = json.loads((REPO_ROOT / "tiers" / "tier-packs.json").read_text(encoding="utf-8", errors="strict"))
+    tiers = builtin_tiers()
     tiers["tiers"]["tier-0"]["waiver_policy"]["max_active_waivers"] = max_active_waivers
     _write_json(repo / "tiers.override.json", tiers)
 

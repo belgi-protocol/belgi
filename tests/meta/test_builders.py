@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from belgi.core.schema import validate_schema
-from tests.helpers import builders
+from tests.helpers import builders, tier_fixtures
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -71,6 +71,54 @@ def test_builders_public_api_is_explicit_and_narrow() -> None:
         "write_text",
         "write_tiers_override",
     ]
+
+
+def test_tier_fixtures_public_api_is_explicit_and_narrow() -> None:
+    assert tier_fixtures.__all__ == [
+        "builtin_tiers",
+        "hotl_approval_doc",
+        "prompt_block_hashes_for_locked",
+        "prompt_block_ids_for_tier_policy",
+        "tier_contract",
+        "tier_policy",
+        "write_hotl_approval_fixture",
+    ]
+
+
+def test_tier_policy_returns_tier_params_shape_and_matches_owner_path() -> None:
+    from chain.logic.tier_packs import TierParams, load_tier_params
+
+    tiers = tier_fixtures.builtin_tiers()
+    tiers_text = json.dumps(tiers, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+    owner = load_tier_params(tiers_text, "tier-1")
+    assert owner.params is not None, owner.parse_error
+
+    helper = tier_fixtures.tier_policy("tier-1", tiers_obj=tiers)
+    assert isinstance(helper, TierParams)
+    assert helper == owner.params
+
+
+def test_tier_policy_preserves_override_semantics_against_owner_path() -> None:
+    from chain.logic.tier_packs import TierParams, load_tier_params
+
+    tiers = tier_fixtures.builtin_tiers()
+    tier0 = tiers["tiers"]["tier-0"]
+    assert isinstance(tier0, dict)
+    tier0["command_log_mode"] = "structured"
+    tier0["test_policy"]["required"] = True
+    tier0["envelope_policy"]["requires_attestation"] = True
+
+    tiers_text = json.dumps(tiers, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    owner = load_tier_params(tiers_text, "tier-0")
+    assert owner.params is not None, owner.parse_error
+
+    helper = tier_fixtures.tier_policy("tier-0", tiers_obj=tiers)
+    assert isinstance(helper, TierParams)
+    assert helper == owner.params
+    assert helper.command_log_mode == "structured"
+    assert helper.test_policy_required == "yes"
+    assert helper.envelope_policy_requires_attestation == "yes"
 
 
 def test_build_q_repo_is_deterministic_for_same_explicit_inputs(tmp_path: Path) -> None:
@@ -239,7 +287,7 @@ def test_build_q_repo_does_not_repair_a_q3_invalid_request(tmp_path: Path) -> No
 
 def test_build_r_repo_does_not_mask_r_doc_001_ownership(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
-    tiers = builders.builtin_tiers()
+    tiers = tier_fixtures.builtin_tiers()
     tiers["tiers"]["tier-1"]["doc_impact_required"] = True
     paths = builders.build_r_repo(
         repo_root,

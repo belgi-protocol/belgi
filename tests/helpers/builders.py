@@ -17,6 +17,8 @@ from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any
 
+from tests.helpers import tier_fixtures
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILTIN_PACK_ROOT = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
 MANIFEST_FILENAME = "ProtocolPackManifest.json"
@@ -102,16 +104,7 @@ def sync_locked_spec_protocol_identity(locked_path: Path, manifest_path: Path) -
 
 
 def builtin_tiers() -> dict[str, Any]:
-    return read_json(REPO_ROOT / "tiers" / "tier-packs.json")
-
-
-def tier_contract(tier_id: str, *, tiers_obj: dict[str, Any] | None = None) -> dict[str, Any]:
-    tiers_source = builtin_tiers() if tiers_obj is None else tiers_obj
-    tiers = tiers_source.get("tiers")
-    assert isinstance(tiers, dict), "tiers/tier-packs.json missing tiers map"
-    contract = tiers.get(tier_id)
-    assert isinstance(contract, dict), f"missing tier contract for {tier_id}"
-    return contract
+    return tier_fixtures.builtin_tiers()
 
 
 def write_tiers_override(repo_root: Path, tiers_obj: dict[str, Any]) -> str:
@@ -257,7 +250,7 @@ def build_q_repo(
 ) -> dict[str, str]:
     if tiers_obj is None:
         tiers_obj = builtin_tiers()
-    contract = tier_contract(tier_id, tiers_obj=tiers_obj)
+    contract = tier_fixtures.tier_contract(tier_id, tiers_obj=tiers_obj)
     allowed_dirs = ["policy/"] if allowed_dirs is None else list(allowed_dirs)
     forbidden_dirs = [] if forbidden_dirs is None else list(forbidden_dirs)
     success_criteria = ["Criterion 1"] if success_criteria is None else list(success_criteria)
@@ -510,7 +503,7 @@ def build_r_repo(
 ) -> dict[str, str]:
     if tiers_obj is None:
         tiers_obj = builtin_tiers()
-    contract = tier_contract(tier_id, tiers_obj=tiers_obj)
+    contract = tier_fixtures.tier_contract(tier_id, tiers_obj=tiers_obj)
     q_paths = build_q_repo(
         repo_root,
         rel_root=rel_root,

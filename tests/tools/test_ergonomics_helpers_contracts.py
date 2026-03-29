@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.repo_local
 
 ERGONOMIC_FILES = [
     REPO_ROOT / "scripts" / "belgi_latest_run.ps1",
@@ -32,23 +34,58 @@ def test_helpers_are_adopter_agnostic() -> None:
 
     assert offenders == [], "adopter identifiers leaked into canonical ergonomics surfaces:\n" + "\n".join(offenders)
 
+def _pwsh_binary() -> str:
+    pwsh = shutil.which("pwsh")
+    if not pwsh:
+        pytest.skip("pwsh is required for WIP helper behavior tests")
+    return pwsh
 
-def test_wip_helper_has_required_safety_guardrails() -> None:
+
+def _init_git_repo(repo_root: Path) -> None:
+    repo_root.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_root, check=True, capture_output=True, text=True)
+    (repo_root / "README.md").write_text("# test\n", encoding="utf-8", errors="strict", newline="\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo_root, check=True, capture_output=True, text=True)
+
+
+def _run_wip_helper(repo_root: Path) -> subprocess.CompletedProcess[str]:
     helper = REPO_ROOT / "scripts" / "belgi_wip_commit_run_reset.ps1"
-    text = helper.read_text(encoding="utf-8", errors="strict")
+    return subprocess.run(
+        [_pwsh_binary(), "-NoProfile", "-File", str(helper), "-Repo", str(repo_root)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
 
-    checks: list[tuple[str, str]] = [
-        ("merge detection", r"MERGE_HEAD"),
-        ("rebase detection", r"rebase-merge"),
-        ("rebase apply detection", r"rebase-apply"),
-        ("staged preflight abort", r"git diff --cached --quiet --exit-code"),
-        ("tracked-only staging", r"git add -u"),
-        ("try/finally restore", r"\btry\s*\{[\s\S]*\bfinally\s*\{"),
-        ("head restoration check", r"\$headAfterRestore\s*-ne\s*\$originalHead"),
-    ]
 
-    missing = [name for (name, pattern) in checks if re.search(pattern, text, flags=re.IGNORECASE) is None]
-    assert missing == [], "missing WIP safety guardrails:\n" + "\n".join(missing)
+def _assert_fail_closed_preflight(cp: subprocess.CompletedProcess[str], message_fragment: str) -> None:
+    assert cp.returncode != 0
+    assert message_fragment in (cp.stderr + cp.stdout).lower()
+
+
+def test_wip_helper_rejects_staged_changes_before_running_belgi(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    (repo / "README.md").write_text("# staged\n", encoding="utf-8", errors="strict", newline="\n")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True, text=True)
+
+    cp = _run_wip_helper(repo)
+
+    _assert_fail_closed_preflight(cp, "staged changes detected")
+
+
+def test_wip_helper_rejects_merge_in_progress_before_wip_commit(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    git_dir = (repo / ".git").resolve()
+    (git_dir / "MERGE_HEAD").write_text("0" * 40 + "\n", encoding="utf-8", errors="strict", newline="\n")
+
+    cp = _run_wip_helper(repo)
+
+    _assert_fail_closed_preflight(cp, "merge in progress")
 
 
 @pytest.mark.parametrize("path", ERGONOMIC_FILES)

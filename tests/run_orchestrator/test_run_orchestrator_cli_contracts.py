@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import importlib
 import json
 from pathlib import Path
 
@@ -35,6 +37,201 @@ _write_operator_anchors = harness._write_operator_anchors
 _write_run_evidence_inputs = harness._write_run_evidence_inputs
 
 
+def _capture_seal_signature_for_precomputed_replay(
+    *,
+    cli_surface: BelgiCliSurface,
+    source_repo_root: Path,
+    attempt_dir: Path,
+    final_commit_sha: str,
+    seal_signature_path: Path,
+    seal_private_key_ref: str,
+) -> str:
+    # Generate the precomputed signature from the exact failed-at-seal attempt payload,
+    # rather than harvesting a signature from a different belgi run entry path.
+    run_orchestrator = cli_surface.run_orchestrator
+    seal_bundle = importlib.import_module("chain.seal_bundle")
+    chain_repo_dir = attempt_dir / "repo"
+    locked_spec = json.loads((chain_repo_dir / "out" / "LockedSpec.json").read_text(encoding="utf-8", errors="strict"))
+    run_id = str(locked_spec.get("run_id") or "").strip()
+    belgi_version = str(locked_spec.get("belgi_version") or "").strip()
+    assert run_id
+    assert belgi_version
+    tier_obj = locked_spec.get("tier")
+    assert isinstance(tier_obj, dict)
+    assert str(tier_obj.get("tier_id") or "").strip() in {"tier-2", "tier-3"}
+    waiver_refs = locked_spec.get("waivers_applied")
+    assert waiver_refs is None or isinstance(waiver_refs, list)
+
+    seal_private_key = run_orchestrator._read_local_secret_text_ref(
+        source_repo_root=source_repo_root,
+        source_ref=seal_private_key_ref,
+        label="seal private key ref",
+    )
+    locked_spec_path = chain_repo_dir / "out" / "LockedSpec.json"
+    gate_q_path = chain_repo_dir / "out" / "GateVerdict.Q.json"
+    gate_r_path = chain_repo_dir / "out" / "GateVerdict.R.json"
+    evidence_path = chain_repo_dir / "out" / "EvidenceManifest.json"
+    locked_ref = seal_bundle._object_ref_for_json(
+        chain_repo_dir,
+        locked_spec_path,
+        default_id=f"lockedspec-{run_id}",
+        id_key=None,
+    )
+    q_ref = seal_bundle._object_ref_for_json(
+        chain_repo_dir,
+        gate_q_path,
+        default_id=f"gate-Q-{run_id}",
+        id_key=None,
+    )
+    r_ref = seal_bundle._object_ref_for_json(
+        chain_repo_dir,
+        gate_r_path,
+        default_id=f"gate-R-{run_id}",
+        id_key=None,
+    )
+    evidence_ref = seal_bundle._object_ref_for_json(
+        chain_repo_dir,
+        evidence_path,
+        default_id=f"evidence-manifest-{run_id}",
+        id_key=None,
+    )
+
+    sealed_waiver_refs: list[dict[str, str]] = []
+    if isinstance(waiver_refs, list):
+        for waiver_ref in waiver_refs:
+            if not isinstance(waiver_ref, str) or not waiver_ref.strip():
+                continue
+            waiver_path = seal_bundle.resolve_repo_rel_path(
+                chain_repo_dir,
+                waiver_ref.strip(),
+                must_exist=True,
+                must_be_file=True,
+                allow_backslashes=True,
+                forbid_symlinks=True,
+            )
+            waiver_doc = seal_bundle._load_json(waiver_path)
+            waiver_id = waiver_doc.get("waiver_id") if isinstance(waiver_doc, dict) else None
+            sealed_waiver_refs.append(
+                seal_bundle._object_ref_for_json(
+                    chain_repo_dir,
+                    waiver_path,
+                    default_id=waiver_id or f"waiver-{waiver_path.stem}",
+                    id_key=None,
+                )
+            )
+
+    manifest_items: list[tuple[str, object]] = [
+        ("belgi_version", belgi_version),
+        ("evidence_manifest_ref", evidence_ref),
+        ("final_commit_sha", final_commit_sha),
+        ("gate_q_verdict_ref", q_ref),
+        ("gate_r_verdict_ref", r_ref),
+        ("locked_spec_ref", locked_ref),
+        ("run_id", run_id),
+        ("schema_version", "1.0.0"),
+        ("seal_hash", "0" * 64),
+        ("sealed_at", run_orchestrator.FIXED_SEALED_AT),
+        ("signer", run_orchestrator.FIXED_SIGNER),
+        ("waivers", sealed_waiver_refs),
+    ]
+    manifest = dict(manifest_items)
+    manifest["seal_hash"] = seal_bundle._seal_hash(manifest)
+    payload_bytes = seal_bundle._seal_signature_payload(manifest)
+
+    env = locked_spec.get("environment_envelope")
+    assert isinstance(env, dict)
+    seal_pubkey_ref = env.get("seal_pubkey_ref")
+    assert isinstance(seal_pubkey_ref, dict)
+    pub_bytes = seal_bundle._resolve_objectref_bytes(
+        chain_repo_dir,
+        seal_pubkey_ref,
+        field="LockedSpec.environment_envelope.seal_pubkey_ref",
+    )
+    pub = seal_bundle._load_ed25519_public_key(pub_bytes)
+    priv = seal_bundle._load_ed25519_private_key(seal_private_key.encode("utf-8", errors="strict"))
+    sig_bytes = priv.sign(payload_bytes)
+    seal_bundle._verify_ed25519_signature(pub, sig_bytes, payload_bytes, context="precomputed seal replay")
+    signature = base64.b64encode(sig_bytes).decode("ascii")
+    seal_signature_path.write_text(signature + "\n", encoding="utf-8", errors="strict", newline="\n")
+    return signature
+
+
+def _run_with_settled_precomputed_seal_signature(
+    *,
+    belgi_main: object,
+    capsys: object,
+    cli_surface: BelgiCliSurface,
+    source_repo_root: Path,
+    signature_argv: list[str],
+    final_commit_sha: str,
+    seal_signature_path: Path,
+    seal_private_key_ref: str,
+) -> tuple[str, dict[str, object], Path]:
+    rc_initial = belgi_main(signature_argv)
+    assert rc_initial == 10
+    failed_run = json.loads(capsys.readouterr().out.splitlines()[0])
+
+    settled_signature = ""
+    for _ in range(2):
+        failed_attempt_dir = (
+            source_repo_root
+            / ".belgi"
+            / "store"
+            / "runs"
+            / str(failed_run["run_key"])
+            / str(failed_run["attempt_id"])
+        )
+        settled_signature = _capture_seal_signature_for_precomputed_replay(
+            cli_surface=cli_surface,
+            source_repo_root=source_repo_root,
+            attempt_dir=failed_attempt_dir,
+            final_commit_sha=final_commit_sha,
+            seal_signature_path=seal_signature_path,
+            seal_private_key_ref=seal_private_key_ref,
+        )
+
+        rc_retry = belgi_main(signature_argv)
+        retry_machine = json.loads(capsys.readouterr().out.splitlines()[0])
+        if rc_retry == 0:
+            final_attempt_dir = (
+                source_repo_root
+                / ".belgi"
+                / "store"
+                / "runs"
+                / str(retry_machine["run_key"])
+                / str(retry_machine["attempt_id"])
+            )
+            return settled_signature, retry_machine, final_attempt_dir
+
+        assert rc_retry == 10
+        failed_run = retry_machine
+
+    pytest.fail(
+        "precomputed seal replay did not settle after retrying the latest failed-at-seal payload: "
+        f"{failed_run.get('primary_reason')}"
+    )
+
+
+def test_run_orchestrator_harness_alias_bundle_matches_helper_surface() -> None:
+    alias_bundle = {
+        "_assert_no_persisted_signing_material": _assert_no_persisted_signing_material,
+        "_commit_file": _commit_file,
+        "_fresh_repo_clone": _fresh_repo_clone,
+        "_git_rev_parse": _git_rev_parse,
+        "_pin_shared_path_anchor_time": _pin_shared_path_anchor_time,
+        "_prepare_shared_run_intent": _prepare_shared_run_intent,
+        "_rewrite_shared_run_intent_for_empty_doc_impact": _rewrite_shared_run_intent_for_empty_doc_impact,
+        "_remove_tests_tree_and_commit": _remove_tests_tree_and_commit,
+        "_run_tier1_and_get_attempt": _run_tier1_and_get_attempt,
+        "_unset_upstream_if_present": _unset_upstream_if_present,
+        "_write_operator_anchors": _write_operator_anchors,
+        "_write_run_evidence_inputs": _write_run_evidence_inputs,
+    }
+
+    for name, aliased in alias_bundle.items():
+        assert aliased is getattr(harness, name)
+
+
 def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_passes(
     tmp_path: Path,
     capsys: object,
@@ -60,70 +257,38 @@ def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_pas
 
     _unset_upstream_if_present(repo)
     head_sha = _git_rev_parse(repo, "HEAD")
-    rc_run_private_key = belgi_main(
-        [
-            "run",
-            "--repo",
-            str(repo),
-            "--tier",
-            "tier-2",
-            "--intent-spec",
-            intent_path.relative_to(repo).as_posix(),
-            "--base-revision",
-            head_sha,
-            "--attestation-pubkey-ref",
-            operator_anchors["attestation_pubkey_ref"],
-            "--seal-pubkey-ref",
-            operator_anchors["seal_pubkey_ref"],
-            "--hotl-approval-ref",
-            operator_anchors["hotl_approval_ref"],
-            "--attestation-signing-key-ref",
-            operator_anchors["attestation_signing_key_ref"],
-            "--seal-private-key-ref",
-            operator_anchors["seal_private_key_ref"],
-        ]
-    )
-    assert rc_run_private_key == 0
-    first_run = json.loads(capsys.readouterr().out.splitlines()[0])
-    first_attempt_dir = (
-        repo / ".belgi" / "store" / "runs" / str(first_run["run_key"]) / str(first_run["attempt_id"])
-    )
-    first_seal_manifest = json.loads(
-        (first_attempt_dir / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict")
-    )
-    first_signature = str(first_seal_manifest.get("signature") or "").strip()
-    assert first_signature
-
     seal_signature_path = repo / Path(*operator_anchors["seal_signature_ref"].split("/"))
-    seal_signature_path.write_text(first_signature + "\n", encoding="utf-8", errors="strict", newline="\n")
-
-    rc_run_signature = belgi_main(
-        [
-            "run",
-            "--repo",
-            str(repo),
-            "--tier",
-            "tier-2",
-            "--intent-spec",
-            intent_path.relative_to(repo).as_posix(),
-            "--base-revision",
-            head_sha,
-            "--attestation-pubkey-ref",
-            operator_anchors["attestation_pubkey_ref"],
-            "--seal-pubkey-ref",
-            operator_anchors["seal_pubkey_ref"],
-            "--hotl-approval-ref",
-            operator_anchors["hotl_approval_ref"],
-            "--attestation-signing-key-ref",
-            operator_anchors["attestation_signing_key_ref"],
-            "--seal-signature-ref",
-            operator_anchors["seal_signature_ref"],
-        ]
-    )
-    assert rc_run_signature == 0
-    second_run = json.loads(capsys.readouterr().out.splitlines()[0])
-    second_attempt_dir = (
-        repo / ".belgi" / "store" / "runs" / str(second_run["run_key"]) / str(second_run["attempt_id"])
+    seal_signature_path.write_text("AAAA\n", encoding="utf-8", errors="strict", newline="\n")
+    signature_argv = [
+        "run",
+        "--repo",
+        str(repo),
+        "--tier",
+        "tier-2",
+        "--intent-spec",
+        intent_path.relative_to(repo).as_posix(),
+        "--base-revision",
+        head_sha,
+        "--attestation-pubkey-ref",
+        operator_anchors["attestation_pubkey_ref"],
+        "--seal-pubkey-ref",
+        operator_anchors["seal_pubkey_ref"],
+        "--hotl-approval-ref",
+        operator_anchors["hotl_approval_ref"],
+        "--attestation-signing-key-ref",
+        operator_anchors["attestation_signing_key_ref"],
+        "--seal-signature-ref",
+        operator_anchors["seal_signature_ref"],
+    ]
+    settled_signature, second_run, second_attempt_dir = _run_with_settled_precomputed_seal_signature(
+        belgi_main=belgi_main,
+        capsys=capsys,
+        cli_surface=fresh_cli_surface,
+        source_repo_root=repo,
+        signature_argv=signature_argv,
+        final_commit_sha=head_sha,
+        seal_signature_path=seal_signature_path,
+        seal_private_key_ref=operator_anchors["seal_private_key_ref"],
     )
     assert second_attempt_dir.is_dir()
 
@@ -134,7 +299,7 @@ def test_run_tier2_shared_path_accepts_precomputed_seal_signature_and_verify_pas
         (second_out_dir / "SealManifest.json").read_text(encoding="utf-8", errors="strict")
     )
     assert second_seal_manifest.get("signature_alg") == "ed25519"
-    assert second_seal_manifest.get("signature") == first_signature
+    assert second_seal_manifest.get("signature") == settled_signature
 
     rc_verify = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify == 0
@@ -172,75 +337,46 @@ def test_run_tier3_shared_path_accepts_precomputed_seal_signature_and_verify_pas
 
     _unset_upstream_if_present(repo)
     head_sha = _git_rev_parse(repo, "HEAD")
-    rc_run_private_key = belgi_main(
-        [
-            "run",
-            "--repo",
-            str(repo),
-            "--tier",
-            "tier-3",
-            "--intent-spec",
-            intent_path.relative_to(repo).as_posix(),
-            "--base-revision",
-            head_sha,
-            "--attestation-pubkey-ref",
-            operator_anchors["attestation_pubkey_ref"],
-            "--seal-pubkey-ref",
-            operator_anchors["seal_pubkey_ref"],
-            "--hotl-approval-ref",
-            operator_anchors["hotl_approval_ref"],
-            "--attestation-signing-key-ref",
-            operator_anchors["attestation_signing_key_ref"],
-            "--seal-private-key-ref",
-            operator_anchors["seal_private_key_ref"],
-            "--genesis-seal-ref",
-            run_evidence["genesis_seal_ref"],
-        ]
-    )
-    assert rc_run_private_key == 0
-    first_run = json.loads(capsys.readouterr().out.splitlines()[0])
-    first_attempt_dir = repo / ".belgi" / "store" / "runs" / str(first_run["run_key"]) / str(first_run["attempt_id"])
-    first_signature = str(
-        json.loads((first_attempt_dir / "repo" / "out" / "SealManifest.json").read_text(encoding="utf-8", errors="strict")).get("signature") or ""
-    ).strip()
-    assert first_signature
-
     seal_signature_path = repo / Path(*operator_anchors["seal_signature_ref"].split("/"))
-    seal_signature_path.write_text(first_signature + "\n", encoding="utf-8", errors="strict", newline="\n")
-
-    rc_run_signature = belgi_main(
-        [
-            "run",
-            "--repo",
-            str(repo),
-            "--tier",
-            "tier-3",
-            "--intent-spec",
-            intent_path.relative_to(repo).as_posix(),
-            "--base-revision",
-            head_sha,
-            "--attestation-pubkey-ref",
-            operator_anchors["attestation_pubkey_ref"],
-            "--seal-pubkey-ref",
-            operator_anchors["seal_pubkey_ref"],
-            "--hotl-approval-ref",
-            operator_anchors["hotl_approval_ref"],
-            "--attestation-signing-key-ref",
-            operator_anchors["attestation_signing_key_ref"],
-            "--seal-signature-ref",
-            operator_anchors["seal_signature_ref"],
-            "--genesis-seal-ref",
-            run_evidence["genesis_seal_ref"],
-        ]
+    seal_signature_path.write_text("AAAA\n", encoding="utf-8", errors="strict", newline="\n")
+    signature_argv = [
+        "run",
+        "--repo",
+        str(repo),
+        "--tier",
+        "tier-3",
+        "--intent-spec",
+        intent_path.relative_to(repo).as_posix(),
+        "--base-revision",
+        head_sha,
+        "--attestation-pubkey-ref",
+        operator_anchors["attestation_pubkey_ref"],
+        "--seal-pubkey-ref",
+        operator_anchors["seal_pubkey_ref"],
+        "--hotl-approval-ref",
+        operator_anchors["hotl_approval_ref"],
+        "--attestation-signing-key-ref",
+        operator_anchors["attestation_signing_key_ref"],
+        "--seal-signature-ref",
+        operator_anchors["seal_signature_ref"],
+        "--genesis-seal-ref",
+        run_evidence["genesis_seal_ref"],
+    ]
+    settled_signature, second_run, second_attempt_dir = _run_with_settled_precomputed_seal_signature(
+        belgi_main=belgi_main,
+        capsys=capsys,
+        cli_surface=fresh_cli_surface,
+        source_repo_root=repo,
+        signature_argv=signature_argv,
+        final_commit_sha=head_sha,
+        seal_signature_path=seal_signature_path,
+        seal_private_key_ref=operator_anchors["seal_private_key_ref"],
     )
-    assert rc_run_signature == 0
-    second_run = json.loads(capsys.readouterr().out.splitlines()[0])
-    second_attempt_dir = repo / ".belgi" / "store" / "runs" / str(second_run["run_key"]) / str(second_run["attempt_id"])
     second_out_dir = second_attempt_dir / "repo" / "out"
     _assert_no_persisted_signing_material(second_out_dir)
     second_seal_manifest = json.loads((second_out_dir / "SealManifest.json").read_text(encoding="utf-8", errors="strict"))
     assert second_seal_manifest.get("signature_alg") == "ed25519"
-    assert second_seal_manifest.get("signature") == first_signature
+    assert second_seal_manifest.get("signature") == settled_signature
 
     rc_verify = belgi_main(["verify", "--repo", str(repo)])
     assert rc_verify == 0

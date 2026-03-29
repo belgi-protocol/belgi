@@ -31,6 +31,24 @@ from belgi.protocol.pack import get_builtin_protocol_context
 from belgi.trust_anchor import load_pinned_trust_anchor
 
 
+def _manifest_relpaths(*, prefix: str, suffix: str | None = None) -> list[str]:
+    ctx = get_builtin_protocol_context()
+    manifest_files = ctx.manifest.get("files")
+    assert isinstance(manifest_files, list), "manifest.files must be a list"
+    relpaths: list[str] = []
+    for row in manifest_files:
+        assert isinstance(row, dict), "manifest.files entries must be objects"
+        relpath = row.get("relpath")
+        assert isinstance(relpath, str), "manifest.files[].relpath must be string"
+        if not relpath.startswith(prefix):
+            continue
+        if suffix is not None and not relpath.endswith(suffix):
+            continue
+        relpaths.append(relpath)
+    assert relpaths, f"expected shipped manifest entries under {prefix!r}"
+    return sorted(relpaths)
+
+
 def test_no_repo_shadowing() -> None:
     """Verify belgi is not loaded from repo when CI env is set."""
     if os.getenv("BELGI_ENFORCE_NO_SHADOWING") != "1":
@@ -81,27 +99,9 @@ def test_protocol_pack_manifest_structure() -> None:
 
 
 def test_all_schemas_loadable() -> None:
-    """Verify all schema files in manifest are loadable JSON."""
+    """Verify shipped schema coverage derives from the builtin pack manifest."""
     ctx = get_builtin_protocol_context()
-
-    schema_files = [
-        "schemas/IntentSpec.schema.json",
-        "schemas/LockedSpec.schema.json",
-        "schemas/EvidenceManifest.schema.json",
-        "schemas/GateVerdict.schema.json",
-        "schemas/SealManifest.schema.json",
-        "schemas/Waiver.schema.json",
-        "schemas/HOTLApproval.schema.json",
-        "schemas/PolicyReportPayload.schema.json",
-        "schemas/TestReportPayload.schema.json",
-        "schemas/EnvAttestationPayload.schema.json",
-        "schemas/DocsCompilationLogPayload.schema.json",
-        "schemas/GenesisSealPayload.schema.json",
-        "schemas/TrustAnchor.schema.json",
-        "schemas/TierPacks.schema.json",
-    ]
-
-    for schema_path in schema_files:
+    for schema_path in _manifest_relpaths(prefix="schemas/", suffix=".schema.json"):
         schema = ctx.read_json(schema_path)
         assert isinstance(schema, dict), f"{schema_path} must be a JSON object"
         assert "$schema" in schema or "type" in schema, f"{schema_path} must have $schema or type"
@@ -142,16 +142,9 @@ def test_tier_packs_json_loadable() -> None:
 
 
 def test_gate_docs_loadable() -> None:
-    """Verify all gate documentation files are readable."""
+    """Verify shipped gate documentation coverage derives from the builtin pack manifest."""
     ctx = get_builtin_protocol_context()
-
-    gate_docs = [
-        "gates/GATE_Q.md",
-        "gates/GATE_R.md",
-        "gates/GATE_S.md",
-    ]
-
-    for doc in gate_docs:
+    for doc in _manifest_relpaths(prefix="gates/", suffix=".md"):
         content = ctx.read_text(doc)
         assert len(content) > 100, f"{doc} seems too short"
 
@@ -175,18 +168,19 @@ def test_lockedspec_schema_has_protocol_pack_field() -> None:
 
 
 def test_templates_readable() -> None:
-    """Verify templates under belgi/templates are readable (used by C3 compiler)."""
+    """Verify shipped templates are readable without a handwritten inventory."""
     from importlib.resources import as_file, files
 
     templates_traversable = files("belgi").joinpath("templates")
 
-    required_templates = [
-        "DocsCompiler.template.md",
-        "IntentSpec.core.template.md",
-    ]
-
     with as_file(templates_traversable) as templates_root:
-        for tpl in required_templates:
+        template_names = sorted(
+            path.name
+            for path in templates_root.iterdir()
+            if path.is_file() and path.suffix == ".md"
+        )
+        assert template_names, "expected shipped markdown templates"
+        for tpl in template_names:
             content = (templates_root / tpl).read_bytes().decode("utf-8")
             assert len(content) > 50, f"{tpl} seems too short"
 

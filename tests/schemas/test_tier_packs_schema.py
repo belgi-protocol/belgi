@@ -20,6 +20,50 @@ def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8", errors="strict"))
 
 
+def _synthetic_tier_packs_json(
+    *,
+    waiver_allowed: bool,
+    waiver_max_active_waivers: int,
+    waiver_requires_hotl: bool,
+) -> str:
+    return json.dumps(
+        {
+            "schema_version": "1.0.0",
+            "tier_ids": ["tier-x"],
+            "tiers": {
+                "tier-x": {
+                    "required_evidence_kinds": [],
+                    "required_evidence_kinds_q": [],
+                    "doc_impact_required": False,
+                    "command_log_mode": "strings",
+                    "scope_budgets": {
+                        "max_touched_files": 1,
+                        "max_loc_delta": 2,
+                        "forbidden_paths_enforcement": "strict",
+                    },
+                    "test_policy": {
+                        "required": True,
+                        "allowed_skips": False,
+                    },
+                    "waiver_policy": {
+                        "allowed": waiver_allowed,
+                        "max_active_waivers": waiver_max_active_waivers,
+                        "requires_HOTL": waiver_requires_hotl,
+                    },
+                    "adversarial_policy": {"findings_mode": "warn"},
+                    "envelope_policy": {
+                        "requires_attestation": True,
+                        "attestation_signature_required": False,
+                        "pinned_toolchain_refs_required": True,
+                    },
+                }
+            },
+        },
+        indent=2,
+        sort_keys=True,
+    )
+
+
 def test_tier_packs_schema_ref_target_exists() -> None:
     tier_packs_path = REPO_ROOT / "tiers" / "tier-packs.json"
     obj = _load_json(tier_packs_path)
@@ -35,13 +79,6 @@ def test_tier_packs_schema_ref_target_exists() -> None:
 def test_tier_packs_json_validates_against_schema() -> None:
     schema = _load_json(REPO_ROOT / "schemas" / "TierPacks.schema.json")
     obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
-    errs = validate_schema(obj, schema, root_schema=schema, path="TierPacks")
-    assert errs == [], [f"{e.path}: {e.message}" for e in errs[:10]]
-
-
-def test_builtin_tier_packs_json_validates_against_builtin_schema() -> None:
-    schema = _load_json(REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "schemas" / "TierPacks.schema.json")
-    obj = _load_json(REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json")
     errs = validate_schema(obj, schema, root_schema=schema, path="TierPacks")
     assert errs == [], [f"{e.path}: {e.message}" for e in errs[:10]]
 
@@ -113,42 +150,33 @@ def test_gate_parameter_map_keeps_pinned_toolchain_refs_owned_by_q5() -> None:
     assert r7_params == ["command_log_mode"]
 
 
-def test_waiver_policy_note_and_limits_keep_hotl_separate_and_tier3_strict() -> None:
+def test_waiver_policy_note_keeps_hotl_separate() -> None:
     obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
-    builtin = _load_json(REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json")
+    waiver_note = obj["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"]
+    assert isinstance(waiver_note, str)
+    assert "`Waiver` remains the sole waiver authorization artifact." in waiver_note
+    assert "HOTL is a separate control artifact." in waiver_note
+    assert "`hotl_approval` artifact in `EvidenceManifest.artifacts[]`." in waiver_note
 
-    expected_note = (
-        "`Waiver` remains the sole waiver authorization artifact. HOTL is a separate control artifact. "
-        "For tiers where `requires_HOTL == yes`, Gate Q additionally requires a valid "
-        "`hotl_approval` artifact in `EvidenceManifest.artifacts[]`."
+
+def test_tier_params_loader_maps_waiver_policy_from_json_ssot() -> None:
+    loaded = load_tier_params(
+        _synthetic_tier_packs_json(
+            waiver_allowed=False,
+            waiver_max_active_waivers=0,
+            waiver_requires_hotl=True,
+        ),
+        "tier-x",
     )
-    assert obj["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"] == expected_note
-    assert builtin["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"] == expected_note
-
-    tiers = obj["tiers"]
-    assert tiers["tier-2"]["waiver_policy"] == {
-        "allowed": True,
-        "max_active_waivers": 1,
-        "requires_HOTL": True,
-    }
-    assert tiers["tier-3"]["waiver_policy"] == {
-        "allowed": False,
-        "max_active_waivers": 0,
-        "requires_HOTL": True,
-    }
-
-    rendered = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
-    assert "HOTL is a separate control artifact." in rendered
+    assert loaded.params is not None, loaded.parse_error
+    assert loaded.params.waiver_policy_allowed is False
+    assert loaded.params.waiver_policy_max_active_waivers == 0
+    assert loaded.params.waiver_policy_requires_hotl == "yes"
 
 
-def test_tier_admission_policy_uses_json_ssot() -> None:
+def test_supported_tier_ids_use_canonical_json_ssot() -> None:
     canonical_json = (REPO_ROOT / "tiers" / "tier-packs.json").read_text(encoding="utf-8", errors="strict")
-    builtin_json = (REPO_ROOT / "belgi" / "_protocol_packs" / "v1" / "tiers" / "tier-packs.json").read_text(
-        encoding="utf-8",
-        errors="strict",
-    )
     assert supported_tier_ids(canonical_json) == ("tier-0", "tier-1", "tier-2", "tier-3")
-    assert supported_tier_ids(builtin_json) == ("tier-0", "tier-1", "tier-2", "tier-3")
 
 
 def test_tier_admission_policy_rejects_generated_markdown_view() -> None:
@@ -230,7 +258,26 @@ def test_tier_packs_markdown_envelope_policy_optional_defaults_are_preserved() -
     assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"
 
 
-def test_tier_packs_markdown_parser_no_nested_envelope_policy_regex() -> None:
-    text = (REPO_ROOT / "chain" / "logic" / "tier_packs.py").read_text(encoding="utf-8", errors="strict")
+def test_tier_packs_markdown_envelope_policy_ignores_conflicting_sibling_block() -> None:
+    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
+    original = (
+        "- envelope_policy:\n"
+        "  - requires_attestation: `yes`\n"
+        "  - attestation_signature_required: `yes`\n"
+        "  - pinned_toolchain_refs_required: `yes`\n"
+    )
+    mutated = tiers_md.replace(
+        original,
+        original
+        + "- parser_shadow_section:\n"
+        + "  - requires_attestation: `no`\n"
+        + "  - attestation_signature_required: `no`\n"
+        + "  - pinned_toolchain_refs_required: `no`\n",
+        1,
+    )
 
-    assert r"(?:\s*-\s+[^\n]+\n)*?" not in text
+    loaded = load_tier_params(mutated, "tier-2")
+    assert loaded.params is not None, loaded.parse_error
+    assert loaded.params.envelope_policy_requires_attestation == "yes"
+    assert loaded.params.envelope_policy_attestation_signature_required == "yes"
+    assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"

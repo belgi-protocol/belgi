@@ -126,16 +126,12 @@ def test_fixture_trust_anchor_digest_mismatch_fails_before_semantic_use() -> Non
         validate_trust_anchor_bytes(mutated_bytes, expected_sha256=expected_sha256)
 
 
-def test_verifier_and_report_share_trust_anchor_logic() -> None:
-    import belgi.trust_anchor as trust_anchor
-
-    trust_anchor_path = Path(trust_anchor.__file__).resolve()
-
-    assert Path(r4_schema_contract.load_pinned_trust_anchor.__code__.co_filename).resolve() == trust_anchor_path
-    assert Path(r4_schema_contract.validate_genesis_seal_payload.__code__.co_filename).resolve() == trust_anchor_path
-    assert Path(report_tool.load_pinned_trust_anchor.__code__.co_filename).resolve() == trust_anchor_path
-    assert Path(report_tool.validate_genesis_seal_schema.__code__.co_filename).resolve() == trust_anchor_path
-    assert Path(report_tool.validate_genesis_seal_payload.__code__.co_filename).resolve() == trust_anchor_path
+def test_verifier_and_report_reuse_canonical_trust_anchor_helpers() -> None:
+    assert r4_schema_contract.load_pinned_trust_anchor is trust_anchor.load_pinned_trust_anchor
+    assert r4_schema_contract.validate_genesis_seal_payload is trust_anchor.validate_genesis_seal_payload
+    assert report_tool.load_pinned_trust_anchor is trust_anchor.load_pinned_trust_anchor
+    assert report_tool.validate_genesis_seal_schema is trust_anchor.validate_genesis_seal_schema
+    assert report_tool.validate_genesis_seal_payload is trust_anchor.validate_genesis_seal_payload
 
 
 def test_legacy_genesis_payload_cannot_act_as_canonical_authority(tmp_path: Path) -> None:

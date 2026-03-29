@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import importlib
 import json
 import re
 import shutil
 from pathlib import Path
 
 from tests.helpers import subprocess_cli as cli_subprocess
+from tests.helpers.tier_fixtures import prompt_block_ids_for_tier_policy
 
 run_belgi = cli_subprocess.run_belgi
 validate_schema = cli_subprocess.validate_schema
@@ -49,6 +49,8 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     assert summary1["run_key_preimage"]["normalized_inputs"]["intent_spec_source"] == "(auto)"
     assert "toolchain_refs" not in summary1["run_key_preimage"]["normalized_inputs"]
     assert "tolerances_ref" not in summary1["run_key_preimage"]["normalized_inputs"]
+    first_belgi_preimage = summary1["run_key_preimage"]["belgi"]
+    assert "package_version" not in first_belgi_preimage
     evidence1 = json.loads(
         (first_attempt / "repo" / "out" / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict")
     )
@@ -68,14 +70,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     assert isinstance(tier_obj, dict)
     tier_id = tier_obj.get("tier_id")
     assert isinstance(tier_id, str) and tier_id
-    c1 = importlib.import_module("chain.compiler_c1_intent")
-    tier_logic = importlib.import_module("chain.logic.tier_packs")
-    pack = importlib.import_module("belgi.protocol.pack")
-    selector = c1._prompt_block_ids_for_tier_policy
-    tiers_text = pack.get_builtin_protocol_context().read_text("tiers/tier-packs.json")
-    loaded_tier = tier_logic.load_tier_params(tiers_text, tier_id)
-    assert loaded_tier.params is not None, loaded_tier.parse_error
-    expected_selected = set(selector(loaded_tier.params))
+    expected_selected = set(prompt_block_ids_for_tier_policy(tier_id))
     assert set(prompt_hashes.keys()) == expected_selected
 
     rc_verify_1 = run_belgi(["verify", "--repo", str(repo)])
@@ -92,6 +87,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     summary2 = json.loads((attempts_after_second[1] / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     assert summary2["run_key"] == run_key_dir.name
     assert summary2["attempt_id"] == "attempt-0002"
+    assert summary2["run_key_preimage"]["belgi"] == first_belgi_preimage
 
     rc_verify_2 = run_belgi(["verify", "--repo", str(repo)])
     assert rc_verify_2 == 0
