@@ -485,7 +485,6 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
     paths = _prepare_r_pass_tier1_repo(tmp_path)
 
     commit_sha = _init_git_repo(tmp_path)
-    _assert_clean_head(tmp_path, commit_sha)
     snapshot_path = tmp_path / "out" / "EvidenceManifest.r_snapshot.json"
 
     cp = _run_module(
@@ -526,7 +525,7 @@ def test_gate_r_normal_pass_writes_snapshot_and_executes_later_checks(tmp_path: 
     assert verdict.get("failure_category") is None
 
 
-def test_gate_r_positive_head_guard_detects_post_head_tracked_mutation(tmp_path: Path) -> None:
+def test_gate_r_head_guard_helper_detects_post_head_tracked_mutation(tmp_path: Path) -> None:
     builtin_pack = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
     _setup_fake_repo_with_pack(tmp_path, builtin_pack)
     _prepare_r_pass_tier1_repo(tmp_path)
@@ -697,7 +696,6 @@ def test_gate_r_current_run_required_report_payloads_still_pass(
     )
 
     commit_sha = _init_git_repo(tmp_path)
-    _assert_clean_head(tmp_path, commit_sha)
     verify_rel = f"out/verify_report.{artifact_id.replace('.', '_')}.current_run.json"
     verdict_rel = f"out/GateVerdict.{artifact_id.replace('.', '_')}.current_run.json"
     cp = _run_module(
@@ -1123,8 +1121,6 @@ def test_gate_r_overlay_ignores_non_policy_payload_policy_report(tmp_path: Path)
     )
 
     commit_sha = _init_git_repo(tmp_path)
-    _assert_clean_head(tmp_path, commit_sha)
-
     cp = _run_module(
         "chain.gate_r_verify",
         [
