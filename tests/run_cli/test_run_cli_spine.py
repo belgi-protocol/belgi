@@ -49,6 +49,8 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     assert summary1["run_key_preimage"]["normalized_inputs"]["intent_spec_source"] == "(auto)"
     assert "toolchain_refs" not in summary1["run_key_preimage"]["normalized_inputs"]
     assert "tolerances_ref" not in summary1["run_key_preimage"]["normalized_inputs"]
+    first_belgi_preimage = summary1["run_key_preimage"]["belgi"]
+    assert "package_version" not in first_belgi_preimage
     evidence1 = json.loads(
         (first_attempt / "repo" / "out" / "EvidenceManifest.json").read_text(encoding="utf-8", errors="strict")
     )
@@ -85,6 +87,7 @@ def test_run_tier_uses_stable_run_key_and_unique_attempt_id(tmp_path: Path) -> N
     summary2 = json.loads((attempts_after_second[1] / "run.summary.json").read_text(encoding="utf-8", errors="strict"))
     assert summary2["run_key"] == run_key_dir.name
     assert summary2["attempt_id"] == "attempt-0002"
+    assert summary2["run_key_preimage"]["belgi"] == first_belgi_preimage
 
     rc_verify_2 = run_belgi(["verify", "--repo", str(repo)])
     assert rc_verify_2 == 0

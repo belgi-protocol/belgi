@@ -108,12 +108,6 @@ def cmd_about(_: argparse.Namespace) -> int:
         print(f"open_{platform_name}: {cmd}")
     return 0
 
-def _package_version() -> str:
-    try:
-        return version("belgi")
-    except PackageNotFoundError:
-        return "0.0.0"
-
 def _repo_head_sha(repo_root: Path) -> str:
     try:
         cp = subprocess.run(
@@ -300,7 +294,6 @@ def _derive_run_key_preimage(
         "normalized_inputs": normalized_inputs,
         "intent_spec_sha256": intent_spec_sha256,
         "belgi": {
-            "package_version": _package_version(),
             "repo_head_sha": evaluated_revision,
             "base_revision_sha": base_revision,
             "evaluated_revision_sha": evaluated_revision,
