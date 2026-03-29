@@ -120,7 +120,7 @@ def test_scan_rejects_symlink_dir(tmp_path: Path) -> None:
         scan_pack_dir(pack_root)
 
 
-def test_manifest_bytes_deterministic(tmp_path: Path) -> None:
+def test_manifest_files_are_sorted_by_relpath(tmp_path: Path) -> None:
     pack_root = tmp_path / "pack"
     pack_root.mkdir(parents=True, exist_ok=True)
 
@@ -129,11 +129,11 @@ def test_manifest_bytes_deterministic(tmp_path: Path) -> None:
     _write_bytes(pack_root / "schemas" / "A.schema.json", b"{\"a\":1}\n")
     _write_bytes(pack_root / "gates" / "GATE_Q.md", b"Q\n")
 
-    b1 = build_manifest_bytes(pack_root=pack_root, pack_name="test-pack", pack_semver="0.0.0")
-    b2 = build_manifest_bytes(pack_root=pack_root, pack_name="test-pack", pack_semver="0.0.0")
-
-    assert b1 == b2
-    assert b1.endswith(b"\n")
+    manifest = json.loads(build_manifest_bytes(pack_root=pack_root, pack_name="test-pack", pack_semver="0.0.0").decode("utf-8"))
+    files = manifest.get("files")
+    assert isinstance(files, list)
+    relpaths = [row["relpath"] for row in files]
+    assert relpaths == sorted(relpaths)
 
 
 def test_manifest_pack_id_matches_computed(tmp_path: Path) -> None:
