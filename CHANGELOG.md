@@ -2,6 +2,19 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.12 — 2026-03-30
+
+### Summary
+Moved Gate Q unsupported-tier admission onto one truthful first-fail spine and aligned Gate Q tier-consumer maps with the surviving runtime ownership story.
+
+### Changed
+- `chain/gate_q_verify.py` now lets `Q7` settle unsupported-tier admission before downstream tier-policy consumers run, instead of preloading tier params for the whole Gate Q registry upfront.
+- `chain/logic/q_checks/q_intent_003.py` no longer reads tier policy for `doc_impact` presence, and `chain/logic/q_checks/q_doc_002.py` / `chain/logic/q_checks/q_evidence_002.py` now point at the canonical tier-packs JSON owner path.
+- `tiers/tier-packs.json`, `tiers/tier-packs.md`, `gates/GATE_Q.md`, `docs/operations/running-belgi.md`, and the Gate Q owner-lane tests now agree that `Q6` reads waiver allowance/count, `Q-HOTL-001` is the sole Gate Q reader of `waiver_policy.requires_HOTL`, and downstream tier consumers sit behind `Q7`.
+
+### Notes
+- This patch does not redesign Gate Q broadly; it closes the next tier-family contract gap after the JSON-only tier owner move.
+
 ## 1.6.11 — 2026-03-30
 
 ### Summary

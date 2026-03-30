@@ -50,7 +50,7 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
                 check_id="Q-EVIDENCE-002",
                 status="FAIL",
                 message="Tier required_evidence_kinds_q missing/invalid; cannot enforce minimum evidence kinds deterministically.",
-                pointers=["tiers/tier-packs.md"],
+                pointers=["tiers/tier-packs.json"],
                 category="FQ-EVIDENCE-MISSING",
                 remediation_next_instruction=f"Do produce required evidence kind {required_first or 'missing_field'} under the declared envelope then re-run Q.",
             )
