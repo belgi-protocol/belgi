@@ -128,11 +128,25 @@ def test_fixture_trust_anchor_digest_mismatch_fails_before_semantic_use() -> Non
 
 def test_verifier_and_report_reuse_canonical_trust_anchor_helpers() -> None:
     assert r4_schema_contract.load_pinned_trust_anchor is trust_anchor.load_pinned_trust_anchor
+    assert r4_schema_contract.validate_genesis_seal_schema is trust_anchor.validate_genesis_seal_schema
     assert r4_schema_contract.validate_genesis_seal_payload is trust_anchor.validate_genesis_seal_payload
     assert report_tool.load_pinned_trust_anchor is trust_anchor.load_pinned_trust_anchor
     assert report_tool.validate_genesis_seal_schema is trust_anchor.validate_genesis_seal_schema
     assert report_tool.validate_genesis_seal_payload is trust_anchor.validate_genesis_seal_payload
 
+
+def test_repo_root_genesis_schema_request_fails_closed_when_schema_missing(tmp_path: Path) -> None:
+    with pytest.raises(TrustAnchorError, match="failed to load canonical repo-root GenesisSealPayload schema"):
+        trust_anchor._read_genesis_seal_schema(tmp_path)
+
+
+def test_repo_root_genesis_schema_request_fails_closed_on_repo_schema_drift(tmp_path: Path) -> None:
+    schema_dir = tmp_path / "schemas"
+    schema_dir.mkdir(parents=True, exist_ok=True)
+    (schema_dir / "GenesisSealPayload.schema.json").write_text("[]\n", encoding="utf-8", errors="strict")
+
+    with pytest.raises(TrustAnchorError, match="GenesisSealPayload schema is not a JSON object"):
+        trust_anchor._read_genesis_seal_schema(tmp_path)
 
 def test_legacy_genesis_payload_cannot_act_as_canonical_authority(tmp_path: Path) -> None:
     legacy_dir = tmp_path / "belgi" / "genesis"
@@ -236,6 +250,9 @@ def _write_fixture_trust_anchor_repo(tmp_path: Path) -> tuple[dict[str, str], st
     schema_dir = tmp_path / "schemas"
     schema_dir.mkdir(parents=True, exist_ok=True)
     (schema_dir / "TrustAnchor.schema.json").write_bytes((REPO_ROOT / "schemas" / "TrustAnchor.schema.json").read_bytes())
+    (schema_dir / "GenesisSealPayload.schema.json").write_bytes(
+        (REPO_ROOT / "schemas" / "GenesisSealPayload.schema.json").read_bytes()
+    )
 
     authority = validate_trust_anchor_bytes(anchor_bytes, expected_sha256=expected_sha256)
     return authority.expected_genesis_seal_payload(), expected_sha256

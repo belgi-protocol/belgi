@@ -159,8 +159,8 @@ def _read_trust_anchor_schema(repo_root: Path | None = None) -> dict[str, Any]:
 
 
 def _read_genesis_seal_schema(repo_root: Path | None = None) -> dict[str, Any]:
-    if repo_root is not None:
-        try:
+    try:
+        if repo_root is not None:
             schema_path = resolve_repo_rel_path(
                 repo_root,
                 GENESIS_SEAL_SCHEMA_RELPATH,
@@ -170,16 +170,19 @@ def _read_genesis_seal_schema(repo_root: Path | None = None) -> dict[str, Any]:
                 forbid_symlinks=True,
             )
             obj = json.loads(schema_path.read_text(encoding="utf-8", errors="strict"))
-        except Exception:
+        else:
             obj = json.loads(
                 files("belgi")
                 .joinpath(*_PACKAGED_GENESIS_SEAL_SCHEMA_RELPATH)
                 .read_text(encoding="utf-8", errors="strict")
             )
-    else:
-        obj = json.loads(
-            files("belgi").joinpath(*_PACKAGED_GENESIS_SEAL_SCHEMA_RELPATH).read_text(encoding="utf-8", errors="strict")
-        )
+    except TrustAnchorError:
+        raise
+    except Exception as e:
+        mode = "canonical repo-root" if repo_root is not None else "packaged"
+        raise TrustAnchorError(
+            f"{GENESIS_SEAL_SCHEMA_RELPATH}: failed to load {mode} GenesisSealPayload schema: {e}"
+        ) from e
     if not isinstance(obj, dict):
         raise TrustAnchorError("GenesisSealPayload schema is not a JSON object")
     return obj

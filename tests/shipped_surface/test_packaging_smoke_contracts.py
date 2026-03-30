@@ -247,3 +247,14 @@ def test_packaged_trust_anchor_loads() -> None:
     )
     assert isinstance(trust_anchor, dict)
     assert trust_anchor.get("public_key_hex") == authority.public_key_hex
+
+
+def test_packaged_tier3_schema_resources_are_shipped_and_loadable() -> None:
+    ctx = get_builtin_protocol_context()
+    shipped_schema_relpaths = set(_manifest_relpaths(prefix="schemas/", suffix=".schema.json"))
+
+    for relpath in ("schemas/TrustAnchor.schema.json", "schemas/GenesisSealPayload.schema.json"):
+        assert relpath in shipped_schema_relpaths
+        schema = ctx.read_json(relpath)
+        assert isinstance(schema, dict), f"{relpath} must be a JSON object"
+        assert schema, f"{relpath} must not be empty"
