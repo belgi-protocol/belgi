@@ -135,6 +135,30 @@ def _literal_string(node: ast.AST) -> str | None:
     return None
 
 
+def _literal_string_values(
+    node: ast.AST,
+    literal_aliases: dict[str, set[str]] | None = None,
+) -> set[str]:
+    literal = _literal_string(node)
+    if literal is not None:
+        return {literal}
+    if isinstance(node, ast.Name) and literal_aliases is not None:
+        return set(literal_aliases.get(node.id, set()))
+    return set()
+
+
+def _literal_object(
+    node: ast.AST,
+    literal_objects: dict[str, object] | None = None,
+) -> object | None:
+    if isinstance(node, ast.Name) and literal_objects is not None and node.id in literal_objects:
+        return literal_objects[node.id]
+    try:
+        return ast.literal_eval(node)
+    except (TypeError, ValueError):
+        return None
+
+
 def _literal_split_parts(node: ast.AST) -> list[str] | None:
     if not isinstance(node, ast.Call):
         return None
@@ -149,7 +173,10 @@ def _literal_split_parts(node: ast.AST) -> list[str] | None:
     return value.split("/")
 
 
-def _path_parts_from_call(call: ast.Call) -> list[str] | None:
+def _path_values_from_call(
+    call: ast.Call,
+    literal_aliases: dict[str, set[str]] | None = None,
+) -> set[str] | None:
     if isinstance(call.func, ast.Name) and call.func.id == "Path":
         pass
     elif (
@@ -165,19 +192,43 @@ def _path_parts_from_call(call: ast.Call) -> list[str] | None:
     if call.keywords:
         return None
 
-    parts: list[str] = []
+    paths: set[str] = {""}
     for arg in call.args:
         if isinstance(arg, ast.Starred):
-            starred_parts = _literal_split_parts(arg.value)
-            if starred_parts is None:
+            if not isinstance(arg.value, ast.Call):
                 return None
-            parts.extend(starred_parts)
+            split_call = arg.value
+            if (
+                not isinstance(split_call.func, ast.Attribute)
+                or split_call.func.attr != "split"
+                or len(split_call.args) != 1
+                or split_call.keywords
+                or _literal_string(split_call.args[0]) != "/"
+            ):
+                return None
+            value_options = _literal_string_values(split_call.func.value, literal_aliases)
+            if not value_options:
+                return None
+            next_paths: set[str] = set()
+            for path in paths:
+                for value in value_options:
+                    next_path = path
+                    for part in value.split("/"):
+                        next_path = _join_repo_relative_parts(next_path, part)
+                    next_paths.add(next_path)
+            paths = next_paths
             continue
-        literal = _literal_string(arg)
-        if literal is None:
+
+        literals = _literal_string_values(arg, literal_aliases)
+        if not literals:
             return None
-        parts.append(literal)
-    return parts
+        next_paths = set()
+        for path in paths:
+            for literal in literals:
+                next_paths.add(_join_repo_relative_parts(path, literal))
+        paths = next_paths
+
+    return paths
 
 
 def _join_repo_relative_parts(left: str, right: str) -> str:
@@ -188,23 +239,142 @@ def _join_repo_relative_parts(left: str, right: str) -> str:
     return f"{left.rstrip('/')}/{right.lstrip('/')}"
 
 
-def _repo_relative_literal_path(node: ast.AST) -> str | None:
+def _repo_relative_literal_paths(
+    node: ast.AST,
+    literal_aliases: dict[str, set[str]] | None = None,
+) -> set[str]:
     if isinstance(node, ast.Name) and node.id == "REPO_ROOT":
-        return ""
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return node.value
+        return {""}
+
+    literals = _literal_string_values(node, literal_aliases)
+    if literals:
+        return literals
+
     if isinstance(node, ast.Call):
-        parts = _path_parts_from_call(node)
-        if parts is None:
-            return None
-        return "/".join(part.strip("/") for part in parts if part)
+        paths = _path_values_from_call(node, literal_aliases)
+        return paths or set()
+
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-        left = _repo_relative_literal_path(node.left)
-        right = _repo_relative_literal_path(node.right)
-        if left is None or right is None:
-            return None
-        return _join_repo_relative_parts(left, right)
-    return None
+        left = _repo_relative_literal_paths(node.left, literal_aliases)
+        right = _repo_relative_literal_paths(node.right, literal_aliases)
+        if not left or not right:
+            return set()
+        return {
+            _join_repo_relative_parts(left_path, right_path)
+            for left_path in left
+            for right_path in right
+        }
+
+    return set()
+
+
+def _repo_relative_literal_path(
+    node: ast.AST,
+    literal_aliases: dict[str, set[str]] | None = None,
+) -> str | None:
+    paths = _repo_relative_literal_paths(node, literal_aliases)
+    if len(paths) != 1:
+        return None
+    return next(iter(paths))
+
+
+def _bind_literal_target_values(
+    target: ast.AST,
+    value: object,
+    literal_aliases: dict[str, set[str]],
+) -> None:
+    if isinstance(target, ast.Name):
+        if isinstance(value, str):
+            literal_aliases.setdefault(target.id, set()).add(value)
+        elif isinstance(value, (list, tuple)) and all(isinstance(item, str) for item in value):
+            literal_aliases.setdefault(target.id, set()).update(value)
+        return
+
+    if not isinstance(target, (ast.Tuple, ast.List)):
+        return
+    if not isinstance(value, (list, tuple)) or len(target.elts) != len(value):
+        return
+
+    for elt, child_value in zip(target.elts, value, strict=True):
+        _bind_literal_target_values(elt, child_value, literal_aliases)
+
+
+def _bind_literal_iterable_target_values(
+    target: ast.AST,
+    iterable: object,
+    literal_aliases: dict[str, set[str]],
+) -> None:
+    if not isinstance(iterable, (list, tuple)):
+        return
+
+    if isinstance(target, ast.Name) and all(isinstance(item, str) for item in iterable):
+        literal_aliases.setdefault(target.id, set()).update(iterable)
+        return
+
+    if not isinstance(target, (ast.Tuple, ast.List)):
+        return
+
+    slots: list[list[object]] = [[] for _ in target.elts]
+    for item in iterable:
+        if not isinstance(item, (list, tuple)) or len(item) != len(target.elts):
+            return
+        for index, child_value in enumerate(item):
+            slots[index].append(child_value)
+
+    for elt, slot_values in zip(target.elts, slots, strict=True):
+        _bind_literal_target_values(elt, slot_values, literal_aliases)
+
+
+def _infer_repo_relative_literal_aliases(statements: list[ast.stmt]) -> dict[str, set[str]]:
+    literal_objects: dict[str, object] = {}
+    for stmt in statements:
+        for child in ast.walk(stmt):
+            value: ast.AST | None = None
+            if isinstance(child, ast.Assign):
+                if len(child.targets) != 1 or not isinstance(child.targets[0], ast.Name):
+                    continue
+                value = child.value
+                target_name = child.targets[0].id
+            elif isinstance(child, ast.AnnAssign):
+                if child.value is None or not isinstance(child.target, ast.Name):
+                    continue
+                value = child.value
+                target_name = child.target.id
+            else:
+                continue
+
+            literal = _literal_object(value, literal_objects)
+            if literal is not None:
+                literal_objects[target_name] = literal
+
+    literal_aliases: dict[str, set[str]] = {}
+    for stmt in statements:
+        for child in ast.walk(stmt):
+            if isinstance(child, ast.Assign):
+                if len(child.targets) != 1:
+                    continue
+                literal = _literal_object(child.value, literal_objects)
+                if literal is None:
+                    continue
+                _bind_literal_target_values(child.targets[0], literal, literal_aliases)
+                continue
+
+            if isinstance(child, ast.AnnAssign):
+                if child.value is None:
+                    continue
+                literal = _literal_object(child.value, literal_objects)
+                if literal is None:
+                    continue
+                _bind_literal_target_values(child.target, literal, literal_aliases)
+                continue
+
+            if isinstance(child, ast.For):
+                literal = _literal_object(child.iter, literal_objects)
+                if literal is None:
+                    continue
+                _bind_literal_iterable_target_values(child.target, literal, literal_aliases)
+
+    return literal_aliases
 
 
 def _repo_relative_param_names(
@@ -460,43 +630,54 @@ def _iter_repo_relative_targets(tree: ast.Module) -> list[tuple[str, int]]:
     }
     imported_helper_params = _infer_imported_repo_target_helper_params(tree)
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
+    def collect_scope_targets(
+        scope: ast.AST,
+        literal_aliases: dict[str, set[str]],
+    ) -> None:
+        for node in ast.walk(scope):
+            if not isinstance(node, ast.Call):
+                continue
 
-        if isinstance(node.func, ast.Attribute) and node.func.attr in REPO_TARGET_FILE_SINKS:
-            rel = _repo_relative_literal_path(node.func.value)
-            if rel is not None:
-                targets.append((rel, getattr(node, "lineno", 0)))
-            continue
-
-        if isinstance(node.func, ast.Name) and node.func.id == "open" and node.args:
-            rel = _repo_relative_literal_path(node.args[0])
-            if rel is not None:
-                targets.append((rel, getattr(node, "lineno", 0)))
-            continue
-
-        if isinstance(node.func, ast.Name) and node.func.id in helper_params:
-            callee_params = module_param_orders.get(node.func.id, [])
-            for position in helper_params[node.func.id]:
-                param_name = callee_params[position] if position < len(callee_params) else None
-                arg = _call_argument_by_position_or_name(node, position, param_name)
-                if arg is None:
-                    continue
-                rel = _repo_relative_literal_path(arg)
-                if rel is not None:
+            if isinstance(node.func, ast.Attribute) and node.func.attr in REPO_TARGET_FILE_SINKS:
+                for rel in sorted(_repo_relative_literal_paths(node.func.value, literal_aliases)):
                     targets.append((rel, getattr(node, "lineno", 0)))
-            continue
+                continue
 
-        call_target = _callable_target_name(node.func)
-        if call_target is not None and call_target in imported_helper_params:
-            for position, param_name in imported_helper_params[call_target].items():
-                arg = _call_argument_by_position_or_name(node, position, param_name)
-                if arg is None:
-                    continue
-                rel = _repo_relative_literal_path(arg)
-                if rel is not None:
+            if isinstance(node.func, ast.Name) and node.func.id == "open" and node.args:
+                for rel in sorted(_repo_relative_literal_paths(node.args[0], literal_aliases)):
                     targets.append((rel, getattr(node, "lineno", 0)))
+                continue
+
+            if isinstance(node.func, ast.Name) and node.func.id in helper_params:
+                callee_params = module_param_orders.get(node.func.id, [])
+                for position in helper_params[node.func.id]:
+                    param_name = callee_params[position] if position < len(callee_params) else None
+                    arg = _call_argument_by_position_or_name(node, position, param_name)
+                    if arg is None:
+                        continue
+                    for rel in sorted(_repo_relative_literal_paths(arg, literal_aliases)):
+                        targets.append((rel, getattr(node, "lineno", 0)))
+                continue
+
+            call_target = _callable_target_name(node.func)
+            if call_target is not None and call_target in imported_helper_params:
+                for position, param_name in imported_helper_params[call_target].items():
+                    arg = _call_argument_by_position_or_name(node, position, param_name)
+                    if arg is None:
+                        continue
+                    for rel in sorted(_repo_relative_literal_paths(arg, literal_aliases)):
+                        targets.append((rel, getattr(node, "lineno", 0)))
+
+    module_statements = [
+        stmt
+        for stmt in tree.body
+        if not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    collect_scope_targets(ast.Module(body=module_statements, type_ignores=[]), _infer_repo_relative_literal_aliases(module_statements))
+
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            collect_scope_targets(node, _infer_repo_relative_literal_aliases(node.body))
 
     return targets
 
@@ -506,6 +687,27 @@ def _lane_may_target_sweep_owned_parity(path: Path) -> bool:
     if rel == "tests/meta/test_sweep_semantics.py":
         return True
     return _classify_test_module(path) == "tools"
+
+
+def test_repo_target_analyzer_tracks_literal_aliases_and_loop_unpacking() -> None:
+    tree = ast.parse(
+        """
+def test_alias_paths() -> None:
+    direct_rel = "belgi/_protocol_packs/v1/schemas/TrustAnchor.schema.json"
+    (REPO_ROOT / direct_rel).read_bytes()
+
+    pairs = [
+        ("schemas/GenesisSealPayload.schema.json", "belgi/_protocol_packs/v1/schemas/GenesisSealPayload.schema.json"),
+    ]
+
+    for _, packaged_rel in pairs:
+        REPO_ROOT.joinpath(*packaged_rel.split("/")).read_bytes()
+"""
+    )
+
+    targets = {target for target, _ in _iter_repo_relative_targets(tree)}
+    assert "belgi/_protocol_packs/v1/schemas/TrustAnchor.schema.json" in targets
+    assert "belgi/_protocol_packs/v1/schemas/GenesisSealPayload.schema.json" in targets
 
 
 def test_lane_topology_exists_with_single_root_owner_statement() -> None:
