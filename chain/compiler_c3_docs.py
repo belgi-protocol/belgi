@@ -76,7 +76,8 @@ def _protocol_c3_relpaths(protocol: ProtocolContext) -> list[str]:
     return out
 
 
-def _materialize_protocol_bound_c3_source_root(*, protocol: ProtocolContext, target_root: Path) -> None:
+def materialize_protocol_bound_c3_source_root(*, protocol: ProtocolContext, target_root: Path) -> None:
+    """Materialize the protocol-bound C3 source tree into target_root."""
     target_root.mkdir(parents=True, exist_ok=False)
     try:
         canonicals_root = resource_files("belgi").joinpath("canonicals")
@@ -150,7 +151,7 @@ def _rebuild_staged_c3_cache(
         if staged_root.is_symlink() or not staged_root.is_dir():
             raise _UserInputError(f"expected directory but found file: {ENGINE_CANONICALS_REPO_REL}")
         _rmtree_retry(staged_root)
-    _materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=staged_root)
+    materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=staged_root)
     _atomic_write_json(staged_root / C3_CANONICAL_CACHE_META_FILENAME, expected_meta)
 
 
@@ -190,7 +191,7 @@ def _resolve_c3_source_root(
         _rmtree_retry(materialized)
 
     try:
-        _materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=materialized)
+        materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=materialized)
     except _UserInputError as e:
         raise _UserInputError(
             "C3 canonical source resolution failed without staged "
