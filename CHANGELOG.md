@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.14 — 2026-03-30
+
+### Summary
+Added a structural canonicals report for mechanically expressed owner surfaces and moved the report-covered canonical-language sweep checks onto that owner -> report -> sweep path.
+
+### Changed
+- `tools/canonicals_report.py` now derives a narrow structural projection from `CANONICALS.md` for `anchor_registry_ids` and `canonical_chain.sequence`, while keeping prose canonicals as the owner surface and avoiding publication-posture or terminology-semantic flattening.
+- `tools/sweep.py` now reads the derived canonicals report for the report-covered subfamily: `CS-CAN-001` validates `terminology.md` term-map anchors against `anchor_registry_ids`, and `CS-CAN-002` validates the runbook `Canonical chain:` line against `canonical_chain.sequence` instead of carrying a second hardcoded chain owner.
+- `tests/tools/test_canonicals_report_contracts.py`, `tests/meta/test_sweep_semantics.py`, and `docs/operations/consistency-sweep.md` now lock the structural report contract, the report-backed sweep behavior, and the narrowed owner/report/projection guidance for the moved subfamily.
+- `tools/canonicals_report.py` included in the _sweep_managed_surface_files.
+
+### Notes
+- This patch does not convert prose-law canonicals into JSON authority; `CS-CAN-003` and `CS-TERM-001` remain prose-owned and bounded until a safer projection seam exists.
+
 ## 1.6.13 — 2026-03-30
 
 ### Summary

@@ -74,6 +74,7 @@ Canonical trigger:
 - tools/rehash.py
 - tools/render.py
 - tools/check_codeowners.py
+- tools/canonicals_report.py
 - tools/sweep.py
 - tools/wheel_boundary.py
 - belgi/templates/IntentSpec.core.template.md
@@ -154,10 +155,12 @@ Canonical trigger:
 - source-of-truth (file/section):
   - terminology.md#0-rule-of-use-canonical-pointer
   - CANONICALS.md#anchor-registry-stable-ids
+  - tools/canonicals_report.py (derived structural report: anchor_registry_ids projection only)
 - check procedure (deterministic):
   1) Confirm terminology.md contains the Rule of Use statement: “MUST NOT define or redefine terms.”
-  2) Confirm every entry in terminology.md “Term Map” links to CANONICALS.md#<anchor>.
-  3) Derive the live canonical-term subject set from the link text of terminology.md “Term Map” pointers, then confirm terminology.md contains no glossary-like definitional sentences for those BELGI canonical terms.
+  2) Derive the bounded structural report from CANONICALS.md, then read `anchor_registry_ids` from that report.
+  3) Confirm every entry in terminology.md “Term Map” links to CANONICALS.md#<anchor>, and that every referenced `<anchor>` exists in the derived `anchor_registry_ids` set.
+  4) Derive the live canonical-term subject set from the link text of terminology.md “Term Map” pointers, then confirm terminology.md contains no glossary-like definitional sentences for those BELGI canonical terms.
   Filter scope:
   - Exclude table rows: any line that starts with `|`.
   - Exclude fenced code blocks: toggle exclusion when a line starts with ``` (any language tag allowed); stop excluding when the line is exactly ```.
@@ -166,7 +169,7 @@ Canonical trigger:
   Benign prose such as `This is a test.` is not a target unless the subject itself is a live BELGI canonical term.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
-  - PASS if steps 1–2 succeed and step 3 finds no matches.
+  - PASS if steps 1–4 succeed.
   - FAIL otherwise.
 
 #### CS-CAN-004 — No duplicate non-canonical spec trees
@@ -185,17 +188,19 @@ Canonical trigger:
 
 #### CS-CAN-002 — Canonical chain matches everywhere
 - invariant_id: CS-CAN-002
-- statement: The canonical chain MUST be exactly `P → C1 → Q → C2 → R → C3 → S` wherever stated.
+- statement: The runbook's canonical chain line MUST match the owner-derived canonical chain sequence.
 - source-of-truth (file/section):
   - CANONICALS.md#2-canonical-chain-canonical
+  - tools/canonicals_report.py (derived structural report: canonical_chain.sequence projection only)
   - docs/operations/running-belgi.md#1-overview-what-happens-in-p--c1--q--c2--r--c3--s
 - check procedure (deterministic):
-  1) Search these files for the chain string.
-  2) Confirm all occurrences match the exact stage order and labels.
+  1) Derive the bounded structural report from CANONICALS.md, then read `canonical_chain.sequence` from that report.
+  2) Parse the `Canonical chain:` line in docs/operations/running-belgi.md.
+  3) Confirm the runbook chain sequence matches the derived owner sequence exactly.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
-  - PASS if all occurrences match.
-  - FAIL if any file claims a different order or stage set.
+  - PASS if the runbook sequence matches the derived owner sequence exactly.
+  - FAIL if the report cannot be derived, the runbook omits the `Canonical chain:` line, or the stage order/set drifts.
 
 #### CS-CAN-003 — Publication posture is enforced in public-safe docs
 - invariant_id: CS-CAN-003
@@ -973,13 +978,13 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 
 ### CS-SWEEP-001 — Input Authority
 - invariant_id: CS-SWEEP-001
-- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the canonical tooling entrypoints.
+- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the canonical tooling entrypoints that materially affect sweep results.
 - source-of-truth (file/section):
   - This document’s Inputs list (Section A)
 - check procedure (deterministic):
   1) Enumerate all files matching `schemas/*.schema.json`.
   2) Confirm the sweep report includes each schema file path in `inputs[].path`.
-  3) Confirm the sweep report includes tooling entrypoints `tools/normalize.py`, `tools/rehash.py`, and `tools/sweep.py`.
+  3) Confirm the sweep report includes tooling entrypoints `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, and `tools/sweep.py`.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
 - pass/fail criteria:
   - PASS if the dynamic schema surface and tool entrypoints are included.
@@ -1000,6 +1005,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
      - `scripts/belgi_*.{py,sh,ps1}`
      - `templates/ci/github/*.{yml,yaml}`
      - `tools/README.md`
+     - `tools/canonicals_report.py`
   2) Confirm every enumerated path is explicitly present in sweep canonical inputs.
   3) FAIL if any managed path is missing.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
@@ -1116,8 +1122,8 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 
 ## C) Checklist (operator-friendly)
 
-- [ ] CS-CAN-001: terminology.md is pointers-only to CANONICALS anchors.
-- [ ] CS-CAN-002: canonical chain string matches everywhere.
+- [ ] CS-CAN-001: terminology.md points only to anchor IDs present in the derived canonicals report.
+- [ ] CS-CAN-002: running-belgi canonical chain line matches the derived canonicals report.
 - [ ] CS-CAN-003: publication posture prohibition present and respected.
 - [ ] CS-TERM-001: verification/validation boundaries are enforced across public docs.
 - [ ] CS-BYTE-001: Byte Guard passes (no CRLF / byte drift).

@@ -85,9 +85,14 @@ def _derive_anchor_registry_ids(md: str) -> list[str]:
 
 def _derive_canonical_chain(md: str) -> dict[str, object]:
     section = _extract_markdown_section(md, "2. Canonical Chain (Canonical)")
-    line = next((raw.strip() for raw in section.splitlines() if "→" in raw), "")
-    if not line:
+    lines = [raw.strip() for raw in section.splitlines() if raw.strip() and "→" in raw]
+    if not lines:
         raise CanonicalsReportError("Canonical chain section must contain one explicit arrow chain line.")
+    if len(lines) > 1:
+        raise CanonicalsReportError(
+            "Canonical chain section is ambiguous: expected exactly one explicit arrow chain line."
+        )
+    line = lines[0]
     sequence = [part.strip(" `") for part in line.split("→")]
     if not sequence or any(not stage for stage in sequence):
         raise CanonicalsReportError("Canonical chain line is malformed.")

@@ -10,7 +10,13 @@ pytestmark = pytest.mark.repo_local
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _write_canonicals(path: Path, *, duplicate_anchor: bool = False, with_chain: bool = True) -> None:
+def _write_canonicals(
+    path: Path,
+    *,
+    duplicate_anchor: bool = False,
+    with_chain: bool = True,
+    extra_chain_lines: list[str] | None = None,
+) -> None:
     anchor_lines = [
         "- purpose",
         "- bounded-claim",
@@ -30,6 +36,8 @@ def _write_canonicals(path: Path, *, duplicate_anchor: bool = False, with_chain:
     ]
     if with_chain:
         lines.append("P → C1 → Q → C2 → R → C3 → S")
+    if extra_chain_lines:
+        lines.extend(extra_chain_lines)
     path.write_text(
         "\n".join(lines) + "\n",
         encoding="utf-8",
@@ -115,6 +123,21 @@ def test_derive_canonicals_report_fails_closed_when_canonical_chain_line_is_miss
     with pytest.raises(
         canonicals_report.CanonicalsReportError,
         match="Canonical chain section must contain one explicit arrow chain line",
+    ):
+        canonicals_report.derive_canonicals_report(tmp_path)
+
+
+def test_derive_canonicals_report_fails_closed_when_canonical_chain_is_ambiguous(tmp_path: Path) -> None:
+    import tools.canonicals_report as canonicals_report
+
+    _write_canonicals(
+        tmp_path / "CANONICALS.md",
+        extra_chain_lines=["P → C1 → Q → C2 → R → C3 → S (duplicate)"],
+    )
+
+    with pytest.raises(
+        canonicals_report.CanonicalsReportError,
+        match="Canonical chain section is ambiguous: expected exactly one explicit arrow chain line",
     ):
         canonicals_report.derive_canonicals_report(tmp_path)
 
