@@ -2,6 +2,19 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.11 — 2026-03-30
+
+### Summary
+Removed generated markdown as a semantic runtime input for tier policy and made shipped tier loading resolve from `tiers/tier-packs.json` only.
+
+### Changed
+- `chain/logic/tier_packs.py` no longer parses `tiers/tier-packs.md` as machine-readable tier policy and now loads both tier params and tier admission policy from the canonical JSON owner path only.
+- `chain/gate_r_verify.py` now describes the canonical tier-packs JSON path truthfully and no longer suggests generated markdown as a valid runtime input.
+- `tests/schemas/test_tier_packs_schema.py` now proves JSON-owner behavior directly and fails closed when callers try to use the generated markdown view as semantic input.
+
+### Notes
+- This patch does not change tier policy values; it removes a legacy markdown authority seam for shipped tier loading.
+
 ## 1.6.10 — 2026-03-30
 
 ### Summary

@@ -37,9 +37,9 @@ If `LockedSpec.waivers_applied` is present and non-empty, the corresponding waiv
 - Each waiver MUST validate against: [../schemas/Waiver.schema.json](../schemas/Waiver.schema.json)
 
 ### 2.6 Tier parameter defaults
-Gate R reads tier policies from:
-- Canonical SSOT: [../tiers/tier-packs.json](../tiers/tier-packs.json)
-- Generated view (must match canonical): [../tiers/tier-packs.md](../tiers/tier-packs.md)
+Gate R reads tier policy from canonical SSOT:
+- Runtime authority: [../tiers/tier-packs.json](../tiers/tier-packs.json)
+- Generated view: [../tiers/tier-packs.md](../tiers/tier-packs.md) must match canonical for operator readability, but it is not a runtime authority or runtime input surface.
 
 ## 3. Outputs (Required)
 Gate R produces a `GateVerdict.json` with `gate_id = "R"`.
