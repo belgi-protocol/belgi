@@ -15,7 +15,7 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
                 check_id="Q-DOC-002",
                 status="FAIL",
                 message="Tier doc_impact_required missing; cannot enforce doc_impact contract deterministically.",
-                pointers=["tiers/tier-packs.md"],
+                pointers=["tiers/tier-packs.json"],
                 category="FQ-SCHEMA-LOCKEDSPEC-INVALID",
                 remediation_next_instruction="Do add required doc_impact (including note_on_empty when required_paths is empty) then re-run Q.",
             )

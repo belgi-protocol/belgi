@@ -159,13 +159,9 @@ def run(ctx: QCheckContext) -> list[CheckResult]:
     if not isinstance(locked_tier, dict) or not isinstance(tier_obj, dict) or locked_tier.get("tier_id") != tier_obj.get("tier_pack_id"):
         mismatches.append("LockedSpec.tier.tier_id")
 
-    # 4) doc_impact semantics alignment.
+    # 4) doc_impact payload mapping when present.
     locked_doc = ctx.locked_spec.get("doc_impact")
     intent_doc = ctx.intent_obj.get("doc_impact")
-    doc_required = ctx.tier_params.get("doc_impact_required")
-    if doc_required is True:
-        if locked_doc is None:
-            mismatches.append("LockedSpec.doc_impact")
     if locked_doc is not None:
         if locked_doc != intent_doc:
             mismatches.append("LockedSpec.doc_impact")

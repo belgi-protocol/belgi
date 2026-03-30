@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -240,6 +241,28 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+def _split_q_checks_around_tier_admission():
+    pre_q7 = []
+    post_q7 = []
+    q7_seen = False
+    for module in get_checks():
+        if q7_seen:
+            post_q7.append(module)
+            continue
+        pre_q7.append(module)
+        if module.__name__.endswith("q7_tier_supported"):
+            q7_seen = True
+    if not q7_seen:
+        raise ValueError("Gate Q registry missing q7_tier_supported owner check")
+    return pre_q7, post_q7
+
+
+def _load_gate_q_tier_params(*, tiers_text: str, tier_id: str | None) -> dict[str, Any]:
+    if isinstance(tier_id, str) and tier_id:
+        return load_tier_params(tiers_text, tier_id).to_legacy_map()
+    return {"_tier_parse_error": "LockedSpec.tier.tier_id missing/invalid"}
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         args = _parse_args(argv)
@@ -310,12 +333,6 @@ def main(argv: list[str] | None = None) -> int:
                 if isinstance(v, str) and v:
                     tier_id = v
 
-        tier_params: dict[str, Any] = {}
-        if isinstance(tier_id, str) and tier_id:
-            tier_params = load_tier_params(tiers_text, tier_id).to_legacy_map()
-        else:
-            tier_params = {"_tier_parse_error": "LockedSpec.tier.tier_id missing/invalid"}
-
         schemas: dict[str, dict[str, Any]] = {}
         for name, rel in (
             ("IntentSpec", "schemas/IntentSpec.schema.json"),
@@ -341,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(run_id, str) or not run_id:
             run_id = "UNKNOWN"
 
-        ctx = QCheckContext(
+        base_ctx = QCheckContext(
             repo_root=repo_root,
             run_id=run_id,
             intent_spec_path=intent_path,
@@ -356,15 +373,10 @@ def main(argv: list[str] | None = None) -> int:
             evidence_manifest=evidence_manifest if isinstance(evidence_manifest, dict) else None,
             tiers_md=tiers_text,
             tier_id=tier_id,
-            tier_params=tier_params,
+            tier_params={},
             schemas=schemas,
         )
 
-        results: list[CheckResult] = []
-        for module in get_checks():
-            results.extend(module.run(ctx))
-
-        # Verify protocol identity (fail-closed on mismatch)
         proto_check = verify_protocol_identity(
             locked_spec=locked_spec if isinstance(locked_spec, dict) else None,
             active_pack_id=protocol.pack_id,
@@ -372,10 +384,23 @@ def main(argv: list[str] | None = None) -> int:
             active_pack_name=protocol.pack_name,
             gate_id="Q",
         )
+
+        pre_q7_modules, post_q7_modules = _split_q_checks_around_tier_admission()
+        results: list[CheckResult] = []
         if proto_check is not None:
-            results.insert(0, proto_check)
+            results.append(proto_check)
+
+        for module in pre_q7_modules:
+            results.extend(module.run(base_ctx))
 
         first = _first_fail(results)
+        ctx = base_ctx
+        if first is None:
+            # Unsupported-tier admission must settle before any downstream tier-param consumer runs.
+            ctx = replace(base_ctx, tier_params=_load_gate_q_tier_params(tiers_text=tiers_text, tier_id=tier_id))
+            for module in post_q7_modules:
+                results.extend(module.run(ctx))
+            first = _first_fail(results)
 
         evidence_ref = {
             "id": f"evidence-manifest-{run_id}",

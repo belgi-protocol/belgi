@@ -158,6 +158,35 @@ def test_gate_parameter_map_keeps_pinned_toolchain_refs_owned_by_q5() -> None:
     assert r7_params == ["command_log_mode"]
 
 
+def test_gate_parameter_map_assigns_hotl_policy_only_to_q_hotl_001() -> None:
+    obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
+    gate_map = obj.get("gate_parameter_map", [])
+    assert isinstance(gate_map, list)
+
+    q6_params = None
+    q7_params = None
+    q_hotl_params = None
+    q_intent_003_seen = False
+    for idx, entry in enumerate(gate_map):
+        assert isinstance(entry, dict), f"gate_parameter_map[{idx}] must be an object"
+        gate_check_id = entry.get("gate_check_id")
+        params = entry.get("tier_params_read", [])
+        assert isinstance(params, list), f"gate_parameter_map[{idx}].tier_params_read must be a list"
+        if gate_check_id == "Q6":
+            q6_params = params
+        if gate_check_id == "Q7":
+            q7_params = params
+        if gate_check_id == "Q-HOTL-001":
+            q_hotl_params = params
+        if gate_check_id == "Q-INTENT-003":
+            q_intent_003_seen = True
+
+    assert q6_params == ["waiver_policy.allowed", "waiver_policy.max_active_waivers"]
+    assert q7_params == []
+    assert q_hotl_params == ["waiver_policy.requires_HOTL"]
+    assert q_intent_003_seen is False
+
+
 def test_waiver_policy_note_keeps_hotl_separate() -> None:
     obj = _load_json(REPO_ROOT / "tiers" / "tier-packs.json")
     waiver_note = obj["parameter_definitions"]["waiver_policy"]["v1_enforcement_note"]

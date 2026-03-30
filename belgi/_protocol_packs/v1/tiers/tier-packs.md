@@ -209,9 +209,10 @@ This table lists which tier parameters each check reads.
 | Q3 | (none) |
 | Q4 | scope_budgets.max_touched_files, scope_budgets.max_loc_delta |
 | Q5 | envelope_policy.pinned_toolchain_refs_required |
-| Q6 | waiver_policy.allowed, waiver_policy.max_active_waivers, waiver_policy.requires_HOTL |
+| Q6 | waiver_policy.allowed, waiver_policy.max_active_waivers |
 | Q7 | (none) |
 | Q-EVIDENCE-002 | required_evidence_kinds_q |
+| Q-HOTL-001 | waiver_policy.requires_HOTL |
 | Q-DOC-001 | (none) |
 | Q-DOC-002 | doc_impact_required |
 | R1 | command_log_mode |

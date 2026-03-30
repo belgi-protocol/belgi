@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from chain.logic.q_checks import q_intent_003
+from chain.logic.q_checks.context import QCheckContext
 from tests.gates.gate_test_support import (
     REPO_ROOT,
     _read_json,
@@ -294,6 +296,71 @@ def test_gate_q_q7_unknown_tier_still_fails_when_not_in_policy(tmp_path: Path) -
     failures = verdict.get("failures")
     assert isinstance(failures, list) and failures
     assert failures[0]["rule_id"] == "Q7"
+
+
+def test_q_intent_003_doc_impact_mapping_no_longer_depends_on_tier_params(tmp_path: Path) -> None:
+    intent_path = tmp_path / "IntentSpec.core.md"
+    locked_path = tmp_path / "LockedSpec.json"
+    evidence_path = tmp_path / "EvidenceManifest.json"
+    intent_path.write_text("# synthetic intent\n", encoding="utf-8", errors="strict")
+    locked_path.write_text("{}\n", encoding="utf-8", errors="strict")
+    evidence_path.write_text("{}\n", encoding="utf-8", errors="strict")
+
+    intent_doc_impact = {
+        "required_paths": [],
+        "note_on_empty": "No documentation updates required for this synthetic Gate Q mapping proof.",
+    }
+    publication_intent = {"publish": False, "profile": "internal"}
+    ctx = QCheckContext(
+        repo_root=tmp_path,
+        run_id="q-intent-003-tier-params-free",
+        intent_spec_path=intent_path,
+        locked_spec_path=locked_path,
+        evidence_manifest_path=evidence_path,
+        intent_spec_text="# synthetic intent\n",
+        yaml_block_count=1,
+        yaml_text="intent_id: q-intent-003-tier-params-free",
+        intent_obj={
+            "intent_id": "q-intent-003-tier-params-free",
+            "title": "Synthetic mapping proof",
+            "goal": "Verify LockedSpec mapping does not depend on pre-admission tier params.",
+            "acceptance": {"success_criteria": ["mapping remains deterministic"]},
+            "scope": {"allowed_dirs": ["src/"], "forbidden_dirs": []},
+            "tier": {"tier_pack_id": "tier-2"},
+            "doc_impact": intent_doc_impact,
+            "publication_intent": publication_intent,
+        },
+        yaml_parse_error=None,
+        locked_spec={
+            "intent": {
+                "intent_id": "q-intent-003-tier-params-free",
+                "title": "Synthetic mapping proof",
+                "narrative": "Verify LockedSpec mapping does not depend on pre-admission tier params.",
+                "success_criteria": "- mapping remains deterministic",
+                "scope": "allowed_dirs: [src/]; forbidden_dirs: []",
+            },
+            "constraints": {
+                "allowed_paths": ["src/"],
+                "forbidden_paths": [],
+            },
+            "tier": {
+                "tier_id": "tier-2",
+                "tier_name": "Tier 2",
+            },
+            "doc_impact": intent_doc_impact,
+            "publication_intent": publication_intent,
+        },
+        evidence_manifest={},
+        tiers_md=(REPO_ROOT / "tiers" / "tier-packs.json").read_text(encoding="utf-8", errors="strict"),
+        tier_id="tier-2",
+        tier_params={},
+        schemas={},
+    )
+
+    results = q_intent_003.run(ctx)
+    assert len(results) == 1
+    assert results[0].status == "PASS"
+    assert "deterministic IntentSpec mapping rules" in results[0].message
 
 
 def test_gate_q_prompt_001_unlisted_repo_is_primary(tmp_path: Path) -> None:

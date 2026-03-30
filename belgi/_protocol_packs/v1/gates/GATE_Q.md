@@ -184,7 +184,6 @@ Note (deterministic tokenization):
 - required inputs:
   - Parsed + schema-valid IntentSpec object
   - Candidate LockedSpec: [../schemas/LockedSpec.schema.json](../schemas/LockedSpec.schema.json)
-  - Tier defaults (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
 - deterministic procedure (v1, deterministic):
   Gate Q recomputes the expected LockedSpec inputs from the IntentSpec and requires exact matches:
 
@@ -208,11 +207,10 @@ Note (deterministic tokenization):
      - `LockedSpec.tier.tier_name` MUST remain schema-valid.
      - `LockedSpec.tier.tolerances_ref` MUST point to the locked tolerances object selected on the primary run spine, whether explicitly supplied or canonically generated from the selected tier.
 
-  4) doc_impact semantics alignment:
-     - From tier-packs, read `doc_impact_required` for the selected tier.
-     - If `doc_impact_required == true`, `LockedSpec.doc_impact` MUST be present (not null).
+  4) doc_impact payload mapping:
      - If `LockedSpec.doc_impact` is present, it MUST be exactly equal to `IntentSpec.doc_impact`.
-      - `required_paths` MAY be empty `[]` to explicitly indicate “no doc updates required”, but then `note_on_empty` MUST be present and non-empty.
+     - `required_paths` MAY be empty `[]` to explicitly indicate “no doc updates required”, but then `note_on_empty` MUST be present and non-empty.
+     - Tier-controlled `doc_impact_required` presence enforcement is owned separately by `Q-DOC-002`.
 
   4b) publication_intent semantics alignment:
      - For tiers `tier-2` and `tier-3` (audit-grade): `LockedSpec.publication_intent` MUST be present.
@@ -387,7 +385,7 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
       - Enforce v1 human-authorship heuristic:
         - `approver` MUST NOT contain the substrings `llm` or `agent` (case-insensitive).
         - `audit_trail_ref.id` and `audit_trail_ref.storage_ref` MUST be non-empty (schema-required; Gate Q MUST treat any schema failure as NO-GO).
-    - If `waiver_policy.requires_HOTL == true`, HOTL approval remains separately enforced by `Q-HOTL-001`.
+  3) HOTL requirement remains separately enforced by `Q-HOTL-001`; `Q6` does not read `waiver_policy.requires_HOTL`.
 - failure category: `FQ-WAIVER-INVALID`
 - required evidence kinds: `schema_validation`, `policy_report`
 - remediation.next_instruction template: `Do edit waiver waiver_id to be eligible (set status="active", replace placeholder fields, and ensure expires_at is after EvidenceManifest.anchored_time_utc), or remove it, then re-run Q.`
@@ -401,6 +399,7 @@ Note (deterministic selection): `<missing_kind>` is the first missing kind from 
   1) Load the declared tier registry from [../tiers/tier-packs.json](../tiers/tier-packs.json).
   2) Verify `tier_id` is a key in `tiers`.
   3) If not: fail.
+  4) Downstream tier-parameter consumers (`Q-EVIDENCE-002`, `Q5`, `Q6`, `Q-HOTL-001`, `Q-DOC-002`) only run after this admission step passes.
 - failure category: `FQ-TIER-UNKNOWN`
 - required evidence kinds: `policy_report`, `schema_validation`
 - remediation.next_instruction template: `Do select a supported tier_id (<tier_id_value>) then re-run Q.`
@@ -414,7 +413,7 @@ Note (deterministic substitution): `<tier_id_value>` is the observed unsupported
   - Tier policy reference (canonical SSOT): [../tiers/tier-packs.json](../tiers/tier-packs.json)
   - EvidenceManifest (`EvidenceManifest.artifacts[]`)
 - deterministic procedure (v1, deterministic):
-  1) Load `tiers[<tier_id>].waiver_policy.requires_HOTL` from [../tiers/tier-packs.json](../tiers/tier-packs.json).
+  1) Load `tiers[<tier_id>].waiver_policy.requires_HOTL` from [../tiers/tier-packs.json](../tiers/tier-packs.json). This is the sole Gate Q consumer of that tier parameter.
   2) If `waiver_policy.requires_HOTL == true`:
      - Search `EvidenceManifest.artifacts[]` for an artifact with `kind == "hotl_approval"`.
      - FAIL if no `hotl_approval` artifact is found.

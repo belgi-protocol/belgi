@@ -390,6 +390,7 @@ All steps below MUST:
 
 Failure handling:
 - If Gate Q returns `FQ-TIER-UNKNOWN`, amend tier selection and re-run Gate Q.
+- Unsupported tiers are rejected at `Q7` before downstream tier-policy consumers such as `Q-EVIDENCE-002`, `Q5`, `Q6`, `Q-HOTL-001`, and `Q-DOC-002` run.
 
 ### Step 1 — Write IntentSpec (core intent contract)
 
