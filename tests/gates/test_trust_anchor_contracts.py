@@ -148,7 +148,6 @@ def test_repo_root_genesis_schema_request_fails_closed_on_repo_schema_drift(tmp_
     with pytest.raises(TrustAnchorError, match="GenesisSealPayload schema is not a JSON object"):
         trust_anchor._read_genesis_seal_schema(tmp_path)
 
-
 def test_legacy_genesis_payload_cannot_act_as_canonical_authority(tmp_path: Path) -> None:
     legacy_dir = tmp_path / "belgi" / "genesis"
     legacy_dir.mkdir(parents=True, exist_ok=True)

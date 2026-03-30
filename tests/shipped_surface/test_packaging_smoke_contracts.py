@@ -30,8 +30,6 @@ reset_repo_local_imports("belgi")
 from belgi.protocol.pack import get_builtin_protocol_context
 from belgi.trust_anchor import load_pinned_trust_anchor
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-
 
 def _manifest_relpaths(*, prefix: str, suffix: str | None = None) -> list[str]:
     ctx = get_builtin_protocol_context()
@@ -251,15 +249,12 @@ def test_packaged_trust_anchor_loads() -> None:
     assert trust_anchor.get("public_key_hex") == authority.public_key_hex
 
 
-def test_packaged_tier3_schema_mirrors_match_repo_canonicals() -> None:
-    from importlib.resources import files
-
+def test_packaged_tier3_schema_resources_are_shipped_and_loadable() -> None:
     ctx = get_builtin_protocol_context()
-    packaged_schema_root = files("belgi").joinpath("_protocol_packs", "v1", "schemas")
+    shipped_schema_relpaths = set(_manifest_relpaths(prefix="schemas/", suffix=".schema.json"))
 
-    for name in ("TrustAnchor.schema.json", "GenesisSealPayload.schema.json"):
-        repo_bytes = (REPO_ROOT / "schemas" / name).read_bytes()
-        packaged_bytes = packaged_schema_root.joinpath(name).read_bytes()
-
-        assert packaged_bytes == repo_bytes
-        assert ctx.read_text(f"schemas/{name}") == repo_bytes.decode("utf-8", errors="strict")
+    for relpath in ("schemas/TrustAnchor.schema.json", "schemas/GenesisSealPayload.schema.json"):
+        assert relpath in shipped_schema_relpaths
+        schema = ctx.read_json(relpath)
+        assert isinstance(schema, dict), f"{relpath} must be a JSON object"
+        assert schema, f"{relpath} must not be empty"

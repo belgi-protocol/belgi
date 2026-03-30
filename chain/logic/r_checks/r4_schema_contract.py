@@ -11,8 +11,8 @@ from belgi.trust_anchor import (
     TRUST_ANCHOR_RELPATH,
     TrustAnchorError,
     load_pinned_trust_anchor,
-    validate_genesis_seal_schema,
     validate_genesis_seal_payload,
+    validate_genesis_seal_schema,
 )
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id
 

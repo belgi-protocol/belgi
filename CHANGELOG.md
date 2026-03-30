@@ -10,7 +10,8 @@ Made Tier-3 schema-source authority fail closed so repo-root trust-anchor verifi
 ### Changed
 - `belgi/trust_anchor.py` now treats repo-root `schemas/GenesisSealPayload.schema.json` requests as explicit repo-root authority and raises a `TrustAnchorError` when that schema is missing, invalid, or drifted, instead of silently loading packaged bytes.
 - `chain/logic/r_checks/r4_schema_contract.py` now validates `genesis_seal` payload schema through the canonical trust-anchor helper surface on the repo-root path before verifying the canonical Tier-3 trust anchor, instead of carrying a separate protocol-context schema load for that contract.
-- `tests/gates/test_trust_anchor_contracts.py` now proves verifier/report helper reuse and direct repo-root fail-closed behavior, while `tests/shipped_surface/test_packaging_smoke_contracts.py` now parity-locks the packaged Tier-3 schema mirrors to the repo canonical schema bytes.
+- `tests/meta/test_lane_contracts.py` now catches packaged parity-root reads that hide behind local literal aliases, tuple/list unpacking, and split/joinpath path construction, so wrong-lane parity proofs do not slip past the suite boundary.
+- `tests/gates/test_trust_anchor_contracts.py` now proves verifier/report helper reuse and direct repo-root fail-closed behavior, while `tests/shipped_surface/test_packaging_smoke_contracts.py` now proves the packaged Tier-3 schema resources are shipped and loadable on package-only paths.
 
 ### Notes
 - This patch does not redesign trust-anchor semantics broadly; it closes the narrower Tier-3 schema-source authority split.
