@@ -143,6 +143,10 @@ def _init_tracked_temp_repo(root: Path, files: dict[str, str]) -> None:
 
 
 def _write_terminology_fixture(tmp_path: Path, term_entries: list[tuple[str, str]], note_line: str) -> None:
+    _write_canonicals_fixture(
+        tmp_path,
+        anchor_registry_ids=[anchor for _term, anchor in term_entries],
+    )
     (tmp_path / "terminology.md").write_text(
         "\n".join(
             [
@@ -152,6 +156,48 @@ def _write_terminology_fixture(tmp_path: Path, term_entries: list[tuple[str, str
                 *[f"- [{term}](CANONICALS.md#{anchor})" for term, anchor in term_entries],
                 "## Notes",
                 note_line,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
+def _write_canonicals_fixture(
+    tmp_path: Path,
+    *,
+    anchor_registry_ids: list[str],
+    canonical_chain: str = "P → C1 → Q → C2 → R → C3 → S",
+) -> None:
+    (tmp_path / "CANONICALS.md").write_text(
+        "\n".join(
+            [
+                "# CANONICALS",
+                "## Anchor Registry (Stable IDs)",
+                *[f"- {anchor_id}" for anchor_id in anchor_registry_ids],
+                "",
+                "## 2. Canonical Chain (Canonical)",
+                canonical_chain,
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
+def _write_running_belgi_chain_fixture(tmp_path: Path, chain: str) -> None:
+    path = tmp_path / "docs" / "operations" / "running-belgi.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(
+            [
+                "# Running BELGI",
+                "## 1) Overview: what happens in P → C1 → Q → C2 → R → C3 → S",
+                f"Canonical chain: `{chain}` (see `../../CANONICALS.md`).",
             ]
         )
         + "\n",
@@ -359,6 +405,66 @@ def test_cs_can_001_allows_benign_prose_sentence(tmp_path: Path) -> None:
     assert res.status == "PASS"
 
 
+def test_cs_can_001_fails_when_term_map_pointer_anchor_is_missing_from_derived_report(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_canonicals_fixture(tmp_path, anchor_registry_ids=["purpose"])
+    (tmp_path / "terminology.md").write_text(
+        "\n".join(
+            [
+                "# Terminology",
+                "Rule of Use: terminology.md MUST NOT define or redefine canonical terms.",
+                "## Term Map",
+                "- [LockedSpec](CANONICALS.md#lockedspec)",
+                "## Notes",
+                "This is a note.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+    res = sweep_mod.check_cs_can_001(tmp_path)
+    assert res.invariant_id == "CS-CAN-001"
+    assert res.status == "FAIL"
+    assert "non-existent canonical anchors" in res.remediation
+    assert "lockedspec" in res.remediation
+
+
+def test_cs_can_002_uses_report_derived_chain_sequence(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_canonicals_fixture(
+        tmp_path,
+        anchor_registry_ids=["canonical-chain"],
+        canonical_chain="P → Q → R",
+    )
+    _write_running_belgi_chain_fixture(tmp_path, "P → Q → R")
+
+    res = sweep_mod.check_cs_can_002(tmp_path)
+    assert res.invariant_id == "CS-CAN-002"
+    assert res.status == "PASS"
+
+
+def test_cs_can_002_fails_when_running_belgi_chain_drifts_from_report(tmp_path: Path) -> None:
+    from tools import sweep as sweep_mod
+
+    _write_canonicals_fixture(
+        tmp_path,
+        anchor_registry_ids=["canonical-chain"],
+        canonical_chain="P → Q → R",
+    )
+    _write_running_belgi_chain_fixture(tmp_path, "P → R → Q")
+
+    res = sweep_mod.check_cs_can_002(tmp_path)
+    assert res.invariant_id == "CS-CAN-002"
+    assert res.status == "FAIL"
+    assert "Expected `P → Q → R`" in res.remediation
+    assert "found `P → R → Q`" in res.remediation
+
+
 def test_cs_protocol_identity_001_allows_source_as_operational_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -477,6 +583,7 @@ def test_managed_sweep_surfaces_classify_owned_categories_without_repo_parity(tm
             "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
             "tools/README.md": "# tools\n",
+            "tools/canonicals_report.py": "def main():\n    return 0\n",
             "belgi/cli_app/commands/run.py": "# run\n",
             "docs/research/README.md": "# research\n",
             "scripts/not_belgi.sh": "#!/usr/bin/env bash\n",
@@ -493,6 +600,7 @@ def test_managed_sweep_surfaces_classify_owned_categories_without_repo_parity(tm
         "scripts/belgi_latest_run.sh",
         "templates/ci/github/belgi-tier1.yml",
         "tools/README.md",
+        "tools/canonicals_report.py",
         "belgi/cli_app/commands/run.py",
     }.issubset(managed)
     assert "docs/research/README.md" not in managed
@@ -511,6 +619,7 @@ def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, mon
             "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
             "tools/README.md": "# tools\n",
+            "tools/canonicals_report.py": "def main():\n    return 0\n",
         },
     )
 
@@ -524,6 +633,7 @@ def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, mon
     assert res.invariant_id == "CS-SWEEP-002"
     assert res.status == "FAIL"
     assert "docs/operations/workflows.md" in res.remediation
+    assert "tools/canonicals_report.py" in res.remediation
 
 
 def test_cs_sweep_002_passes_when_managed_surface_is_listed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -584,6 +694,17 @@ def test_cs_sweep_002_fails_when_repo_root_markdown_is_unlisted(
     assert res.invariant_id == "CS-SWEEP-002"
     assert res.status == "FAIL"
     assert "NEW_CANONICAL.md" in res.remediation
+
+
+def test_cs_sweep_001_requires_derived_canonicals_report_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools import sweep as sweep_mod
+
+    monkeypatch.setattr(sweep_mod, "_canonical_inputs", lambda _root: ["tools/normalize.py", "tools/rehash.py", "tools/sweep.py"])
+    monkeypatch.setattr(sweep_mod, "_iter_schema_files", lambda _root: [])
+
+    res = sweep_mod.check_cs_sweep_001(tmp_path)
+    assert res.invariant_id == "CS-SWEEP-001"
+    assert res.status == "FAIL"
 
 
 def test_cs_run_002_passes_with_owner_bounded_non_owner_docs(

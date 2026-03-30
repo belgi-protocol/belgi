@@ -98,6 +98,7 @@ sys.path.insert(0, repo_root_str)
 
 from belgi.core.jail import normalize_repo_rel as _normalize_repo_rel
 from belgi.core.jail import resolve_repo_rel_path as _resolve_repo_rel_path
+from tools.canonicals_report import CanonicalsReportError, derive_canonicals_report
 
 
 class _UserInputError(RuntimeError):
@@ -161,6 +162,46 @@ def _canonical_json_bytes(obj: object) -> bytes:
 
 def _atomic_write_canonical_json(path: Path, obj: object) -> None:
     _atomic_write_bytes(path, _canonical_json_bytes(obj))
+
+
+def _load_derived_canonicals_report(root: Path) -> dict[str, object]:
+    try:
+        report = derive_canonicals_report(root)
+    except (CanonicalsReportError, ValueError, OSError) as e:
+        raise _UserInputError(str(e)) from e
+
+    anchor_registry_ids = report.get("anchor_registry_ids")
+    if not isinstance(anchor_registry_ids, list) or not all(isinstance(item, str) for item in anchor_registry_ids):
+        raise _UserInputError("Derived canonicals report is missing string anchor_registry_ids.")
+
+    canonical_chain = report.get("canonical_chain")
+    if not isinstance(canonical_chain, dict):
+        raise _UserInputError("Derived canonicals report is missing canonical_chain.")
+
+    sequence = canonical_chain.get("sequence")
+    if not isinstance(sequence, list) or not all(isinstance(item, str) and item for item in sequence):
+        raise _UserInputError("Derived canonicals report canonical_chain.sequence is malformed.")
+
+    return report
+
+
+def _format_arrow_chain_sequence(sequence: Sequence[str]) -> str:
+    return " → ".join(str(item) for item in sequence)
+
+
+def _extract_arrow_chain_sequence(text: str) -> list[str]:
+    sequence = [part.strip(" `") for part in str(text or "").split("→")]
+    if len(sequence) < 2 or any(not part for part in sequence):
+        raise _UserInputError("Arrow chain is missing one or more stage labels.")
+    return sequence
+
+
+def _extract_labeled_arrow_chain_sequence(md: str, label: str) -> list[str]:
+    pattern = re.compile(rf"(?im)^\s*{re.escape(label)}\s*:\s*`([^`]+)`")
+    match = pattern.search(md)
+    if match is None:
+        raise _UserInputError(f"Missing `{label}:` line with a backticked arrow chain.")
+    return _extract_arrow_chain_sequence(match.group(1))
 
 
 # ----------------------------
@@ -544,34 +585,49 @@ def check_cs_can_004(root: Path) -> InvariantResult:
 def check_cs_can_002(root: Path) -> InvariantResult:
     """CS-CAN-002 — Canonical chain matches everywhere."""
 
-    chain = "P → C1 → Q → C2 → R → C3 → S"
-    files = [
-        "CANONICALS.md",
-        "docs/operations/running-belgi.md",
+    evidence = [
+        "CANONICALS.md#2-canonical-chain-canonical",
+        "docs/operations/running-belgi.md#1-overview-what-happens-in-p--c1--q--c2--r--c3--s",
     ]
+    runbook_rel = "docs/operations/running-belgi.md"
+    runbook_path = repo_path(root, runbook_rel)
+    if not runbook_path.exists():
+        return InvariantResult("CS-CAN-002", "FAIL", evidence, f"Missing required file: {runbook_rel}.")
 
-    missing: List[str] = []
-    mismatched: List[str] = []
-    for f in files:
-        p = repo_path(root, f)
-        if not p.exists():
-            missing.append(f)
-            continue
-        txt = read_text(p)
-        if chain not in txt:
-            mismatched.append(f)
-
-    if missing:
-        return InvariantResult("CS-CAN-002", "FAIL", [], f"Missing required file(s): {', '.join(missing)}.")
-    if mismatched:
+    try:
+        report = _load_derived_canonicals_report(root)
+    except _UserInputError as e:
         return InvariantResult(
             "CS-CAN-002",
             "FAIL",
-            [],
-            f"Canonical chain string not found exactly in: {', '.join(mismatched)}. Ensure exact '{chain}'.",
+            evidence,
+            f"Failed to derive canonical chain report from CANONICALS.md#2-canonical-chain-canonical ({e}).",
         )
 
-    return InvariantResult("CS-CAN-002", "PASS", list(files), "")
+    expected_sequence = list(report["canonical_chain"]["sequence"])
+    expected_chain = _format_arrow_chain_sequence(expected_sequence)
+
+    try:
+        actual_sequence = _extract_labeled_arrow_chain_sequence(read_text(runbook_path), "Canonical chain")
+    except _UserInputError as e:
+        return InvariantResult(
+            "CS-CAN-002",
+            "FAIL",
+            evidence,
+            f"docs/operations/running-belgi.md must keep a `Canonical chain:` line aligned to the derived canonical-chain report ({e}).",
+        )
+
+    if actual_sequence != expected_sequence:
+        actual_chain = _format_arrow_chain_sequence(actual_sequence)
+        return InvariantResult(
+            "CS-CAN-002",
+            "FAIL",
+            evidence,
+            "Canonical chain drift detected in docs/operations/running-belgi.md. "
+            f"Expected `{expected_chain}` from CANONICALS.md#2-canonical-chain-canonical via the derived report, found `{actual_chain}`.",
+        )
+
+    return InvariantResult("CS-CAN-002", "PASS", evidence, "")
 
 
 def check_cs_can_003(root: Path) -> InvariantResult:
@@ -833,8 +889,8 @@ def _normalize_cs_can_001_subject(text: str) -> str:
     return re.sub(r"\s+", " ", subject).casefold()
 
 
-def _extract_cs_can_001_term_map_subjects(term_map: str) -> set[str]:
-    subjects: set[str] = set()
+def _extract_cs_can_001_term_map_entries(term_map: str) -> list[tuple[str, str]]:
+    entries: list[tuple[str, str]] = []
     for raw_line in term_map.splitlines():
         line = raw_line.strip()
         if not line:
@@ -843,17 +899,23 @@ def _extract_cs_can_001_term_map_subjects(term_map: str) -> set[str]:
         if line.startswith("|") and line.endswith("|"):
             cells = [cell.strip() for cell in line.strip("|").split("|")]
             if len(cells) >= 2 and cells[0].lower() != "term":
-                if re.search(r"\(CANONICALS\.md#[^)]+\)", cells[1]):
-                    normalized = _normalize_cs_can_001_subject(cells[0])
-                    if normalized:
-                        subjects.add(normalized)
+                link_match = re.search(r"\(CANONICALS\.md#([^)]+)\)", cells[1])
+                if link_match is not None:
+                    entries.append((cells[0], link_match.group(1)))
             continue
 
-        link_match = re.match(r"^\s*[-*+]\s+\[([^\]]+)\]\((CANONICALS\.md#[^)]+)\)\s*$", line)
+        link_match = re.match(r"^\s*[-*+]\s+\[([^\]]+)\]\(CANONICALS\.md#([^)]+)\)\s*$", line)
         if link_match:
-            normalized = _normalize_cs_can_001_subject(link_match.group(1))
-            if normalized:
-                subjects.add(normalized)
+            entries.append((link_match.group(1), link_match.group(2)))
+    return entries
+
+
+def _extract_cs_can_001_term_map_subjects(term_map: str) -> set[str]:
+    subjects: set[str] = set()
+    for subject, _anchor_id in _extract_cs_can_001_term_map_entries(term_map):
+        normalized = _normalize_cs_can_001_subject(subject)
+        if normalized:
+            subjects.add(normalized)
     return subjects
 
 
@@ -866,11 +928,17 @@ def _extract_cs_can_001_definitional_subject(line: str) -> str | None:
 
 
 def check_cs_can_001(root: Path) -> InvariantResult:
-    """CS-CAN-001 — Terminology is pointers-only (best-effort)."""
+    """CS-CAN-001 — Terminology is pointers-only."""
+
+    evidence = [
+        "terminology.md#0-rule-of-use-canonical-pointer",
+        "terminology.md#term-map",
+        "CANONICALS.md#anchor-registry-stable-ids",
+    ]
 
     term_path = repo_path(root, "terminology.md")
     if not term_path.exists():
-        return InvariantResult("CS-CAN-001", "FAIL", [], "terminology.md missing.")
+        return InvariantResult("CS-CAN-001", "FAIL", evidence, "terminology.md missing.")
 
     md = read_text(term_path)
 
@@ -879,9 +947,20 @@ def check_cs_can_001(root: Path) -> InvariantResult:
         return InvariantResult(
             "CS-CAN-001",
             "FAIL",
-            ["terminology.md"],
+            evidence,
             "Add explicit Rule of Use statement: terminology.md MUST NOT define or redefine canonical terms.",
         )
+
+    try:
+        report = _load_derived_canonicals_report(root)
+    except _UserInputError as e:
+        return InvariantResult(
+            "CS-CAN-001",
+            "FAIL",
+            evidence,
+            f"Failed to derive canonical anchor registry report from CANONICALS.md#anchor-registry-stable-ids ({e}).",
+        )
+    canonical_anchor_ids = set(report["anchor_registry_ids"])
 
     term_map_match = re.search(r"(?is)#+\s*(?:\d+(?:\.\d+)*\.?\s*)?Term Map\b(.*?)(\n#+\s|\Z)", md)
     if term_map_match:
@@ -892,22 +971,40 @@ def check_cs_can_001(root: Path) -> InvariantResult:
             return InvariantResult(
                 "CS-CAN-001",
                 "FAIL",
-                ["terminology.md#term-map"],
+                evidence,
                 f"Term Map has non-canonical links (must start with CANONICALS.md#): {bad_links[:5]}",
+            )
+        missing_anchor_targets = sorted(
+            {
+                link.split("#", 1)[1]
+                for link in links
+                if link.startswith("CANONICALS.md#") and link.split("#", 1)[1] not in canonical_anchor_ids
+            }
+        )
+        if missing_anchor_targets:
+            sample = ", ".join(missing_anchor_targets[:8])
+            extra = len(missing_anchor_targets) - 8
+            suffix = "" if extra <= 0 else f" (+{extra} more)"
+            return InvariantResult(
+                "CS-CAN-001",
+                "FAIL",
+                evidence,
+                "Term Map points at non-existent canonical anchors from "
+                f"CANONICALS.md#anchor-registry-stable-ids: {sample}{suffix}.",
             )
         canonical_subjects = _extract_cs_can_001_term_map_subjects(term_map)
         if not canonical_subjects:
             return InvariantResult(
                 "CS-CAN-001",
                 "FAIL",
-                ["terminology.md#term-map"],
+                evidence,
                 "Populate the 'Term Map' section with canonical term pointers to CANONICALS.md#<anchor>.",
             )
     else:
         return InvariantResult(
             "CS-CAN-001",
             "FAIL",
-            ["terminology.md"],
+            evidence,
             "Add a 'Term Map' section whose entries link to CANONICALS.md#<anchor>.",
         )
 
@@ -924,16 +1021,11 @@ def check_cs_can_001(root: Path) -> InvariantResult:
         return InvariantResult(
             "CS-CAN-001",
             "FAIL",
-            ["terminology.md"],
+            evidence,
             "Remove non-pointer term definitions from terminology.md (found glossary-like definitional sentences for canonical term subjects of the form '<term> is a/an/the ...').",
         )
 
-    return InvariantResult(
-        "CS-CAN-001",
-        "PASS",
-        ["terminology.md#0-rule-of-use-canonical-pointer", "terminology.md#term-map"],
-        "",
-    )
+    return InvariantResult("CS-CAN-001", "PASS", evidence, "")
 
 
 def check_intentspec_yaml_single_block(root: Path) -> InvariantResult:
@@ -3555,6 +3647,7 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "tools/render.py",
         "tools/normalize.py",
         "tools/rehash.py",
+        "tools/canonicals_report.py",
         "tools/check_codeowners.py",
         "tools/report.py",
         "tools/sweep.py",
@@ -3721,7 +3814,12 @@ def check_cs_sweep_001(root: Path) -> InvariantResult:
             "Ensure sweep inputs include all current schema files under schemas/, then rerun sweep.",
         )
 
-    required = {"tools/normalize.py", "tools/rehash.py", "tools/sweep.py"}
+    required = {
+        "tools/normalize.py",
+        "tools/rehash.py",
+        "tools/canonicals_report.py",
+        "tools/sweep.py",
+    }
     if not required.issubset(set(canon)):
         return InvariantResult(
             "CS-SWEEP-001",
@@ -3761,6 +3859,7 @@ def _sweep_managed_surface_files(root: Path) -> list[str]:
             "belgi/genesis/GenesisSealPayload.json",
             "belgi/genesis/README.md",
             "belgi/trust_anchor.py",
+            "tools/canonicals_report.py",
             "tools/report.py",
         }:
             out.add(rel)
