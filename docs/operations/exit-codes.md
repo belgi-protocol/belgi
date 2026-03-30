@@ -18,11 +18,33 @@ The installable `belgi` CLI contract is:
 | `20` | `USER_ERROR` | Usage/argument/input-contract failure, including normalized legacy `rc=3` returns. |
 | `30` | `INTERNAL_ERROR` | Unexpected internal exception path or explicit `RC_INTERNAL_ERROR` return. |
 
-Normalization rule for legacy subcommand returns at the public CLI boundary:
+### Default public CLI boundary normalization
 
-- legacy `1/2` -> `10` (`NO-GO`)
-- legacy `3` -> `20` (`USER_ERROR`)
-- explicit `RC_INTERNAL_ERROR` stays `30`
+This is the normalization surface used by the main public CLI membrane.
+
+| Raw rc | Public CLI rc | Notes |
+|---|---|---|
+| `1` | `10` | legacy NO-GO path |
+| `2` | `10` | legacy NO-GO path |
+| `3` | `20` | legacy USER_ERROR path |
+| `30` | `30` | explicit `RC_INTERNAL_ERROR` stays `30` |
+| `99` | `30` | representative other non-zero fallback path |
+
+Any other non-zero fallback path on the default public CLI boundary also normalizes to `30`.
+
+### `stage` forwarder public CLI boundary normalization
+
+This is the normalization surface used by public `belgi stage ...` forwarders.
+
+| Raw rc | Public CLI rc | Notes |
+|---|---|---|
+| `2` | `10` | chain NO-GO path |
+| `3` | `20` | chain user/input failure path |
+| `1` | `30` | non-contract stage fallback is internal at the public CLI boundary |
+| `30` | `30` | explicit `RC_INTERNAL_ERROR` stays `30` |
+| `99` | `30` | representative other non-zero fallback path |
+
+Any other non-zero fallback path on the `stage` forwarder boundary also normalizes to `30`.
 
 Public CLI commands must return only `{0,10,20,30}`.
 

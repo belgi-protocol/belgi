@@ -2,6 +2,19 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.9 — 2026-03-30
+
+### Summary
+Patch release converging public CLI exit-code authority on the shared CLI normalization owner and adding a direct canonical-doc/runtime parity contract for that surface.
+
+### Changed
+- Removed the shadow public exit-code constants from `belgi/cli_app/commands/run.py`, so the shipped `belgi run` path now returns the shared `belgi.cli_app.render` owner constants instead of carrying a second RC authority copy.
+- Tightened `docs/operations/exit-codes.md` so the canonical public contract now documents the two real normalization surfaces separately: the default public CLI boundary and the public `belgi stage ...` forwarder boundary.
+- Added direct docs/runtime parity coverage in `tests/tools/test_exit_code_contracts.py`, which parses the canonical exit-code tables and checks them against `belgi.cli_app.render` constants and `_normalize_cli_exit_code(...)`.
+
+### Notes
+- This patch converges an existing public CLI contract only; it does not widen the CLI surface or change the public exit-code model `{0,10,20,30}`.
+
 ## 1.6.8 — 2026-03-29
 
 ### Summary
