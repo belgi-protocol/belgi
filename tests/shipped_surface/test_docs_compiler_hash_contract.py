@@ -158,7 +158,7 @@ def test_c3_source_resolution_fail_closed_has_remediation_when_materialization_u
     def _boom(*, protocol: object, target_root: Path) -> None:
         raise c3_docs._UserInputError("simulated missing canonical sources")
 
-    monkeypatch.setattr(c3_docs, "_materialize_protocol_bound_c3_source_root", _boom)
+    monkeypatch.setattr(c3_docs, "materialize_protocol_bound_c3_source_root", _boom)
     with pytest.raises(c3_docs._UserInputError) as exc:
         c3_docs._resolve_c3_source_root(
             repo_root=tmp_path,
