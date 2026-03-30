@@ -7,9 +7,11 @@ from belgi.core.hash import sha256_bytes
 from belgi.core.jail import resolve_storage_ref, safe_relpath
 from belgi.core.schema import validate_schema
 from belgi.trust_anchor import (
+    GENESIS_SEAL_SCHEMA_RELPATH,
     TRUST_ANCHOR_RELPATH,
     TrustAnchorError,
     load_pinned_trust_anchor,
+    validate_genesis_seal_schema,
     validate_genesis_seal_payload,
 )
 from chain.logic.base import CheckResult, find_artifacts_by_kind_id
@@ -118,7 +120,13 @@ def _require_exactly_one(ctx: RCheckContext, kind: str, artifact_id: str) -> tup
     return arts[0], ""
 
 
-def _read_and_validate_objectref_json(ctx: RCheckContext, artifact: dict[str, Any], *, payload_schema: dict[str, Any], where: str) -> tuple[dict[str, Any] | None, str]:
+def _read_and_validate_objectref_json(
+    ctx: RCheckContext,
+    artifact: dict[str, Any],
+    *,
+    payload_schema: dict[str, Any] | None,
+    where: str,
+) -> tuple[dict[str, Any] | None, str]:
     storage_ref = artifact.get("storage_ref")
     declared_hash = artifact.get("hash")
 
@@ -145,10 +153,11 @@ def _read_and_validate_objectref_json(ctx: RCheckContext, artifact: dict[str, An
     if not isinstance(obj, dict):
         return None, f"{where}: payload must be a JSON object"
 
-    schema_errs = validate_schema(obj, payload_schema, root_schema=payload_schema, path=where)
-    if schema_errs:
-        first = schema_errs[0]
-        return None, f"{where}: payload schema invalid at {first.path}: {first.message}"
+    if payload_schema is not None:
+        schema_errs = validate_schema(obj, payload_schema, root_schema=payload_schema, path=where)
+        if schema_errs:
+            first = schema_errs[0]
+            return None, f"{where}: payload schema invalid at {first.path}: {first.message}"
 
     return obj, ""
 
@@ -193,21 +202,7 @@ def _enforce_genesis_seal(ctx: RCheckContext, *, em_ptr: str) -> tuple[bool, lis
             )
         ]
 
-    try:
-        genesis_schema = _load_schema(ctx, "schemas/GenesisSealPayload.schema.json")
-    except Exception as e:
-        return False, [
-            CheckResult(
-                check_id="R4",
-                status="FAIL",
-                category="FR-SCHEMA-ARTIFACT-INVALID",
-                message=f"Missing/invalid schemas/GenesisSealPayload.schema.json; cannot verify genesis_seal deterministically: {e}",
-                pointers=["schemas/GenesisSealPayload.schema.json"],
-                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
-            )
-        ]
-
-    payload, perr = _read_and_validate_objectref_json(ctx, genesis_arts[0], payload_schema=genesis_schema, where="genesis_seal")
+    payload, perr = _read_and_validate_objectref_json(ctx, genesis_arts[0], payload_schema=None, where="genesis_seal")
     if payload is None:
         return False, [
             CheckResult(
@@ -216,6 +211,20 @@ def _enforce_genesis_seal(ctx: RCheckContext, *, em_ptr: str) -> tuple[bool, lis
                 category="FR-SCHEMA-ARTIFACT-INVALID",
                 message=f"genesis_seal invalid: {perr}",
                 pointers=[str(genesis_arts[0].get("storage_ref") or "")],
+                remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
+            )
+        ]
+
+    try:
+        validate_genesis_seal_schema(payload, repo_root=ctx.repo_root, source="genesis_seal")
+    except TrustAnchorError as e:
+        return False, [
+            CheckResult(
+                check_id="R4",
+                status="FAIL",
+                category="FR-SCHEMA-ARTIFACT-INVALID",
+                message=str(e),
+                pointers=[str(genesis_arts[0].get("storage_ref") or ""), GENESIS_SEAL_SCHEMA_RELPATH],
                 remediation_next_instruction="Do fix schema validation errors in required artifact then re-run R.",
             )
         ]
