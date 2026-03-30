@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ from tests.helpers.repo_imports import reset_repo_local_imports
 REPO_ROOT = Path(__file__).resolve().parents[2]
 reset_repo_local_imports("belgi")
 
+import chain.compiler_c3_docs as c3_docs
 from belgi.cli import main as belgi_main
 
 
@@ -37,6 +39,22 @@ def _init_min_git_repo(tmp_path: Path, *, name: str = "repo") -> Path:
 
 def _builtin_canonical_bytes(name: str) -> bytes:
     return resource_files("belgi").joinpath("canonicals", name).read_bytes()
+
+
+def _get_builtin_protocol_context_dynamic() -> object:
+    importlib.import_module("belgi")
+    pack_mod = importlib.import_module("belgi.protocol.pack")
+    return pack_mod.get_builtin_protocol_context()
+
+
+def _locked_protocol_identity(protocol: object) -> dict[str, object]:
+    return {
+        "protocol_pack": {
+            "pack_id": str(protocol.pack_id),
+            "manifest_sha256": str(protocol.manifest_sha256),
+            "pack_name": str(protocol.pack_name),
+        }
+    }
 
 
 def _head_sha(repo: Path) -> str:
@@ -103,6 +121,37 @@ def test_tier0_run_uses_engine_canonicals_when_repo_has_collision(
     engine_bytes = _builtin_canonical_bytes("terminology.md")
     assert bundled_term.read_bytes() == engine_bytes
     assert bundled_term.read_bytes() != b"ADOPTER COLLISION\n"
+
+
+def test_compiler_owned_c3_materialization_seam_builds_staged_root_for_active_protocol(tmp_path: Path) -> None:
+    repo = _init_min_git_repo(tmp_path)
+    protocol = _get_builtin_protocol_context_dynamic()
+    locked = _locked_protocol_identity(protocol)
+    staged_root = repo / ".belgi" / "engine" / "c3_canonicals"
+
+    c3_docs.materialize_protocol_bound_c3_source_root(protocol=protocol, target_root=staged_root)
+
+    source_root, source_tmp = c3_docs._resolve_c3_source_root(
+        repo_root=repo,
+        protocol=protocol,
+        locked_spec=locked,
+        out_bundle_dir_path=repo / "out" / "bundle",
+    )
+    assert source_tmp is None
+    assert source_root == staged_root
+
+    assert (staged_root / "CANONICALS.md").read_bytes() == _builtin_canonical_bytes("CANONICALS.md")
+    assert (staged_root / "gates" / "GATE_R.md").read_bytes() == protocol.read_bytes("gates/GATE_R.md")
+    assert (staged_root / "tiers" / "tier-packs.json").read_bytes() == protocol.read_bytes("tiers/tier-packs.json")
+    assert (staged_root / "schemas" / "LockedSpec.schema.json").read_bytes() == protocol.read_bytes(
+        "schemas/LockedSpec.schema.json"
+    )
+    cache_meta = json.loads((staged_root / ".cache_meta.json").read_text(encoding="utf-8", errors="strict"))
+    assert cache_meta == {
+        "protocol_pack_id": str(protocol.pack_id),
+        "protocol_pack_manifest_sha256": str(protocol.manifest_sha256),
+        "protocol_pack_name": str(protocol.pack_name),
+    }
 
 
 def test_manual_c3_run_succeeds_without_staged_canonicals_after_belgi_run(

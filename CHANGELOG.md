@@ -2,6 +2,19 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.10 — 2026-03-30
+
+### Summary
+Removed duplicate C3 staging authority from `belgi/core/run_orchestrator.py` and moved staged-source proof onto the compiler-owned C3 path.
+
+### Changed
+- `belgi/core/run_orchestrator.py` no longer carries its own C3 canonical binding tables or the dead `ensure_chain_c3_canonicals(...)` helper.
+- `chain/compiler_c3_docs.py` now exposes `materialize_protocol_bound_c3_source_root(...)` as the reusable protocol-bound materialization seam used by staged-source resolution and staged-cache rebuild paths.
+- `tests/run_orchestrator/test_run_orchestrator_hydration_contracts.py` now stays on template hydration only, while shipped-surface C3 tests prove staged-source materialization on the compiler-owned seam.
+
+### Notes
+- This patch does not change which C3 canonical files exist; it removes a second source-binding authority for the same staged tree.
+
 ## 1.6.9 — 2026-03-30
 
 ### Summary

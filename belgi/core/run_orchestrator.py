@@ -41,117 +41,8 @@ _CHAIN_TEMPLATE_BINDINGS: tuple[tuple[str, str], ...] = (
     ("templates/PromptBundle.blocks.md", "belgi/templates/PromptBundle.blocks.md"),
     ("templates/DocsCompiler.template.md", "belgi/templates/DocsCompiler.template.md"),
 )
-_C3_CANONICAL_STAGE_ROOT_REPO_REL = ".belgi/engine/c3_canonicals"
 _APPLIED_WAIVERS_SOURCE_REPO_REL = ".belgi/waivers_applied"
 _APPLIED_WAIVERS_STAGE_REPO_REL = f"{CHAIN_OUT_DIRNAME}/inputs/waivers_applied"
-_C3_CANONICAL_PACKAGE_BINDINGS: tuple[tuple[str, str], ...] = (
-    ("canonicals/CANONICALS.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/CANONICALS.md"),
-    ("canonicals/terminology.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/terminology.md"),
-    ("canonicals/trust-model.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/trust-model.md"),
-    (
-        "canonicals/docs/operations/consistency-sweep.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/consistency-sweep.md",
-    ),
-    (
-        "canonicals/docs/operations/cli.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/cli.md",
-    ),
-    (
-        "canonicals/docs/operations/evidence-bundles.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-bundles.md",
-    ),
-    (
-        "canonicals/docs/operations/evidence-ownership.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/evidence-ownership.md",
-    ),
-    (
-        "canonicals/docs/operations/operator-anchors.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/operator-anchors.md",
-    ),
-    (
-        "canonicals/docs/operations/running-belgi.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/running-belgi.md",
-    ),
-    (
-        "canonicals/docs/operations/security.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/security.md",
-    ),
-    (
-        "canonicals/docs/operations/waivers.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/operations/waivers.md",
-    ),
-    ("canonicals/docs/research/README.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/research/README.md"),
-    (
-        "canonicals/docs/research/experiment-design.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/research/experiment-design.md",
-    ),
-    ("canonicals/docs/research/metrics.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/docs/research/metrics.md"),
-)
-_C3_CANONICAL_PROTOCOL_BINDINGS: tuple[tuple[str, str], ...] = (
-    ("_protocol_packs/v1/gates/GATE_Q.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/gates/GATE_Q.md"),
-    ("_protocol_packs/v1/gates/GATE_R.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/gates/GATE_R.md"),
-    ("_protocol_packs/v1/gates/GATE_S.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/gates/GATE_S.md"),
-    (
-        "_protocol_packs/v1/gates/failure-taxonomy.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/gates/failure-taxonomy.md",
-    ),
-    ("_protocol_packs/v1/tiers/tier-packs.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/tiers/tier-packs.md"),
-    (
-        "_protocol_packs/v1/tiers/tier-packs.template.md",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/tiers/tier-packs.template.md",
-    ),
-    ("_protocol_packs/v1/schemas/README.md", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/README.md"),
-    (
-        "_protocol_packs/v1/schemas/DocsCompilationLogPayload.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/DocsCompilationLogPayload.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/EnvAttestationPayload.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/EnvAttestationPayload.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/EvidenceManifest.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/EvidenceManifest.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/GateVerdict.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/GateVerdict.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/GenesisSealPayload.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/GenesisSealPayload.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/HOTLApproval.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/HOTLApproval.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/IntentSpec.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/IntentSpec.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/LockedSpec.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/LockedSpec.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/PolicyReportPayload.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/PolicyReportPayload.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/ReplayInstructionsPayload.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/ReplayInstructionsPayload.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/SealManifest.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/SealManifest.schema.json",
-    ),
-    (
-        "_protocol_packs/v1/schemas/TestReportPayload.schema.json",
-        f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/TestReportPayload.schema.json",
-    ),
-    ("_protocol_packs/v1/schemas/Waiver.schema.json", f"{_C3_CANONICAL_STAGE_ROOT_REPO_REL}/schemas/Waiver.schema.json"),
-)
-_C3_CANONICAL_BINDINGS: tuple[tuple[str, str], ...] = _C3_CANONICAL_PACKAGE_BINDINGS + _C3_CANONICAL_PROTOCOL_BINDINGS
 
 
 @dataclass(frozen=True)
@@ -516,27 +407,6 @@ def ensure_chain_templates(*, chain_repo_root: Path) -> None:
             if current_bytes != builtin_bytes:
                 raise ValueError(
                     f"CHAIN_TEMPLATE_MISMATCH: {target_rel}; adopter overrides are not allowed; "
-                    "delete file or match builtin."
-                )
-            continue
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_bytes(builtin_bytes)
-
-
-def ensure_chain_c3_canonicals(*, chain_repo_root: Path) -> None:
-    for resource_rel, target_rel in _C3_CANONICAL_BINDINGS:
-        builtin_bytes = _load_builtin_resource_bytes(resource_rel=resource_rel)
-        target_path = chain_repo_root.joinpath(*target_rel.split("/"))
-        if target_path.exists():
-            if target_path.is_symlink() or not target_path.is_file():
-                raise ValueError(
-                    f"CHAIN_CANONICAL_MISMATCH: {target_rel}; staged engine canonicals are immutable; "
-                    "delete file or match builtin."
-                )
-            current_bytes = target_path.read_bytes()
-            if current_bytes != builtin_bytes:
-                raise ValueError(
-                    f"CHAIN_CANONICAL_MISMATCH: {target_rel}; staged engine canonicals are immutable; "
                     "delete file or match builtin."
                 )
             continue
