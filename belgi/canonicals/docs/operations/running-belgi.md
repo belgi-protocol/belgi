@@ -16,8 +16,8 @@ This runbook is grounded in:
 - Gate Q (Lock & Verify): `../../gates/GATE_Q.md`
 - Gate R (Verify): `../../gates/GATE_R.md`
 - Failure categories: `../../gates/failure-taxonomy.md`
-- Tier defaults (canonical SSOT): `../../tiers/tier-packs.json`
-  - Generated view (must match canonical): `../../tiers/tier-packs.md`
+- Tier defaults (canonical SSOT/runtime reference): `../../tiers/tier-packs.json`
+  - Generated operator view (must match canonical; not runtime authority): `../../tiers/tier-packs.md`
 - Schemas: `../../schemas/*.schema.json` and `../../schemas/README.md`
 
 Core intent contract (v1):

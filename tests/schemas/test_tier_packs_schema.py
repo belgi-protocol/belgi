@@ -25,7 +25,19 @@ def _synthetic_tier_packs_json(
     waiver_allowed: bool,
     waiver_max_active_waivers: int,
     waiver_requires_hotl: bool,
+    adversarial_findings_mode: str = "warn",
+    envelope_requires_attestation: bool = True,
+    envelope_attestation_signature_required: bool | None = False,
+    envelope_pinned_toolchain_refs_required: bool | None = True,
 ) -> str:
+    envelope_policy: dict[str, object] = {
+        "requires_attestation": envelope_requires_attestation,
+    }
+    if envelope_attestation_signature_required is not None:
+        envelope_policy["attestation_signature_required"] = envelope_attestation_signature_required
+    if envelope_pinned_toolchain_refs_required is not None:
+        envelope_policy["pinned_toolchain_refs_required"] = envelope_pinned_toolchain_refs_required
+
     return json.dumps(
         {
             "schema_version": "1.0.0",
@@ -50,12 +62,8 @@ def _synthetic_tier_packs_json(
                         "max_active_waivers": waiver_max_active_waivers,
                         "requires_HOTL": waiver_requires_hotl,
                     },
-                    "adversarial_policy": {"findings_mode": "warn"},
-                    "envelope_policy": {
-                        "requires_attestation": True,
-                        "attestation_signature_required": False,
-                        "pinned_toolchain_refs_required": True,
-                    },
+                    "adversarial_policy": {"findings_mode": adversarial_findings_mode},
+                    "envelope_policy": envelope_policy,
                 }
             },
         },
@@ -196,88 +204,82 @@ def test_hotl_requirement_is_loaded_from_json_policy() -> None:
     assert tier_requires_hotl(canonical_json, "tier-3") is True
 
 
-def test_tier_packs_markdown_requires_explicit_findings_mode() -> None:
+def test_tier_params_loader_rejects_generated_markdown_view() -> None:
     tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
 
     loaded = load_tier_params(tiers_md, "tier-0")
-    assert loaded.params is not None, loaded.parse_error
-    assert loaded.params.adversarial_policy_findings_mode == "warn"
+    assert loaded.params is None
+    assert isinstance(loaded.parse_error, str)
+    assert (
+        "tier params require canonical JSON SSOT "
+        "(tiers/tier-packs.json); markdown generated view is not runtime authority"
+    ) in loaded.parse_error
+    assert "input is not valid JSON:" in loaded.parse_error
 
-    loaded = load_tier_params(tiers_md, "tier-1")
+
+def test_tier_params_loader_maps_findings_mode_from_json_ssot() -> None:
+    loaded = load_tier_params(
+        _synthetic_tier_packs_json(
+            waiver_allowed=False,
+            waiver_max_active_waivers=0,
+            waiver_requires_hotl=True,
+            adversarial_findings_mode="fail",
+        ),
+        "tier-x",
+    )
     assert loaded.params is not None, loaded.parse_error
     assert loaded.params.adversarial_policy_findings_mode == "fail"
 
 
-def test_tier_packs_markdown_fails_closed_when_findings_mode_is_missing() -> None:
-    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
-    mutated = tiers_md.replace("  - findings_mode: `warn`\n", "", 1)
+def test_tier_params_loader_fails_closed_when_findings_mode_is_missing_in_json_ssot() -> None:
+    obj = json.loads(
+        _synthetic_tier_packs_json(
+            waiver_allowed=False,
+            waiver_max_active_waivers=0,
+            waiver_requires_hotl=True,
+        )
+    )
+    tier_obj = obj["tiers"]["tier-x"]
+    adversarial_policy = tier_obj["adversarial_policy"]
+    assert isinstance(adversarial_policy, dict)
+    adversarial_policy.pop("findings_mode")
 
-    loaded = load_tier_params(mutated, "tier-0")
+    loaded = load_tier_params(json.dumps(obj, indent=2, sort_keys=True), "tier-x")
     assert loaded.params is None
-    assert loaded.parse_error == "Missing mandatory adversarial_policy.findings_mode"
+    assert loaded.parse_error == "adversarial_policy.findings_mode missing/invalid"
 
 
-def test_tier_packs_markdown_envelope_policy_parses_with_long_sibling_block() -> None:
-    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
-    filler_lines = "".join(f"  - filler_{i}: `note`\n" for i in range(200))
-    original = (
-        "- envelope_policy:\n"
-        "  - requires_attestation: `yes`\n"
-        "  - attestation_signature_required: `yes`\n"
-        "  - pinned_toolchain_refs_required: `yes`\n"
+def test_tier_params_loader_maps_explicit_envelope_policy_from_json_ssot() -> None:
+    loaded = load_tier_params(
+        _synthetic_tier_packs_json(
+            waiver_allowed=False,
+            waiver_max_active_waivers=0,
+            waiver_requires_hotl=True,
+            envelope_requires_attestation=True,
+            envelope_attestation_signature_required=True,
+            envelope_pinned_toolchain_refs_required=True,
+        ),
+        "tier-x",
     )
-    mutated = tiers_md.replace(
-        original,
-        "- envelope_policy:\n"
-        "  - requires_attestation: `yes`\n"
-        + filler_lines
-        + "  - attestation_signature_required: `yes`\n"
-        + "  - pinned_toolchain_refs_required: `yes`\n",
-        1,
-    )
-
-    loaded = load_tier_params(mutated, "tier-2")
     assert loaded.params is not None, loaded.parse_error
     assert loaded.params.envelope_policy_requires_attestation == "yes"
     assert loaded.params.envelope_policy_attestation_signature_required == "yes"
     assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"
 
 
-def test_tier_packs_markdown_envelope_policy_optional_defaults_are_preserved() -> None:
-    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
-    mutated = tiers_md.replace("  - attestation_signature_required: `no`\n", "", 1).replace(
-        "  - pinned_toolchain_refs_required: `yes`\n",
-        "",
-        1,
+def test_tier_params_loader_preserves_optional_envelope_policy_defaults_from_json_ssot() -> None:
+    loaded = load_tier_params(
+        _synthetic_tier_packs_json(
+            waiver_allowed=False,
+            waiver_max_active_waivers=0,
+            waiver_requires_hotl=True,
+            envelope_requires_attestation=True,
+            envelope_attestation_signature_required=None,
+            envelope_pinned_toolchain_refs_required=None,
+        ),
+        "tier-x",
     )
-
-    loaded = load_tier_params(mutated, "tier-1")
     assert loaded.params is not None, loaded.parse_error
     assert loaded.params.envelope_policy_requires_attestation == "yes"
     assert loaded.params.envelope_policy_attestation_signature_required == "no"
-    assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"
-
-
-def test_tier_packs_markdown_envelope_policy_ignores_conflicting_sibling_block() -> None:
-    tiers_md = (REPO_ROOT / "tiers" / "tier-packs.md").read_text(encoding="utf-8", errors="strict")
-    original = (
-        "- envelope_policy:\n"
-        "  - requires_attestation: `yes`\n"
-        "  - attestation_signature_required: `yes`\n"
-        "  - pinned_toolchain_refs_required: `yes`\n"
-    )
-    mutated = tiers_md.replace(
-        original,
-        original
-        + "- parser_shadow_section:\n"
-        + "  - requires_attestation: `no`\n"
-        + "  - attestation_signature_required: `no`\n"
-        + "  - pinned_toolchain_refs_required: `no`\n",
-        1,
-    )
-
-    loaded = load_tier_params(mutated, "tier-2")
-    assert loaded.params is not None, loaded.parse_error
-    assert loaded.params.envelope_policy_requires_attestation == "yes"
-    assert loaded.params.envelope_policy_attestation_signature_required == "yes"
     assert loaded.params.envelope_policy_pinned_toolchain_refs_required == "yes"
