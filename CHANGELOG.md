@@ -2,6 +2,20 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.15 — 2026-03-31
+
+### Summary
+Moved consistency-sweep execution and invariant ownership onto explicit modules, and centralized builtin pack inventory so build, drift, sweep, and live pack scanning reuse the same owner surfaces.
+
+### Changed
+- `tools/consistency/runner.py`, `tools/consistency/report_writer.py`, `tools/consistency/inputs.py`, `tools/consistency/registry.py`, and `tools/consistency/invariants/*.py` now own sweep execution, report rendering, governed input assembly, ordered invariant registration, and invariant semantics, while `tools/sweep.py` stays on the CLI shell and compatibility shims.
+- `tests/tools/` now proves the moved sweep engine, report-writer seam, invariant families, and builtin-pack inventory directly from their owner paths instead of relying on the old broad shell or meta-semantic coverage.
+- `belgi/protocol/pack_surface_inventory.py` now owns the builtin pack manifest name, content prefixes, folder/file allowlists, and C3 canonical-mirror bindings reused by `belgi.protocol.pack`, `tools.build_builtin_pack`, `tools.check_drift`, and the canonicals sweep invariant.
+- `docs/operations/consistency-sweep.md`, `tools/README.md`, and the canonical mirror docs now describe the current sweep owner map and the tool-owned mirror regeneration step truthfully.
+
+### Notes
+- This patch does not change the public run surface, builtin pack contents, or canonical mirror byte requirements; it removes duplicate owner tables and updates proof and docs around the surviving owner seams.
+
 ## 1.6.14 — 2026-03-30
 
 ### Summary
