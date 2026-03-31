@@ -74,6 +74,9 @@ Canonical trigger:
 - tools/rehash.py
 - tools/render.py
 - tools/check_codeowners.py
+- tools/consistency/model.py
+- tools/consistency/report_writer.py
+- tools/consistency/runner.py
 - tools/canonicals_report.py
 - tools/sweep.py
 - tools/wheel_boundary.py
@@ -978,16 +981,16 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 
 ### CS-SWEEP-001 — Input Authority
 - invariant_id: CS-SWEEP-001
-- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the canonical tooling entrypoints that materially affect sweep results.
+- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the exact tooling owner files that materially affect sweep results and report bytes.
 - source-of-truth (file/section):
   - This document’s Inputs list (Section A)
 - check procedure (deterministic):
   1) Enumerate all files matching `schemas/*.schema.json`.
   2) Confirm the sweep report includes each schema file path in `inputs[].path`.
-  3) Confirm the sweep report includes tooling entrypoints `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, and `tools/sweep.py`.
+  3) Confirm the sweep report includes tooling owner files `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, `tools/consistency/model.py`, `tools/consistency/runner.py`, `tools/consistency/report_writer.py`, and `tools/sweep.py`.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
 - pass/fail criteria:
-  - PASS if the dynamic schema surface and tool entrypoints are included.
+  - PASS if the dynamic schema surface and tooling owner files are included.
   - FAIL otherwise.
 
 ### CS-SWEEP-002 — Managed Surface Coverage
@@ -995,7 +998,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - statement: Managed operational surfaces MUST be explicitly listed in sweep authority inputs to prevent silent scope drift.
 - source-of-truth (file/section):
   - This document’s Inputs list (Section A)
-  - tools/sweep.py (`_canonical_inputs`)
+  - tools/sweep.py (`_canonical_inputs`, `_sweep_managed_surface_files`)
 - check procedure (deterministic):
   1) Enumerate tracked files in these managed surfaces:
      - repo-root `*.md`
@@ -1006,6 +1009,9 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
      - `templates/ci/github/*.{yml,yaml}`
      - `tools/README.md`
      - `tools/canonicals_report.py`
+     - `tools/consistency/model.py`
+     - `tools/consistency/runner.py`
+     - `tools/consistency/report_writer.py`
   2) Confirm every enumerated path is explicitly present in sweep canonical inputs.
   3) FAIL if any managed path is missing.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import hashlib
 import json
 import os
 import re
@@ -22,11 +21,8 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Sequence
-
-EVALUATED_AT = "1970-01-01T00:00:00Z"
 
 CANONICAL_SWEEP_OUT = "policy/consistency_sweep.json"
 CANONICAL_SWEEP_SUMMARY = "policy/consistency_sweep.summary.md"
@@ -99,6 +95,8 @@ sys.path.insert(0, repo_root_str)
 from belgi.core.jail import normalize_repo_rel as _normalize_repo_rel
 from belgi.core.jail import resolve_repo_rel_path as _resolve_repo_rel_path
 from tools.canonicals_report import CanonicalsReportError, derive_canonicals_report
+from tools.consistency.model import InvariantResult
+from tools.consistency.runner import run_consistency_sweep
 
 
 class _UserInputError(RuntimeError):
@@ -131,38 +129,6 @@ def _resolve_repo_path(
         )
     except ValueError as e:
         raise _UserInputError(str(e)) from e
-
-
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    tmp = path.with_name(path.name + ".tmp.sweep")
-    with tmp.open("wb") as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(str(tmp), str(path))
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp.sweep")
-    with tmp.open("w", encoding="utf-8", errors="strict", newline="\n") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(str(tmp), str(path))
-
-
-def _atomic_write_json(path: Path, obj: object) -> None:
-    _atomic_write_text(path, json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
-
-
-def _canonical_json_bytes(obj: object) -> bytes:
-    s = json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
-    return s.encode("utf-8", errors="strict")
-
-
-def _atomic_write_canonical_json(path: Path, obj: object) -> None:
-    _atomic_write_bytes(path, _canonical_json_bytes(obj))
-
 
 def _load_derived_canonicals_report(root: Path) -> dict[str, object]:
     try:
@@ -207,25 +173,6 @@ def _extract_labeled_arrow_chain_sequence(md: str, label: str) -> list[str]:
 # ----------------------------
 # Consistency sweep (embedded)
 # ----------------------------
-
-def utc_now_rfc3339() -> str:
-    """Deterministic timestamp.
-
-    The sweep report is a hashed policy artifact often indexed into EvidenceManifest.
-    Runtime timestamps would make the artifact non-reproducible for identical inputs.
-    """
-
-    return EVALUATED_AT
-
-
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="strict")
 
@@ -434,16 +381,6 @@ def _git_tree_sha_excluding(
         if not re.fullmatch(r"[0-9a-f]{40}", s):
             raise _UserInputError(f"unexpected git tree sha: {s!r}")
         return s
-
-
-@dataclass
-class InvariantResult:
-    invariant_id: str
-    status: str  # PASS/FAIL
-    evidence: List[str]
-    remediation: str
-    details: dict[str, Any] | None = None
-
 
 _SPEC_INVARIANT_ID_RE = re.compile(r"(?m)^\s*-\s*invariant_id:\s*(CS-[A-Z0-9_-]+)\s*$")
 
@@ -3493,22 +3430,6 @@ def check_cs_r0_enforcement_wired_001(root: Path) -> InvariantResult:
         "",
     )
 
-
-def build_inputs(root: Path, rel_paths: list[str], *, blob_overrides: dict[str, bytes] | None = None) -> list[dict[str, str]]:
-    overrides = {_validate_repo_rel(k): v for k, v in (blob_overrides or {}).items()}
-    out: list[dict[str, str]] = []
-    for rel in rel_paths:
-        rel = _validate_repo_rel(rel)
-        if rel in overrides:
-            h = hashlib.sha256(overrides[rel]).hexdigest()
-        else:
-            p = _resolve_repo_path(root, rel, must_exist=True, must_be_file=True)
-            h = sha256_file(p)  # sende hangisi varsa: _sha256_file vs
-        out.append({"path": rel, "sha256": h})
-    out.sort(key=lambda d: d["path"])
-    return out
-
-
 def _iter_schema_files(repo_root: Path) -> list[str]:
     schemas_dir = _resolve_repo_path(repo_root, "schemas", must_exist=True, must_be_file=False)
 
@@ -3649,6 +3570,9 @@ def _canonical_inputs(repo_root: Path) -> list[str]:
         "tools/rehash.py",
         "tools/canonicals_report.py",
         "tools/check_codeowners.py",
+        "tools/consistency/model.py",
+        "tools/consistency/report_writer.py",
+        "tools/consistency/runner.py",
         "tools/report.py",
         "tools/sweep.py",
         "tools/wheel_boundary.py",
@@ -3818,6 +3742,9 @@ def check_cs_sweep_001(root: Path) -> InvariantResult:
         "tools/normalize.py",
         "tools/rehash.py",
         "tools/canonicals_report.py",
+        "tools/consistency/model.py",
+        "tools/consistency/report_writer.py",
+        "tools/consistency/runner.py",
         "tools/sweep.py",
     }
     if not required.issubset(set(canon)):
@@ -3860,6 +3787,9 @@ def _sweep_managed_surface_files(root: Path) -> list[str]:
             "belgi/genesis/README.md",
             "belgi/trust_anchor.py",
             "tools/canonicals_report.py",
+            "tools/consistency/model.py",
+            "tools/consistency/report_writer.py",
+            "tools/consistency/runner.py",
             "tools/report.py",
         }:
             out.add(rel)
@@ -3912,8 +3842,7 @@ def check_cs_sweep_002(root: Path) -> InvariantResult:
 
     missing = sorted([rel for rel in required if rel not in canon])
     if missing:
-        sample = ", ".join(missing[:8])
-        suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+        joined = ", ".join(missing)
         return InvariantResult(
             "CS-SWEEP-002",
             "FAIL",
@@ -3921,7 +3850,7 @@ def check_cs_sweep_002(root: Path) -> InvariantResult:
             (
                 "Add missing managed surface path(s) to _canonical_inputs and synchronize "
                 "docs/operations/consistency-sweep.md Inputs list. Missing: "
-                f"{sample}{suffix}."
+                f"{joined}."
             ),
         )
 
@@ -3931,58 +3860,6 @@ def check_cs_sweep_002(root: Path) -> InvariantResult:
         [f"{CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage", "tools/sweep.py"],
         "",
     )
-
-
-def _remediation_for_message(msg: str) -> str:
-    """Map failure message to human-readable remediation hint."""
-    m = (msg or "").lower()
-    if "run_id" in m and ("missing" in m or "empty" in m):
-        return "Ensure all required artifacts include non-empty run_id; regenerate bundle."
-    if "schema" in m and ("invalid" in m or "validation" in m):
-        return "Fix JSON to satisfy the referenced schema (missing/extra fields)."
-    return "Open policy/consistency_sweep.json and fix the reported check; re-run tools.sweep consistency."
-
-
-def _write_consistency_summary_md(
-    path: Path,
-    total: int,
-    passed: int,
-    failed: int,
-    results: list[InvariantResult],
-) -> None:
-    """Write human-readable summary markdown for CI step summary."""
-    lines: list[str] = []
-    lines.append("## Consistency sweep")
-    lines.append(f"- total: **{total}**  passed: **{passed}**  failed: **{failed}**")
-    lines.append("")
-
-    if failed == 0:
-        lines.append("✅ all checks passed")
-    else:
-        lines.append("### Failures")
-        # Sort failures by check_id for determinism
-        failures = sorted(
-            [r for r in results if r.status == "FAIL"],
-            key=lambda r: r.invariant_id,
-        )
-        for r in failures:
-            msg = r.remediation.replace("\n", " ").strip() if r.remediation else "(no message)"
-            remediation = _remediation_for_message(msg)
-            lines.append(f"#### {r.invariant_id}")
-            lines.append(f"- message: {msg}")
-            lines.append(f"- remediation: {remediation}")
-
-            # Deterministic details hint for flake-prone checks (bounded output).
-            if r.invariant_id == "CS-BYTE-001" and isinstance(r.details, dict):
-                counts = r.details.get("counts") if isinstance(r.details.get("counts"), dict) else {}
-                drift = r.details.get("drift_files") if isinstance(r.details.get("drift_files"), list) else []
-                paths = [d.get("path") for d in drift if isinstance(d, dict) and isinstance(d.get("path"), str)]
-                paths = sorted(set(paths))
-                ex = ", ".join(paths[:5])
-                lines.append(f"- details: drift_files={counts.get('drift_files')} examples={ex if ex else '<none>'}")
-
-    _atomic_write_text(path, "\n".join(lines) + "\n")
-
 
 def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
@@ -4015,127 +3892,29 @@ def _consistency_sweep_main(argv: list[str] | None = None) -> int:
     root = Path(args.repo).resolve()
     if not root.exists() or not root.is_dir():
         raise _UserInputError(f"repo root is not a directory: {root}")
-    started = utc_now_rfc3339()
-
-    # Spec-sync guard: law (consistency-sweep.md) must match enforcer registry 1:1.
-    spec_ids = _extract_spec_invariant_ids(root)
-
-    registry = _invariant_registry()
-
-    spec_set = set(spec_ids)
-    reg_set = set(registry.keys())
-    missing_in_code = sorted(spec_set - reg_set)
-    extra_in_code = sorted(reg_set - spec_set)
-    if missing_in_code or extra_in_code:
-        if missing_in_code:
-            print("Spec-sync NO-GO: invariant_ids missing in code registry:", file=sys.stderr)
-            for inv in missing_in_code:
-                print(f"  - {inv}", file=sys.stderr)
-        if extra_in_code:
-            print("Spec-sync NO-GO: invariant_ids present in code but not in spec:", file=sys.stderr)
-            for inv in extra_in_code:
-                print(f"  - {inv}", file=sys.stderr)
-        return 2
-
-    results: List[InvariantResult] = []
-    for inv_id in spec_ids:
-        fn = registry[inv_id]
-        try:
-            res = fn(root)
-        except Exception as e:
-            res = InvariantResult(
-                inv_id,
-                "FAIL",
-                [CONSISTENCY_SPEC_DOC],
-                f"Sweep check raised an exception: {e}",
-            )
-
-        if res.invariant_id != inv_id:
-            print(
-                f"Spec-sync NO-GO: invariant '{inv_id}' returned mismatched id '{res.invariant_id}'",
-                file=sys.stderr,
-            )
-            return 2
-        results.append(res)
-
-    finished = utc_now_rfc3339()
     out_path = _resolve_repo_path(root, args.out, must_exist=False)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    canon_inputs = _canonical_inputs(root)
-    extra_inputs = [_validate_repo_rel(p) for p in (args.inputs or [])]
-    all_inputs = sorted(set(canon_inputs + extra_inputs))
-
-    # Exclude the sweep output and summary from the inputs list.
-    excluded = {"policy/consistency_sweep.json", "policy/consistency_sweep.summary.md"}
-    filtered = [p for p in all_inputs if _validate_repo_rel(p) not in excluded]
-    inputs = build_inputs(root, filtered)
-
-    report_base = {
-        "artifact_id": "policy.consistency_sweep",
-        "generated_at": finished,
-        "sweep_started_at": started,
-        "sweep_finished_at": finished,
-        "tool": {"name": args.tool_name, "version": args.tool_version},
-        "repo_revision": _git_tree_sha_excluding(root, [CANONICAL_SWEEP_OUT, CANONICAL_SWEEP_SUMMARY]),
-        "inputs": inputs,
-    }
-
-    def _render_report(result_set: list[InvariantResult]) -> tuple[dict[str, Any], bytes, str, int, int, list[InvariantResult]]:
-        ordered = list(result_set)
-        ordered.sort(key=lambda r: r.invariant_id)
-        passed_count = sum(1 for r in ordered if r.status == "PASS")
-        failed_count = sum(1 for r in ordered if r.status == "FAIL")
-        report = dict(report_base)
-        report["invariants"] = [
-            {
-                "invariant_id": r.invariant_id,
-                "status": r.status,
-                "evidence": r.evidence,
-                "remediation": r.remediation if r.status == "FAIL" else "",
-                **({"details": r.details} if isinstance(r.details, dict) else {}),
-            }
-            for r in ordered
-        ]
-        report["summary"] = {"total": len(ordered), "passed": passed_count, "failed": failed_count}
-        # Add structured failures list (backwards-compatible new key)
-        report["failures"] = [
-            {
-                "check_id": r.invariant_id,
-                "message": r.remediation.replace("\n", " ").strip() if r.remediation else "",
-            }
-            for r in ordered
-            if r.status == "FAIL"
-        ]
-        b = _canonical_json_bytes(report)
-        h = hashlib.sha256(b).hexdigest()
-        return report, b, h, passed_count, failed_count, ordered
-
-    report_obj, _, report_hash, passed, failed, results = _render_report(results)
-    _write_json(out_path, report_obj, canonical=True)
-
-    # Write human-readable summary markdown for CI step summary
-    summary_md_path = out_path.with_suffix(".summary.md")
-    _write_consistency_summary_md(summary_md_path, len(results), passed, failed, results)
-
-    print(f"Wrote: {args.out}")
-    print(f"SHA-256 (report): {report_hash}")
-    print(f"Summary: total={len(results)} passed={passed} failed={failed}")
-
-    if failed > 0:
-        primary = next((r for r in results if r.status == "FAIL"), None)
-        if primary is not None:
-            primary_msg = str(primary.remediation or "").replace("\n", " ").strip()
-            print(f"PRIMARY_CAUSE: {primary.invariant_id}: {primary_msg}", file=sys.stderr)
-
-    return 1 if failed > 0 else 0
-
-def _write_json(path: Path, obj: object, *, canonical: bool = False) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if canonical:
-        _atomic_write_canonical_json(path, obj)
-    else:
-        _atomic_write_json(path, obj)
+    return run_consistency_sweep(
+        root=root,
+        out_path=out_path,
+        output_label=args.out,
+        tool_name=args.tool_name,
+        tool_version=args.tool_version,
+        extra_inputs=args.inputs or [],
+        canonical_sweep_out=CANONICAL_SWEEP_OUT,
+        canonical_sweep_summary=CANONICAL_SWEEP_SUMMARY,
+        consistency_spec_doc=CONSISTENCY_SPEC_DOC,
+        validate_repo_rel=_validate_repo_rel,
+        extract_spec_invariant_ids=_extract_spec_invariant_ids,
+        invariant_registry=_invariant_registry,
+        canonical_inputs=_canonical_inputs,
+        repo_revision_getter=_git_tree_sha_excluding,
+        resolve_existing_repo_file=lambda repo_root, rel: _resolve_repo_path(
+            repo_root,
+            rel,
+            must_exist=True,
+            must_be_file=True,
+        ),
+    )
 
 
 def _parse_args(argv: Sequence[str] | None) -> tuple[argparse.Namespace, list[str]]:

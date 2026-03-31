@@ -584,6 +584,9 @@ def test_managed_sweep_surfaces_classify_owned_categories_without_repo_parity(tm
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
             "tools/README.md": "# tools\n",
             "tools/canonicals_report.py": "def main():\n    return 0\n",
+            "tools/consistency/model.py": "# model\n",
+            "tools/consistency/runner.py": "# runner\n",
+            "tools/consistency/report_writer.py": "# report writer\n",
             "belgi/cli_app/commands/run.py": "# run\n",
             "docs/research/README.md": "# research\n",
             "scripts/not_belgi.sh": "#!/usr/bin/env bash\n",
@@ -601,6 +604,9 @@ def test_managed_sweep_surfaces_classify_owned_categories_without_repo_parity(tm
         "templates/ci/github/belgi-tier1.yml",
         "tools/README.md",
         "tools/canonicals_report.py",
+        "tools/consistency/model.py",
+        "tools/consistency/runner.py",
+        "tools/consistency/report_writer.py",
         "belgi/cli_app/commands/run.py",
     }.issubset(managed)
     assert "docs/research/README.md" not in managed
@@ -620,20 +626,28 @@ def test_cs_sweep_002_fails_when_managed_surface_is_unlisted(tmp_path: Path, mon
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
             "tools/README.md": "# tools\n",
             "tools/canonicals_report.py": "def main():\n    return 0\n",
+            "tools/consistency/model.py": "# model\n",
+            "tools/consistency/runner.py": "# runner\n",
+            "tools/consistency/report_writer.py": "# report writer\n",
         },
     )
 
+    managed = sweep_mod._sweep_managed_surface_files(tmp_path)
     monkeypatch.setattr(
         sweep_mod,
         "_canonical_inputs",
-        lambda _root: ["tools/normalize.py", "tools/rehash.py", "tools/sweep.py"],
+        lambda _root: sorted(
+            set(
+                [rel for rel in managed if rel != "tools/consistency/report_writer.py"]
+                + ["tools/normalize.py", "tools/rehash.py", "tools/sweep.py"]
+            )
+        ),
     )
 
     res = sweep_mod.check_cs_sweep_002(tmp_path)
     assert res.invariant_id == "CS-SWEEP-002"
     assert res.status == "FAIL"
-    assert "docs/operations/workflows.md" in res.remediation
-    assert "tools/canonicals_report.py" in res.remediation
+    assert "tools/consistency/report_writer.py" in res.remediation
 
 
 def test_cs_sweep_002_passes_when_managed_surface_is_listed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -648,6 +662,9 @@ def test_cs_sweep_002_passes_when_managed_surface_is_listed(tmp_path: Path, monk
             "scripts/belgi_latest_run.sh": "#!/usr/bin/env bash\n",
             "templates/ci/github/belgi-tier1.yml": "name: template\n",
             "tools/README.md": "# tools\n",
+            "tools/consistency/model.py": "# model\n",
+            "tools/consistency/runner.py": "# runner\n",
+            "tools/consistency/report_writer.py": "# report writer\n",
         },
     )
 
@@ -696,7 +713,10 @@ def test_cs_sweep_002_fails_when_repo_root_markdown_is_unlisted(
     assert "NEW_CANONICAL.md" in res.remediation
 
 
-def test_cs_sweep_001_requires_derived_canonicals_report_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cs_sweep_001_requires_derived_report_and_consistency_engine_owner_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from tools import sweep as sweep_mod
 
     monkeypatch.setattr(sweep_mod, "_canonical_inputs", lambda _root: ["tools/normalize.py", "tools/rehash.py", "tools/sweep.py"])
