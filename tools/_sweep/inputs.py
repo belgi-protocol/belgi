@@ -1,37 +1,18 @@
 from __future__ import annotations
 
 from tools._shared import common as _common
-
-_SWEEP_ENGINE_OWNER_FILES: tuple[str, ...] = (
-    "tools/_sweep/model.py",
-    "tools/_sweep/report_writer.py",
-    "tools/_sweep/runner.py",
-)
+from tools._sweep.managed_surfaces import _sweep_managed_surface_files  # noqa: F401
 
 _SWEEP_CONTROL_PLANE_OWNER_FILES: tuple[str, ...] = (
     "tools/_sweep/inputs.py",
+    "tools/_sweep/managed_surfaces.py",
     "tools/_sweep/registry.py",
     "tools/sweep.py",
 )
 
-_SWEEP_INVARIANT_OWNER_FILES: tuple[str, ...] = (
-    "tools/_sweep/invariants/canonicals.py",
-    "tools/_sweep/invariants/evidence.py",
-    "tools/_sweep/invariants/gate_schema.py",
-    "tools/_sweep/invariants/intentspec.py",
-    "tools/_sweep/invariants/orchestration.py",
-    "tools/_sweep/invariants/render_views.py",
-    "tools/_sweep/invariants/run_contract.py",
-    "tools/_sweep/invariants/schema_catalog.py",
-    "tools/_sweep/invariants/templates.py",
-    "tools/_sweep/invariants/tiers.py",
-    "tools/_sweep/invariants/verification_spine.py",
-    "tools/_sweep/invariants/waivers.py",
-)
-
 
 def _governed_sweep_owner_files() -> tuple[str, ...]:
-    return _SWEEP_ENGINE_OWNER_FILES + _SWEEP_CONTROL_PLANE_OWNER_FILES + _SWEEP_INVARIANT_OWNER_FILES
+    return _SWEEP_CONTROL_PLANE_OWNER_FILES
 
 
 def _iter_schema_files(repo_root: _common.Path) -> list[str]:
@@ -195,70 +176,3 @@ def _canonical_inputs(repo_root: _common.Path) -> list[str]:
     # Normalize, de-dup, stable order.
     canon = sorted(set(_common._validate_repo_rel(p) for p in base))
     return canon
-
-def _sweep_managed_surface_files(root: _common.Path) -> list[str]:
-    """Enumerate tracked managed surfaces that require explicit sweep listing.
-
-    These surfaces change frequently across ops/workflow ergonomics work and
-    must remain explicitly present in _canonical_inputs to avoid silent drift.
-    """
-
-    tracked = _common._run_git(root, ["ls-files"])
-    out: set[str] = set()
-    for raw in tracked.splitlines():
-        rel = raw.strip()
-        if not rel:
-            continue
-        rel = _common._validate_repo_rel(rel)
-        if "/" not in rel and rel.endswith(".md"):
-            out.add(rel)
-            continue
-        if rel.startswith("docs/operations/") and rel.endswith(".md"):
-            out.add(rel)
-            continue
-        if rel.startswith("belgi/canonicals/") and rel.endswith(".md"):
-            out.add(rel)
-            continue
-        if rel in {
-            "belgi/anchor/v1/TrustAnchor.json",
-            "belgi/genesis/GenesisSealPayload.json",
-            "belgi/genesis/README.md",
-            "belgi/trust_anchor.py",
-            "tools/canonicals_report.py",
-            "tools/report.py",
-        }:
-            out.add(rel)
-            continue
-        if rel in _governed_sweep_owner_files():
-            out.add(rel)
-            continue
-        if rel.startswith(".github/workflows/") and rel.endswith((".yml", ".yaml")):
-            out.add(rel)
-            continue
-        if rel.startswith(".github/scripts/") and rel.endswith(".py"):
-            out.add(rel)
-            continue
-        if rel.startswith("scripts/belgi_") and rel.endswith((".py", ".sh", ".ps1")):
-            out.add(rel)
-            continue
-        if rel.startswith("templates/ci/github/") and rel.endswith((".yml", ".yaml")):
-            out.add(rel)
-            continue
-        if rel == "tools/README.md":
-            out.add(rel)
-            continue
-        if rel in {
-            "belgi/_protocol_packs/v1/schemas/README.md",
-            "belgi/cli_app/parser/run.py",
-            "belgi/cli_app/commands/run.py",
-            "chain/compiler_c1_intent.py",
-            "chain/logic/locked_object_schema.py",
-            "chain/logic/q_checks/q_intent_003.py",
-            "chain/logic/toolchain_set.py",
-            "chain/logic/tolerances.py",
-            "chain/logic/q_checks/q4_constraints_present.py",
-            "chain/logic/q_checks/q5_environment_envelope.py",
-            "chain/logic/r_checks/r2_scope_budgets.py",
-        }:
-            out.add(rel)
-    return sorted(out)

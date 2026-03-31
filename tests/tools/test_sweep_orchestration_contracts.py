@@ -9,6 +9,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_owner_family_repo,
     replace_text,
 )
+from tools._sweep import managed_surfaces as managed_surfaces_owner
 from tools._sweep.invariants import orchestration as owner
 
 pytestmark = pytest.mark.repo_local
@@ -29,9 +30,26 @@ def test_orchestration_owner_invariants_pass_on_owner_derived_repo(tmp_path: Pat
     )
 
 
+def test_cs_sweep_001_excludes_internal_sweep_implementation_files_from_inputs(tmp_path: Path) -> None:
+    root = build_owner_family_repo(tmp_path, "orchestration")
+    canonical_inputs = owner._canonical_inputs(root)
+
+    assert "tools/_sweep/inputs.py" in canonical_inputs
+    assert "tools/_sweep/managed_surfaces.py" in canonical_inputs
+    assert "tools/_sweep/registry.py" in canonical_inputs
+    assert "tools/sweep.py" in canonical_inputs
+
+    assert "tools/_sweep/model.py" not in canonical_inputs
+    assert "tools/_sweep/report_writer.py" not in canonical_inputs
+    assert "tools/_sweep/runner.py" not in canonical_inputs
+    assert "tools/_sweep/invariants/canonicals.py" not in canonical_inputs
+    assert "tools/_sweep/invariants/orchestration.py" not in canonical_inputs
+    assert "tools/_sweep/invariants/tiers.py" not in canonical_inputs
+
+
 def test_cs_sweep_002_fails_when_owner_file_is_unlisted(tmp_path: Path) -> None:
     root = build_owner_family_repo(tmp_path, "orchestration")
-    managed = owner._sweep_managed_surface_files(root)
+    managed = managed_surfaces_owner._sweep_managed_surface_files(root)
     result = owner.check_cs_sweep_002(
         root,
         canonical_inputs_fn=lambda _root: [rel for rel in managed if rel != "tools/_sweep/registry.py"],

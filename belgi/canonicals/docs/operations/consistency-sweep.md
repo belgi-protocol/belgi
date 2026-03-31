@@ -75,22 +75,8 @@ Canonical trigger:
 - tools/render.py
 - tools/check_codeowners.py
 - tools/_sweep/inputs.py
-- tools/_sweep/model.py
+- tools/_sweep/managed_surfaces.py
 - tools/_sweep/registry.py
-- tools/_sweep/report_writer.py
-- tools/_sweep/runner.py
-- tools/_sweep/invariants/canonicals.py
-- tools/_sweep/invariants/evidence.py
-- tools/_sweep/invariants/gate_schema.py
-- tools/_sweep/invariants/intentspec.py
-- tools/_sweep/invariants/orchestration.py
-- tools/_sweep/invariants/render_views.py
-- tools/_sweep/invariants/run_contract.py
-- tools/_sweep/invariants/schema_catalog.py
-- tools/_sweep/invariants/templates.py
-- tools/_sweep/invariants/tiers.py
-- tools/_sweep/invariants/verification_spine.py
-- tools/_sweep/invariants/waivers.py
 - tools/canonicals_report.py
 - tools/sweep.py
 - tools/wheel_boundary.py
@@ -990,7 +976,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - check procedure (deterministic):
   1) Enumerate all files matching `schemas/*.schema.json`.
   2) Confirm the sweep report includes each schema file path in `inputs[].path`.
-  3) Confirm the sweep report includes tooling owner files `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, `tools/_sweep/inputs.py`, `tools/_sweep/model.py`, `tools/_sweep/registry.py`, `tools/_sweep/runner.py`, `tools/_sweep/report_writer.py`, every semantic owner under `tools/_sweep/invariants/*.py`, and `tools/sweep.py`.
+  3) Confirm the sweep report includes tooling owner files `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, `tools/_sweep/inputs.py`, `tools/_sweep/managed_surfaces.py`, `tools/_sweep/registry.py`, and `tools/sweep.py`.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
 - pass/fail criteria:
   - PASS if the dynamic schema surface and tooling owner files are included.
@@ -1001,23 +987,20 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - statement: Managed operational surfaces MUST be explicitly listed in sweep authority inputs to prevent silent scope drift.
 - source-of-truth (file/section):
   - This document’s Inputs list (Section A)
-  - tools/_sweep/inputs.py (`_canonical_inputs`, `_sweep_managed_surface_files`)
+  - tools/_sweep/inputs.py (`_canonical_inputs`)
+  - tools/_sweep/managed_surfaces.py (`_sweep_managed_surface_files`)
 - check procedure (deterministic):
   1) Enumerate tracked files in these managed surfaces:
      - repo-root `*.md`
      - `docs/operations/*.md`
+     - `belgi/canonicals/*.md`
+     - `belgi/canonicals/docs/operations/*.md`
      - `.github/workflows/*.{yml,yaml}`
      - `.github/scripts/*.py`
      - `scripts/belgi_*.{py,sh,ps1}`
      - `templates/ci/github/*.{yml,yaml}`
      - `tools/README.md`
      - `tools/canonicals_report.py`
-     - `tools/_sweep/inputs.py`
-     - `tools/_sweep/model.py`
-     - `tools/_sweep/registry.py`
-     - `tools/_sweep/invariants/*.py` (semantic owner files only; package markers excluded)
-     - `tools/_sweep/runner.py`
-     - `tools/_sweep/report_writer.py`
   2) Confirm every enumerated path is explicitly present in sweep canonical inputs.
   3) FAIL if any managed path is missing.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)

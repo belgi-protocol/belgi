@@ -148,6 +148,7 @@ FAMILY_PATH_PATTERNS: dict[str, tuple[str, ...]] = {
         "tools/rehash.py",
         "tools/sweep.py",
         "tools/_sweep/inputs.py",
+        "tools/_sweep/managed_surfaces.py",
         "tools/_sweep/model.py",
         "tools/_sweep/registry.py",
         "tools/_sweep/report_writer.py",
