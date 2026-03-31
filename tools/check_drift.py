@@ -30,10 +30,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from belgi.protocol.pack import validate_manifest_bytes
-
-# Protocol pack v1 allowed content (whitelist).
-PACK_ALLOWED_FOLDERS = frozenset({"schemas", "gates", "tiers"})
-PACK_ALLOWED_FILES = frozenset({"ProtocolPackManifest.json"})
+from belgi.protocol.pack_surface_inventory import (
+    MANIFEST_FILENAME,
+    PACK_ALLOWED_FILES,
+    PACK_ALLOWED_FOLDERS,
+    iter_pack_allowed_folders,
+)
 
 
 def _sha256_file(p: Path) -> str:
@@ -45,7 +47,7 @@ def check_drift(repo_root: Path) -> list[str]:
     pack_root = repo_root / "belgi" / "_protocol_packs" / "v1"
     drifted: list[str] = []
 
-    for folder in ("schemas", "gates", "tiers"):
+    for folder in iter_pack_allowed_folders():
         root_dir = repo_root / folder
         pack_dir = pack_root / folder
 
@@ -138,10 +140,10 @@ def main() -> int:
 
     # C) Validate ProtocolPackManifest.json is consistent with scanned pack contents.
     pack_root = repo_root / "belgi" / "_protocol_packs" / "v1"
-    manifest_path = pack_root / "ProtocolPackManifest.json"
+    manifest_path = pack_root / MANIFEST_FILENAME
     if not manifest_path.exists() or not manifest_path.is_file():
         print("PACK MANIFEST VIOLATION:", file=sys.stderr)
-        print("  - Missing belgi/_protocol_packs/v1/ProtocolPackManifest.json", file=sys.stderr)
+        print(f"  - Missing belgi/_protocol_packs/v1/{MANIFEST_FILENAME}", file=sys.stderr)
         failed = True
     else:
         try:

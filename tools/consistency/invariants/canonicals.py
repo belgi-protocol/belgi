@@ -1,25 +1,9 @@
 from __future__ import annotations
 
+from belgi.protocol.pack_surface_inventory import C3_CANONICAL_MIRROR_BINDINGS
 from tools.canonicals_report import CanonicalsReportError, derive_canonicals_report
 from tools.consistency import common as _common
 from tools.consistency.model import InvariantResult
-
-_C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
-    ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
-    ("terminology.md", "belgi/canonicals/terminology.md"),
-    ("trust-model.md", "belgi/canonicals/trust-model.md"),
-    ("docs/operations/consistency-sweep.md", "belgi/canonicals/docs/operations/consistency-sweep.md"),
-    ("docs/operations/cli.md", "belgi/canonicals/docs/operations/cli.md"),
-    ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
-    ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
-    ("docs/operations/operator-anchors.md", "belgi/canonicals/docs/operations/operator-anchors.md"),
-    ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
-    ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
-    ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
-    ("docs/research/README.md", "belgi/canonicals/docs/research/README.md"),
-    ("docs/research/experiment-design.md", "belgi/canonicals/docs/research/experiment-design.md"),
-    ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
-)
 
 _TERM_GUARD_FIXED_FILES: tuple[str, ...] = (
     "README.md",
@@ -267,7 +251,7 @@ def check_cs_can_003(root: _common.Path) -> InvariantResult:
 def check_cs_can_005(
     root: _common.Path,
     *,
-    mirror_bindings: tuple[tuple[str, str], ...] = _C3_CANONICAL_MIRROR_BINDINGS,
+    mirror_bindings: tuple[tuple[str, str], ...] = C3_CANONICAL_MIRROR_BINDINGS,
 ) -> InvariantResult:
     """CS-CAN-005 — Package canonical mirror is byte-identical to source docs."""
 
