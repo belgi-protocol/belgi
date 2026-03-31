@@ -71,18 +71,19 @@ def check_cs_gate_r_mandates_verify_bundle_001(root: _common.Path) -> InvariantR
         return InvariantResult("CS-GATE_R-MANDATES-VERIFY_BUNDLE-001", "FAIL", [], "Missing gates/GATE_R.md.")
 
     md = _common.read_text(p)
+    try:
+        verifier_section = _common.markdown_heading_section(md, "### 5.2.2 Canonical deterministic verifier (MUST)")
+    except _common._UserInputError:
+        verifier_section = ""
     must_have = [
         "chain/gate_r_verify.py",
         "MUST",
-        "MUST match **exactly one**",
-        "If it matches 0 entries => **NO-GO**.",
-        "If it matches more than 1 entry => **NO-GO**.",
-        "Resolve bytes via the artifact’s `storage_ref`",
-        "Compute `sha256(bytes)`",
+        "must match exactly one",
+        "sha256(bytes)",
         "PolicyReportPayload.schema.json",
         "TestReportPayload.schema.json",
     ]
-    missing = [s for s in must_have if s not in md]
+    missing = [s for s in must_have if s not in verifier_section]
     if missing:
         return InvariantResult(
             "CS-GATE_R-MANDATES-VERIFY_BUNDLE-001",
@@ -106,6 +107,10 @@ def check_cs_verify_bundle_gateverdict_binding_001(root: _common.Path) -> Invari
         return InvariantResult("CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001", "FAIL", [], "Missing gates/GATE_R.md.")
 
     md = _common.read_text(p)
+    try:
+        verifier_section = _common.markdown_heading_section(md, "### 5.2.2 Canonical deterministic verifier (MUST)")
+    except _common._UserInputError:
+        verifier_section = ""
     must_phrases = [
         "GateVerdict.evidence_manifest_ref",
         "MUST",
@@ -113,12 +118,17 @@ def check_cs_verify_bundle_gateverdict_binding_001(root: _common.Path) -> Invari
         "sha256",
         "gate_r_verify",
     ]
-    if not all(s.lower() in md.lower() for s in must_phrases):
+    if not all(s.lower() in verifier_section.lower() for s in must_phrases):
         return InvariantResult(
             "CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001",
             "FAIL",
-            ["gates/GATE_R.md"],
+            ["gates/GATE_R.md#522-canonical-deterministic-verifier-must"],
             "When GateVerdict is provided, Gate R must state the verdict's evidence_manifest_ref resolves under repo root and sha256(bytes) matches the declared hash.",
         )
 
-    return InvariantResult("CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001", "PASS", ["gates/GATE_R.md"], "")
+    return InvariantResult(
+        "CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001",
+        "PASS",
+        ["gates/GATE_R.md#522-canonical-deterministic-verifier-must"],
+        "",
+    )

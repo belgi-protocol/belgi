@@ -10,7 +10,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_owner_family_repo,
     mutate_json,
     remove_file,
-    replace_text,
+    replace_text_in_markdown_section,
 )
 from tools.consistency.invariants import verification_spine as owner
 
@@ -41,20 +41,27 @@ def test_verification_spine_owner_invariants_pass_on_owner_derived_repo(tmp_path
         ),
         (
             "CS-GATE_R-MANDATES-VERIFY_BUNDLE-001",
-            lambda root: replace_text(root, "gates/GATE_R.md", "chain/gate_r_verify.py", "chain/gate_r_verify_missing.py"),
+            lambda root: replace_text_in_markdown_section(
+                root,
+                "gates/GATE_R.md",
+                "### 5.2.2 Canonical deterministic verifier (MUST)",
+                "chain/gate_r_verify.py",
+                "chain/gate_r_verify_missing.py",
+            ),
             owner.check_cs_gate_r_mandates_verify_bundle_001,
             "gates/GATE_R.md#522-canonical-deterministic-verifier-must",
         ),
         (
             "CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001",
-            lambda root: replace_text(
+            lambda root: replace_text_in_markdown_section(
                 root,
                 "gates/GATE_R.md",
+                "### 5.2.2 Canonical deterministic verifier (MUST)",
                 "GateVerdict.evidence_manifest_ref",
                 "GateVerdict.evidence_manifest_pointer",
             ),
             owner.check_cs_verify_bundle_gateverdict_binding_001,
-            "gates/GATE_R.md",
+            "gates/GATE_R.md#522-canonical-deterministic-verifier-must",
         ),
         (
             "CS-REF-001",

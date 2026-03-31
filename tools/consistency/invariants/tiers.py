@@ -204,7 +204,12 @@ def check_cs_tier_004(root: _common.Path) -> InvariantResult:
             f"Fix EvidenceManifest.commands_executed oneOf shape ({e}).",
         )
 
-    if "command_log_mode" not in _common.read_text(tiers):
+    tiers_txt = _common.read_text(tiers)
+    try:
+        command_log_mode_section = _common.markdown_heading_section(tiers_txt, "### 2.5 command_log_mode")
+    except _common._UserInputError:
+        command_log_mode_section = ""
+    if _common._missing_needles(command_log_mode_section, ["command_log_mode", "commands_executed", "`strings`", "`structured`"]):
         return InvariantResult(
             "CS-TIER-004",
             "FAIL",
@@ -212,9 +217,18 @@ def check_cs_tier_004(root: _common.Path) -> InvariantResult:
             "Document tier command_log_mode and its supported values in tier-packs.md.",
         )
     r_txt = _common.read_text(r)
-    must = ["command_log_mode", "commands_executed", "matching rule"]
-    missing_must = _common._missing_needles(r_txt, must)
-    if missing_must:
+    try:
+        command_log_mode_slice = _common.markdown_marker_slice(
+            r_txt,
+            start_marker="Additionally, Gate R MUST enforce the tier’s `command_log_mode` deterministically:",
+            end_marker="## 5. Deterministic Checks (Executable Doc)",
+        )
+    except _common._UserInputError:
+        command_log_mode_slice = ""
+    if _common._missing_needles(
+        command_log_mode_slice,
+        ["command_log_mode", "EvidenceManifest.commands_executed", "structured command records", "R0.command_log_mode"],
+    ):
         return InvariantResult(
             "CS-TIER-004",
             "FAIL",
@@ -236,6 +250,13 @@ def check_cs_tier_004(root: _common.Path) -> InvariantResult:
 def check_cs_tier_005(root: _common.Path) -> InvariantResult:
     """CS-TIER-005 — doc_impact_required parameter is consistent across docs."""
 
+    def _mentions_tier_23_scope(section: str) -> bool:
+        return (
+            "Tier 2–3" in section
+            or "Tier 2-3" in section
+            or ("Tier 2" in section and "Tier 3" in section)
+        )
+
     tiers = _common.repo_path(root, "tiers/tier-packs.md")
     q = _common.repo_path(root, "gates/GATE_Q.md")
     r = _common.repo_path(root, "gates/GATE_R.md")
@@ -245,9 +266,11 @@ def check_cs_tier_005(root: _common.Path) -> InvariantResult:
             return InvariantResult("CS-TIER-005", "FAIL", [], f"Missing {rel}.")
 
     t_txt = _common.read_text(tiers)
-    required_lines = ["doc_impact_required", "tier-0", "tier-1", "tier-2", "tier-3"]
-    missing_required_lines = _common._missing_needles(t_txt, required_lines)
-    if missing_required_lines:
+    try:
+        doc_impact_required_section = _common.markdown_heading_section(t_txt, "### 2.7 doc_impact_required")
+    except _common._UserInputError:
+        doc_impact_required_section = ""
+    if _common._missing_needles(doc_impact_required_section, ["doc_impact_required", "tier-0", "tier-1", "tier-2", "tier-3"]):
         return InvariantResult(
             "CS-TIER-005",
             "FAIL",
@@ -255,16 +278,52 @@ def check_cs_tier_005(root: _common.Path) -> InvariantResult:
             "Ensure tier-packs.md defines doc_impact_required and the tier-0..tier-3 mapping.",
         )
 
-    if "doc_impact_required" not in _common.read_text(q) or "doc_impact_required" not in _common.read_text(r):
+    q_txt = _common.read_text(q)
+    try:
+        q_doc_section = _common.markdown_heading_section(
+            q_txt,
+            "### Q-DOC-002 — doc_impact tier enforcement (presence + note-on-empty)",
+        )
+    except _common._UserInputError:
+        q_doc_section = ""
+    if "doc_impact_required" not in q_doc_section:
         return InvariantResult(
             "CS-TIER-005",
             "FAIL",
-            ["gates/GATE_Q.md#q-doc-002--doc_impact-tier-enforcement--note-on-empty", "gates/GATE_R.md#r-doc-001--doc_impact-enforced-with-diff"],
+            ["gates/GATE_Q.md#q-doc-002--doc_impact-tier-enforcement--note-on-empty"],
+            "Ensure Gate Q Q-DOC-002 and Gate R R-DOC-001 reference doc_impact_required parameter.",
+        )
+
+    r_txt = _common.read_text(r)
+    try:
+        r_doc_section = _common.markdown_heading_section(
+            r_txt,
+            "### R-DOC-001 — doc_impact required docs touched (contract compliance)",
+        )
+    except _common._UserInputError:
+        r_doc_section = ""
+    if "doc_impact_required" not in r_doc_section:
+        return InvariantResult(
+            "CS-TIER-005",
+            "FAIL",
+            ["gates/GATE_R.md#r-doc-001--doc_impact-enforced-with-diff"],
             "Ensure Gate Q Q-DOC-002 and Gate R R-DOC-001 reference doc_impact_required parameter.",
         )
 
     rb_txt = _common.read_text(rb)
-    if "Tier 2" not in rb_txt or "Tier 3" not in rb_txt or "doc_impact" not in rb_txt:
+    try:
+        running_belgi_section = _common.markdown_heading_section(
+            rb_txt,
+            "### 2.3 doc_impact (operator requirement for Tier 2–3)",
+        )
+    except _common._UserInputError:
+        running_belgi_section = ""
+    running_belgi_missing = _common._missing_needles(
+        running_belgi_section,
+        ["doc_impact", "required_paths", "note_on_empty"],
+    )
+    has_empty_rule = "[]" in running_belgi_section or "empty" in running_belgi_section.lower()
+    if running_belgi_missing or not _mentions_tier_23_scope(running_belgi_section) or not has_empty_rule:
         return InvariantResult(
             "CS-TIER-005",
             "FAIL",

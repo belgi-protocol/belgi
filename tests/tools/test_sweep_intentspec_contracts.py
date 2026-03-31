@@ -10,6 +10,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_owner_family_repo,
     mutate_json,
     replace_text,
+    replace_text_in_markdown_section,
 )
 from tools.consistency.invariants import intentspec as owner
 
@@ -51,9 +52,15 @@ def test_intentspec_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) 
         ),
         (
             "CS-IS-003",
-            lambda root: replace_text(root, "gates/GATE_Q.md", "Q-INTENT-003", "Q-INTENT-003-MISSING"),
+            lambda root: replace_text_in_markdown_section(
+                root,
+                "gates/GATE_Q.md",
+                "### Q-INTENT-003 — Deterministic mapping rules from IntentSpec → LockedSpec inputs",
+                "LockedSpec.doc_impact",
+                "LockedSpec.doc_scope",
+            ),
             owner.check_cs_is_003,
-            "gates/GATE_Q.md#q-intent-001--intentspec-file-present-and-yaml-block-parseable",
+            "gates/GATE_Q.md#q-intent-003--deterministic-mapping-rules-from-intentspec--lockedspec-inputs",
         ),
         (
             "CS-IS-004",

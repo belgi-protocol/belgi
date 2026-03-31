@@ -10,6 +10,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_owner_family_repo,
     mutate_json,
     replace_text,
+    replace_text_in_markdown_section,
 )
 from tools.consistency.invariants import templates as owner
 
@@ -35,7 +36,13 @@ def test_templates_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -
     [
         (
             "CS-TPL-001",
-            lambda root: replace_text(root, "belgi/templates/PromptBundle.blocks.md", "block_hashes", "block_digests"),
+            lambda root: replace_text_in_markdown_section(
+                root,
+                "belgi/templates/PromptBundle.blocks.md",
+                "### A5.1 Required evidence artifact (policy_report)",
+                "block_hashes",
+                "block_digests",
+            ),
             owner.check_cs_tpl_001,
             "belgi/templates/PromptBundle.blocks.md#a51-required-evidence-artifact-policy_report",
         ),
@@ -51,7 +58,13 @@ def test_templates_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -
         ),
         (
             "CS-TPL-003",
-            lambda root: replace_text(root, "belgi/templates/DocsCompiler.template.md", "docs_compilation_log", "docs_compilation_trace"),
+            lambda root: replace_text_in_markdown_section(
+                root,
+                "belgi/templates/DocsCompiler.template.md",
+                "### B4.2 Required evidence artifact: docs_compilation_log",
+                "docs_compilation_log",
+                "docs_compilation_trace",
+            ),
             owner.check_cs_tpl_003,
             "belgi/templates/DocsCompiler.template.md#b42-required-evidence-artifact-docs_compilation_log",
         ),

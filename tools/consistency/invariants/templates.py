@@ -13,8 +13,15 @@ def check_cs_tpl_001(root: _common.Path) -> InvariantResult:
         return InvariantResult("CS-TPL-001", "FAIL", [], "Missing PromptBundle template and/or EvidenceManifest schema.")
 
     pb_txt = _common.read_text(pb)
+    try:
+        policy_report_section = _common.markdown_heading_section(
+            pb_txt,
+            "### A5.1 Required evidence artifact (policy_report)",
+        )
+    except _common._UserInputError:
+        policy_report_section = ""
     must = ["A5.1", "block_ids", "block_hashes", "prompt_bundle_manifest_hash", "prompt_bundle_bytes_hash"]
-    missing_must = _common._missing_needles(pb_txt, must)
+    missing_must = _common._missing_needles(policy_report_section, must)
     if missing_must:
         return InvariantResult(
             "CS-TPL-001",
@@ -95,7 +102,22 @@ def check_cs_tpl_003(root: _common.Path) -> InvariantResult:
     if not dc.exists() or not em.exists():
         return InvariantResult("CS-TPL-003", "FAIL", [], "Missing DocsCompiler template and/or EvidenceManifest schema.")
 
-    if "docs_compilation_log" not in _common.read_text(dc):
+    dc_txt = _common.read_text(dc)
+    try:
+        docs_log_section = _common.markdown_heading_section(
+            dc_txt,
+            "### B4.2 Required evidence artifact: docs_compilation_log",
+        )
+    except _common._UserInputError:
+        docs_log_section = ""
+
+    must = [
+        "docs_compilation_log",
+        "EvidenceManifest.artifacts[]",
+        '`kind`: `"docs_compilation_log"`',
+        '`produced_by`: `"C3"`',
+    ]
+    if _common._missing_needles(docs_log_section, must):
         return InvariantResult(
             "CS-TPL-003",
             "FAIL",

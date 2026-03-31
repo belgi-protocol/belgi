@@ -7,6 +7,7 @@ This file stays on sweep helper and control-plane guard coverage only.
 from __future__ import annotations
 
 import re
+import runpy
 import sys
 from pathlib import Path
 
@@ -21,13 +22,14 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def test_helper_contract() -> None:
-    from tools.consistency import common as common_mod
+    common_ns = runpy.run_path(str(REPO_ROOT / "tools" / "consistency" / "common.py"))
+    missing_needles = common_ns["_missing_needles"]
 
-    result = common_mod._missing_needles("abc", ["a", "b", "c"])
+    result = missing_needles("abc", ["a", "b", "c"])
     assert isinstance(result, list)
     assert result == []
 
-    result2 = common_mod._missing_needles("abc", ["a", "z"])
+    result2 = missing_needles("abc", ["a", "z"])
     assert isinstance(result2, list)
     assert result2 == ["z"]
 

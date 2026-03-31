@@ -26,17 +26,17 @@ def test_pack_surface_inventory_propagates_directly_to_build_drift_sweep_and_liv
     import tools.check_drift as check_drift
     from tools.consistency.invariants import canonicals
 
-    assert pack.MANIFEST_FILENAME is inventory.MANIFEST_FILENAME
-    assert pack.PACK_CONTENT_PREFIXES is inventory.PACK_CONTENT_PREFIXES
+    assert pack.MANIFEST_FILENAME == inventory.MANIFEST_FILENAME
+    assert pack.PACK_CONTENT_PREFIXES == inventory.PACK_CONTENT_PREFIXES
 
-    assert build_builtin_pack.MANIFEST_FILENAME is inventory.MANIFEST_FILENAME
-    assert build_builtin_pack.PACK_ALLOWED_FOLDERS is inventory.PACK_ALLOWED_FOLDERS
-    assert build_builtin_pack.PACK_ALLOWED_FILES is inventory.PACK_ALLOWED_FILES
-    assert build_builtin_pack.C3_CANONICAL_MIRROR_BINDINGS is inventory.C3_CANONICAL_MIRROR_BINDINGS
+    assert build_builtin_pack.MANIFEST_FILENAME == inventory.MANIFEST_FILENAME
+    assert build_builtin_pack.PACK_ALLOWED_FOLDERS == inventory.PACK_ALLOWED_FOLDERS
+    assert build_builtin_pack.PACK_ALLOWED_FILES == inventory.PACK_ALLOWED_FILES
+    assert build_builtin_pack.C3_CANONICAL_MIRROR_BINDINGS == inventory.C3_CANONICAL_MIRROR_BINDINGS
 
-    assert check_drift.MANIFEST_FILENAME is inventory.MANIFEST_FILENAME
-    assert check_drift.PACK_ALLOWED_FOLDERS is inventory.PACK_ALLOWED_FOLDERS
-    assert check_drift.PACK_ALLOWED_FILES is inventory.PACK_ALLOWED_FILES
+    assert check_drift.MANIFEST_FILENAME == inventory.MANIFEST_FILENAME
+    assert check_drift.PACK_ALLOWED_FOLDERS == inventory.PACK_ALLOWED_FOLDERS
+    assert check_drift.PACK_ALLOWED_FILES == inventory.PACK_ALLOWED_FILES
 
     mirror_default = inspect.signature(canonicals.check_cs_can_005).parameters["mirror_bindings"].default
-    assert mirror_default is inventory.C3_CANONICAL_MIRROR_BINDINGS
+    assert mirror_default == inventory.C3_CANONICAL_MIRROR_BINDINGS

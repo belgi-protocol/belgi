@@ -109,23 +109,35 @@ def check_cs_is_003(root: _common.Path) -> InvariantResult:
         return InvariantResult("CS-IS-003", "FAIL", [], "Missing gates/GATE_Q.md.")
     txt = _common.read_text(q)
 
-    must = [
-        "Q-INTENT-001",
-        "Q-INTENT-002",
-        "Q-INTENT-003",
-        "IntentSpec.core.md",
-        "belgi/templates/IntentSpec.core.template.md",
-        "schemas/IntentSpec.schema.json",
-        "schemas/LockedSpec.schema.json",
+    section_cases = [
+        (
+            "gates/GATE_Q.md#q-intent-001--intentspec-file-present-and-yaml-block-parseable",
+            "### Q-INTENT-001 — IntentSpec file present and YAML block parseable",
+            ["IntentSpec.core.md", "```yaml"],
+        ),
+        (
+            "gates/GATE_Q.md#q-intent-002--intentspec-validates-against-intentspecschemajson",
+            "### Q-INTENT-002 — IntentSpec validates against IntentSpec.schema.json",
+            ["schemas/IntentSpec.schema.json", "Validate the parsed YAML object against the IntentSpec schema."],
+        ),
+        (
+            "gates/GATE_Q.md#q-intent-003--deterministic-mapping-rules-from-intentspec--lockedspec-inputs",
+            "### Q-INTENT-003 — Deterministic mapping rules from IntentSpec → LockedSpec inputs",
+            ["schemas/LockedSpec.schema.json", "LockedSpec.intent.intent_id", "LockedSpec.doc_impact", "LockedSpec.publication_intent"],
+        ),
     ]
-    missing_must = _common._missing_needles(txt, must)
-    if missing_must:
-        return InvariantResult(
-            "CS-IS-003",
-            "FAIL",
-            ["gates/GATE_Q.md#q-intent-001--intentspec-file-present-and-yaml-block-parseable"],
-            "Ensure Gate Q defines Q-INTENT-001/002/003 with deterministic parse, schema validate, and explicit mapping into LockedSpec fields.",
-        )
+    for evidence, heading, needles in section_cases:
+        try:
+            section = _common.markdown_heading_section(txt, heading)
+        except _common._UserInputError:
+            section = ""
+        if _common._missing_needles(section, needles):
+            return InvariantResult(
+                "CS-IS-003",
+                "FAIL",
+                [evidence],
+                "Ensure Gate Q defines Q-INTENT-001/002/003 with deterministic parse, schema validate, and explicit mapping into LockedSpec fields.",
+            )
 
     return InvariantResult(
         "CS-IS-003",

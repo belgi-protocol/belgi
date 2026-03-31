@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Callable
 
-from tests.helpers import builders
+from tests.helpers import builders, markdown_sections
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -134,7 +134,9 @@ FAMILY_PATH_PATTERNS: dict[str, tuple[str, ...]] = {
         "belgi/_protocol_packs/v1/gates/*.md",
         "belgi/_protocol_packs/v1/schemas/**/*",
         "chain/logic/r_checks/*.py",
-        ".github/workflows/*.yml",
+        ".github/workflows/pinned-install-proof.yml",
+        ".github/workflows/pull-request-proof.yml",
+        ".github/workflows/repository-verification.yml",
         ".github/scripts/*.py",
         "scripts/belgi_*.ps1",
         "scripts/belgi_*.py",
@@ -219,6 +221,40 @@ def replace_text(root: Path, rel: str, old: str, new: str) -> None:
     text = path.read_text(encoding="utf-8", errors="strict")
     assert old in text, f"expected to find {old!r} in {rel}"
     path.write_text(text.replace(old, new, 1), encoding="utf-8", errors="strict", newline="\n")
+
+
+def replace_text_in_markdown_section(root: Path, rel: str, heading: str, old: str, new: str) -> None:
+    path = root / rel
+    text = path.read_text(encoding="utf-8", errors="strict")
+    section = markdown_sections.markdown_heading_section(text, heading)
+    assert old in section, f"expected to find {old!r} in {rel} section {heading!r}"
+    path.write_text(
+        text.replace(section, section.replace(old, new, 1), 1),
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
+
+
+def replace_text_in_markdown_slice(
+    root: Path,
+    rel: str,
+    *,
+    start_marker: str,
+    end_marker: str,
+    old: str,
+    new: str,
+) -> None:
+    path = root / rel
+    text = path.read_text(encoding="utf-8", errors="strict")
+    section = markdown_sections.markdown_marker_slice(text, start_marker=start_marker, end_marker=end_marker)
+    assert old in section, f"expected to find {old!r} in {rel} slice {start_marker!r}"
+    path.write_text(
+        text.replace(section, section.replace(old, new, 1), 1),
+        encoding="utf-8",
+        errors="strict",
+        newline="\n",
+    )
 
 
 def replace_regex(root: Path, rel: str, pattern: str, repl: str, *, count: int = 1) -> None:
