@@ -74,6 +74,24 @@ Canonical trigger:
 - tools/rehash.py
 - tools/render.py
 - tools/check_codeowners.py
+- tools/consistency/common.py
+- tools/consistency/inputs.py
+- tools/consistency/model.py
+- tools/consistency/registry.py
+- tools/consistency/report_writer.py
+- tools/consistency/runner.py
+- tools/consistency/invariants/canonicals.py
+- tools/consistency/invariants/evidence.py
+- tools/consistency/invariants/gate_schema.py
+- tools/consistency/invariants/intentspec.py
+- tools/consistency/invariants/orchestration.py
+- tools/consistency/invariants/render_views.py
+- tools/consistency/invariants/run_contract.py
+- tools/consistency/invariants/schema_catalog.py
+- tools/consistency/invariants/templates.py
+- tools/consistency/invariants/tiers.py
+- tools/consistency/invariants/verification_spine.py
+- tools/consistency/invariants/waivers.py
 - tools/canonicals_report.py
 - tools/sweep.py
 - tools/wheel_boundary.py
@@ -223,10 +241,11 @@ Canonical trigger:
 - invariant_id: CS-CAN-005
 - statement: Package canonical resources under `belgi/canonicals/**` MUST be byte-identical to their authoritative source docs at repo root.
 - source-of-truth (file/section):
+  - belgi/protocol/pack_surface_inventory.py (required source→mirror inventory owner)
   - tools/build_builtin_pack.py (canonical mirror sync implementation)
   - belgi/core/run_orchestrator.py (C3 staged canonicals load from package resources)
 - check procedure (deterministic):
-  1) For each required source→mirror pair, read bytes and compare exact equality:
+  1) For each required source→mirror pair in the shared mirror inventory, read bytes and compare exact equality:
      - `CANONICALS.md` → `belgi/canonicals/CANONICALS.md`
      - `terminology.md` → `belgi/canonicals/terminology.md`
      - `trust-model.md` → `belgi/canonicals/trust-model.md`
@@ -978,16 +997,16 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 
 ### CS-SWEEP-001 — Input Authority
 - invariant_id: CS-SWEEP-001
-- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the canonical tooling entrypoints that materially affect sweep results.
+- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the exact tooling owner files that materially affect sweep results and report bytes.
 - source-of-truth (file/section):
   - This document’s Inputs list (Section A)
 - check procedure (deterministic):
   1) Enumerate all files matching `schemas/*.schema.json`.
   2) Confirm the sweep report includes each schema file path in `inputs[].path`.
-  3) Confirm the sweep report includes tooling entrypoints `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, and `tools/sweep.py`.
+  3) Confirm the sweep report includes tooling owner files `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, `tools/consistency/common.py`, `tools/consistency/inputs.py`, `tools/consistency/model.py`, `tools/consistency/registry.py`, `tools/consistency/runner.py`, `tools/consistency/report_writer.py`, every semantic owner under `tools/consistency/invariants/*.py`, and `tools/sweep.py`.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
 - pass/fail criteria:
-  - PASS if the dynamic schema surface and tool entrypoints are included.
+  - PASS if the dynamic schema surface and tooling owner files are included.
   - FAIL otherwise.
 
 ### CS-SWEEP-002 — Managed Surface Coverage
@@ -995,7 +1014,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - statement: Managed operational surfaces MUST be explicitly listed in sweep authority inputs to prevent silent scope drift.
 - source-of-truth (file/section):
   - This document’s Inputs list (Section A)
-  - tools/sweep.py (`_canonical_inputs`)
+  - tools/consistency/inputs.py (`_canonical_inputs`, `_sweep_managed_surface_files`)
 - check procedure (deterministic):
   1) Enumerate tracked files in these managed surfaces:
      - repo-root `*.md`
@@ -1006,6 +1025,13 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
      - `templates/ci/github/*.{yml,yaml}`
      - `tools/README.md`
      - `tools/canonicals_report.py`
+     - `tools/consistency/common.py`
+     - `tools/consistency/inputs.py`
+     - `tools/consistency/model.py`
+     - `tools/consistency/registry.py`
+     - `tools/consistency/invariants/*.py` (semantic owner files only; package markers excluded)
+     - `tools/consistency/runner.py`
+     - `tools/consistency/report_writer.py`
   2) Confirm every enumerated path is explicitly present in sweep canonical inputs.
   3) FAIL if any managed path is missing.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)

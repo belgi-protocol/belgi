@@ -220,7 +220,7 @@ To prevent fragmented enforcement, Gate R MUST be executed using the canonical d
 This verifier MUST implement the MUST-level obligations in this gate spec, including:
 - required `(kind,id)` uniqueness ("must match exactly one")
 - bytes→hash verification (compute `sha256(bytes)` for required artifacts)
-- payload schema validation for required `policy_report` and tier-required `test_report`
+- §5.2.1 required report integrity + payload validation, including validation of required `policy_report` payloads against `PolicyReportPayload.schema.json` and tier-required `test_report` payloads against `TestReportPayload.schema.json`
 
 Optional binding check (when GateVerdict is provided to the verifier):
 - If a `GateVerdict.json` is provided to verification, `GateVerdict.evidence_manifest_ref` MUST resolve under repo root, and `sha256(bytes)` MUST match the declared hash for the EvidenceManifest bytes used by Gate R.

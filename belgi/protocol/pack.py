@@ -11,12 +11,10 @@ from typing import Any, Iterable, Protocol, Union
 from belgi.core.hash import is_hex_sha256, sha256_bytes
 from belgi.core.jail import normalize_repo_rel_path
 from belgi.core.json_canon import canonical_json_bytes
-
-MANIFEST_FILENAME = "ProtocolPackManifest.json"
-
-# Pack content prefixes: only files under these directories are included in pack_id.
-# This ensures scaffolding files (*.py, __pycache__, __init__.py) do not affect pack_id.
-_PACK_CONTENT_PREFIXES = ("schemas/", "gates/", "tiers/")
+from belgi.protocol.pack_surface_inventory import (
+    MANIFEST_FILENAME,
+    PACK_CONTENT_PREFIXES,
+)
 
 # Files/directories explicitly excluded from pack scanning (scaffolding, OS junk).
 _PACK_EXCLUDED_NAMES = frozenset({
@@ -75,7 +73,7 @@ def _is_pack_content_file(relpath: str) -> bool:
     """Check if relpath is protocol content (not scaffolding).
 
     Pack content must:
-    - Start with one of _PACK_CONTENT_PREFIXES
+    - Start with one of PACK_CONTENT_PREFIXES
     - Not have excluded names or extensions
     - Not be the manifest itself
     """
@@ -83,7 +81,7 @@ def _is_pack_content_file(relpath: str) -> bool:
         return False
 
     # Check prefix allowlist
-    if not any(relpath.startswith(prefix) for prefix in _PACK_CONTENT_PREFIXES):
+    if not any(relpath.startswith(prefix) for prefix in PACK_CONTENT_PREFIXES):
         return False
 
     # Check excluded names (basename)
@@ -129,7 +127,7 @@ def scan_pack_dir(pack_root: Path) -> list[ProtocolPackFileEntry]:
     """Scan pack_root and return deterministic file entries.
 
     Excludes MANIFEST_FILENAME and scaffolding files from the returned entries.
-    Only files matching _PACK_CONTENT_PREFIXES are included (pack_id excludes scaffolding).
+    Only files matching PACK_CONTENT_PREFIXES are included (pack_id excludes scaffolding).
 
     Fail-closed:
       - pack_root must exist and be a directory
@@ -190,7 +188,7 @@ def scan_pack_tree(pack_root: _Traversable) -> list[ProtocolPackFileEntry]:
     normal filesystem directory (e.g., zipimport).
 
     Excludes MANIFEST_FILENAME and scaffolding files. Only files matching
-    _PACK_CONTENT_PREFIXES are included (pack_id excludes scaffolding).
+    PACK_CONTENT_PREFIXES are included (pack_id excludes scaffolding).
 
     Fail-closed:
       - rejects any non-file/non-dir nodes (by treating them as files and requiring read_bytes)

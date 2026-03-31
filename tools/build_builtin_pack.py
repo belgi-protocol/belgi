@@ -15,33 +15,13 @@ for _k in list(sys.modules.keys()):
     if _k == "belgi" or _k.startswith("belgi."):
         del sys.modules[_k]
 
-from belgi.protocol.pack import (
+from belgi.protocol.pack import build_manifest_bytes, validate_manifest_bytes
+from belgi.protocol.pack_surface_inventory import (
+    C3_CANONICAL_MIRROR_BINDINGS,
     MANIFEST_FILENAME,
-    build_manifest_bytes,
-    validate_manifest_bytes,
-)
-
-# Protocol pack v1 allowed content (whitelist).
-# Pack MUST contain ONLY these folders + the manifest file.
-PACK_ALLOWED_FOLDERS = frozenset({"schemas", "gates", "tiers"})
-PACK_ALLOWED_FILES = frozenset({MANIFEST_FILENAME})
-
-# Canonical docs/resources mirrored into package data for C3 staging.
-_C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
-    ("CANONICALS.md", "belgi/canonicals/CANONICALS.md"),
-    ("terminology.md", "belgi/canonicals/terminology.md"),
-    ("trust-model.md", "belgi/canonicals/trust-model.md"),
-    ("docs/operations/consistency-sweep.md", "belgi/canonicals/docs/operations/consistency-sweep.md"),
-    ("docs/operations/cli.md", "belgi/canonicals/docs/operations/cli.md"),
-    ("docs/operations/evidence-bundles.md", "belgi/canonicals/docs/operations/evidence-bundles.md"),
-    ("docs/operations/evidence-ownership.md", "belgi/canonicals/docs/operations/evidence-ownership.md"),
-    ("docs/operations/operator-anchors.md", "belgi/canonicals/docs/operations/operator-anchors.md"),
-    ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
-    ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
-    ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
-    ("docs/research/README.md", "belgi/canonicals/docs/research/README.md"),
-    ("docs/research/experiment-design.md", "belgi/canonicals/docs/research/experiment-design.md"),
-    ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
+    PACK_ALLOWED_FILES,
+    PACK_ALLOWED_FOLDERS,
+    iter_pack_allowed_folders,
 )
 
 
@@ -90,7 +70,7 @@ def _copy_tree_bytes(*, src_root: Path, dst_root: Path) -> None:
 def _sync_c3_canonical_mirror(*, repo_root: Path) -> None:
     """Sync package canonicals from authoritative repo sources (fail-closed)."""
 
-    for src_rel, dst_rel in _C3_CANONICAL_MIRROR_BINDINGS:
+    for src_rel, dst_rel in C3_CANONICAL_MIRROR_BINDINGS:
         src = repo_root / src_rel
         dst = repo_root / dst_rel
         _assert_under_repo_root(repo_root, src)
@@ -116,9 +96,8 @@ def build_builtin_pack(*, repo_root: Path, pack_root: Path, pack_name: str) -> N
     pack_root.mkdir(parents=True, exist_ok=True)
 
     # Source-of-truth protocol folders (during development): repo root.
-    _copy_tree_bytes(src_root=repo_root / "schemas", dst_root=pack_root / "schemas")
-    _copy_tree_bytes(src_root=repo_root / "gates", dst_root=pack_root / "gates")
-    _copy_tree_bytes(src_root=repo_root / "tiers", dst_root=pack_root / "tiers")
+    for folder in iter_pack_allowed_folders():
+        _copy_tree_bytes(src_root=repo_root / folder, dst_root=pack_root / folder)
 
     manifest_bytes = build_manifest_bytes(pack_root=pack_root, pack_name=pack_name)
     (pack_root / MANIFEST_FILENAME).write_bytes(manifest_bytes)
