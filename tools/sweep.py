@@ -26,11 +26,11 @@ if repo_root_str in sys.path:
     sys.path.remove(repo_root_str)
 sys.path.insert(0, repo_root_str)
 
-from tools.consistency import common as _common
-from tools.consistency import inputs as _inputs_owner
-from tools.consistency import registry as _registry_owner
-from tools.consistency.model import InvariantResult
-from tools.consistency.runner import run_consistency_sweep
+from tools._shared import common as _common
+from tools._sweep import inputs as _inputs_owner
+from tools._sweep import registry as _registry_owner
+from tools._sweep.model import InvariantResult
+from tools._sweep.runner import run_consistency_sweep
 
 CANONICAL_SWEEP_OUT = _common.CANONICAL_SWEEP_OUT
 CANONICAL_SWEEP_SUMMARY = _common.CANONICAL_SWEEP_SUMMARY

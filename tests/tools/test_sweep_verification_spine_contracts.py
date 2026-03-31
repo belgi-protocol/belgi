@@ -12,7 +12,7 @@ from tests.helpers.consistency_owner_fixtures import (
     remove_file,
     replace_text_in_markdown_section,
 )
-from tools.consistency.invariants import verification_spine as owner
+from tools._sweep.invariants import verification_spine as owner
 
 pytestmark = pytest.mark.repo_local
 

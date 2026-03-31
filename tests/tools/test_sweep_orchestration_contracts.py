@@ -9,7 +9,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_owner_family_repo,
     replace_text,
 )
-from tools.consistency.invariants import orchestration as owner
+from tools._sweep.invariants import orchestration as owner
 
 pytestmark = pytest.mark.repo_local
 
@@ -34,12 +34,12 @@ def test_cs_sweep_002_fails_when_owner_file_is_unlisted(tmp_path: Path) -> None:
     managed = owner._sweep_managed_surface_files(root)
     result = owner.check_cs_sweep_002(
         root,
-        canonical_inputs_fn=lambda _root: [rel for rel in managed if rel != "tools/consistency/registry.py"],
+        canonical_inputs_fn=lambda _root: [rel for rel in managed if rel != "tools/_sweep/registry.py"],
     )
 
     assert result.invariant_id == "CS-SWEEP-002"
     assert result.status == "FAIL"
-    assert "tools/consistency/registry.py" in result.remediation
+    assert "tools/_sweep/registry.py" in result.remediation
 
 
 def test_cs_protocol_identity_001_fails_when_source_becomes_identity_language(tmp_path: Path) -> None:

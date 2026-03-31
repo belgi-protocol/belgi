@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from tools.consistency import inputs as inputs_owner
-from tools.consistency import registry as registry_owner
-from tools.consistency.model import InvariantResult
-from tools.consistency.runner import run_consistency_sweep
+from tools._sweep import inputs as inputs_owner
+from tools._sweep import registry as registry_owner
+from tools._sweep.model import InvariantResult
+from tools._sweep.runner import run_consistency_sweep
 
 pytestmark = pytest.mark.repo_local
 

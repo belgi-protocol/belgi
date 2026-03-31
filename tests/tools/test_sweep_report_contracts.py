@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tools.consistency.model import InvariantResult
-from tools.consistency.report_writer import (
+from tools._sweep.model import InvariantResult
+from tools._sweep.report_writer import (
     render_consistency_report,
     write_consistency_artifacts,
     write_consistency_summary_md,

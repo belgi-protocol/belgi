@@ -10,7 +10,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_owner_family_repo,
     replace_text,
 )
-from tools.consistency.invariants import render_views as owner
+from tools._sweep.invariants import render_views as owner
 
 pytestmark = pytest.mark.repo_local
 

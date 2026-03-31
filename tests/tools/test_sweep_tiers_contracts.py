@@ -14,7 +14,7 @@ from tests.helpers.consistency_owner_fixtures import (
     replace_text_in_markdown_section,
     replace_text_in_markdown_slice,
 )
-from tools.consistency.invariants import tiers as owner
+from tools._sweep.invariants import tiers as owner
 
 pytestmark = pytest.mark.repo_local
 

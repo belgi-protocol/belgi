@@ -22,7 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def test_helper_contract() -> None:
-    common_ns = runpy.run_path(str(REPO_ROOT / "tools" / "consistency" / "common.py"))
+    common_ns = runpy.run_path(str(REPO_ROOT / "tools" / "_shared" / "common.py"))
     missing_needles = common_ns["_missing_needles"]
 
     result = missing_needles("abc", ["a", "b", "c"])
@@ -35,7 +35,7 @@ def test_helper_contract() -> None:
 
 
 def test_abuse_no_boolean_negation_of_missing_needles() -> None:
-    txt = (REPO_ROOT / "tools" / "consistency" / "common.py").read_text(encoding="utf-8", errors="strict")
+    txt = (REPO_ROOT / "tools" / "_shared" / "common.py").read_text(encoding="utf-8", errors="strict")
 
     assert "if not _missing_needles(" not in txt
     assert re.search(r"\bif\s+_missing_needles\(", txt) is None

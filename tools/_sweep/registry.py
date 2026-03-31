@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from tools.consistency.invariants.canonicals import (
+from tools._sweep.invariants.canonicals import (
     check_cs_can_001,
     check_cs_can_002,
     check_cs_can_003,
@@ -11,14 +11,14 @@ from tools.consistency.invariants.canonicals import (
     check_cs_can_005,
     check_cs_term_001,
 )
-from tools.consistency.invariants.evidence import (
+from tools._sweep.invariants.evidence import (
     check_cs_ev_001,
     check_cs_ev_002,
     check_cs_ev_003,
     check_cs_ev_004,
     check_cs_ev_005,
 )
-from tools.consistency.invariants.gate_schema import (
+from tools._sweep.invariants.gate_schema import (
     check_cs_gs_001,
     check_cs_gs_002,
     check_cs_gs_003,
@@ -28,14 +28,14 @@ from tools.consistency.invariants.gate_schema import (
     check_cs_ls_001,
     check_cs_ls_002,
 )
-from tools.consistency.invariants.intentspec import (
+from tools._sweep.invariants.intentspec import (
     check_cs_is_002,
     check_cs_is_003,
     check_cs_is_004,
     check_cs_is_005,
     check_intentspec_yaml_single_block,
 )
-from tools.consistency.invariants.orchestration import (
+from tools._sweep.invariants.orchestration import (
     check_cs_byte_001,
     check_cs_fixture_zero_001,
     check_cs_protocol_identity_001,
@@ -43,37 +43,37 @@ from tools.consistency.invariants.orchestration import (
     check_cs_sweep_001,
     check_cs_sweep_002,
 )
-from tools.consistency.invariants.render_views import check_cs_render_001
-from tools.consistency.invariants.run_contract import check_cs_run_001, check_cs_run_002
-from tools.consistency.invariants.schema_catalog import check_cs_schema_001
-from tools.consistency.invariants.templates import (
+from tools._sweep.invariants.render_views import check_cs_render_001
+from tools._sweep.invariants.run_contract import check_cs_run_001, check_cs_run_002
+from tools._sweep.invariants.schema_catalog import check_cs_schema_001
+from tools._sweep.invariants.templates import (
     check_cs_tpl_001,
     check_cs_tpl_002,
     check_cs_tpl_003,
     check_cs_tpl_004,
     check_cs_tpl_005,
 )
-from tools.consistency.invariants.tiers import (
+from tools._sweep.invariants.tiers import (
     check_cs_tier_001,
     check_cs_tier_002,
     check_cs_tier_003,
     check_cs_tier_004,
     check_cs_tier_005,
 )
-from tools.consistency.invariants.verification_spine import (
+from tools._sweep.invariants.verification_spine import (
     check_cs_gate_r_mandates_verify_bundle_001,
     check_cs_ref_001,
     check_cs_verify_bundle_001,
     check_cs_verify_bundle_gateverdict_binding_001,
 )
-from tools.consistency.invariants.waivers import (
+from tools._sweep.invariants.waivers import (
     check_cs_wvr_001,
     check_cs_wvr_002,
     check_cs_wvr_003,
     check_cs_wvr_004,
     check_cs_wvr_005,
 )
-from tools.consistency.model import InvariantResult
+from tools._sweep.model import InvariantResult
 
 ORDERED_INVARIANTS: tuple[tuple[str, Callable[[Path], InvariantResult]], ...] = (
     ('CS-CAN-001', check_cs_can_001),

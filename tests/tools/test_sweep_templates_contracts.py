@@ -12,7 +12,7 @@ from tests.helpers.consistency_owner_fixtures import (
     replace_text,
     replace_text_in_markdown_section,
 )
-from tools.consistency.invariants import templates as owner
+from tools._sweep.invariants import templates as owner
 
 pytestmark = pytest.mark.repo_local
 

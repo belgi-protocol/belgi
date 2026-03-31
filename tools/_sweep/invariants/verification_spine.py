@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from tools.consistency import common as _common
-from tools.consistency.model import InvariantResult
+from tools._shared import common as _common
+from tools._sweep.model import InvariantResult
 
 
 def check_cs_ref_001(root: _common.Path) -> InvariantResult:

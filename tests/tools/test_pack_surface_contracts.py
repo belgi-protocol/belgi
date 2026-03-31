@@ -24,7 +24,7 @@ def test_pack_surface_inventory_propagates_directly_to_build_drift_sweep_and_liv
     import belgi.protocol.pack as pack
     import tools.build_builtin_pack as build_builtin_pack
     import tools.check_drift as check_drift
-    from tools.consistency.invariants import canonicals
+    from tools._sweep.invariants import canonicals
 
     assert pack.MANIFEST_FILENAME == inventory.MANIFEST_FILENAME
     assert pack.PACK_CONTENT_PREFIXES == inventory.PACK_CONTENT_PREFIXES

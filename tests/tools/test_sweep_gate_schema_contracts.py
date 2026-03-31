@@ -12,7 +12,7 @@ from tests.helpers.consistency_owner_fixtures import (
     replace_regex,
     replace_text,
 )
-from tools.consistency.invariants import gate_schema as owner
+from tools._sweep.invariants import gate_schema as owner
 
 pytestmark = pytest.mark.repo_local
 

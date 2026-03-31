@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from belgi.protocol.pack_surface_inventory import C3_CANONICAL_MIRROR_BINDINGS
 from tools.canonicals_report import CanonicalsReportError, derive_canonicals_report
-from tools.consistency import common as _common
-from tools.consistency.model import InvariantResult
+from tools._shared import common as _common
+from tools._sweep.model import InvariantResult
 
 _TERM_GUARD_FIXED_FILES: tuple[str, ...] = (
     "README.md",

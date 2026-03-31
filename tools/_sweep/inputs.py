@@ -1,33 +1,32 @@
 from __future__ import annotations
 
-from tools.consistency import common as _common
+from tools._shared import common as _common
 
 _SWEEP_ENGINE_OWNER_FILES: tuple[str, ...] = (
-    "tools/consistency/model.py",
-    "tools/consistency/report_writer.py",
-    "tools/consistency/runner.py",
+    "tools/_sweep/model.py",
+    "tools/_sweep/report_writer.py",
+    "tools/_sweep/runner.py",
 )
 
 _SWEEP_CONTROL_PLANE_OWNER_FILES: tuple[str, ...] = (
-    "tools/consistency/common.py",
-    "tools/consistency/inputs.py",
-    "tools/consistency/registry.py",
+    "tools/_sweep/inputs.py",
+    "tools/_sweep/registry.py",
     "tools/sweep.py",
 )
 
 _SWEEP_INVARIANT_OWNER_FILES: tuple[str, ...] = (
-    "tools/consistency/invariants/canonicals.py",
-    "tools/consistency/invariants/evidence.py",
-    "tools/consistency/invariants/gate_schema.py",
-    "tools/consistency/invariants/intentspec.py",
-    "tools/consistency/invariants/orchestration.py",
-    "tools/consistency/invariants/render_views.py",
-    "tools/consistency/invariants/run_contract.py",
-    "tools/consistency/invariants/schema_catalog.py",
-    "tools/consistency/invariants/templates.py",
-    "tools/consistency/invariants/tiers.py",
-    "tools/consistency/invariants/verification_spine.py",
-    "tools/consistency/invariants/waivers.py",
+    "tools/_sweep/invariants/canonicals.py",
+    "tools/_sweep/invariants/evidence.py",
+    "tools/_sweep/invariants/gate_schema.py",
+    "tools/_sweep/invariants/intentspec.py",
+    "tools/_sweep/invariants/orchestration.py",
+    "tools/_sweep/invariants/render_views.py",
+    "tools/_sweep/invariants/run_contract.py",
+    "tools/_sweep/invariants/schema_catalog.py",
+    "tools/_sweep/invariants/templates.py",
+    "tools/_sweep/invariants/tiers.py",
+    "tools/_sweep/invariants/verification_spine.py",
+    "tools/_sweep/invariants/waivers.py",
 )
 
 

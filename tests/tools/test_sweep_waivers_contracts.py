@@ -11,7 +11,7 @@ from tests.helpers.consistency_owner_fixtures import (
     mutate_json,
     replace_text,
 )
-from tools.consistency.invariants import waivers as owner
+from tools._sweep.invariants import waivers as owner
 
 pytestmark = pytest.mark.repo_local
 
