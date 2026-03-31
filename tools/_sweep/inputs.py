@@ -115,9 +115,6 @@ def _canonical_inputs(repo_root: _common.Path) -> list[str]:
         "belgi/canonicals/docs/operations/running-belgi.md",
         "belgi/canonicals/docs/operations/security.md",
         "belgi/canonicals/docs/operations/waivers.md",
-        "belgi/canonicals/docs/research/README.md",
-        "belgi/canonicals/docs/research/experiment-design.md",
-        "belgi/canonicals/docs/research/metrics.md",
         # Tier-3 canonical authority surfaces
         "belgi/anchor/v1/TrustAnchor.json",
         "belgi/genesis/GenesisSealPayload.json",

@@ -105,9 +105,6 @@ Canonical trigger:
 - belgi/canonicals/docs/operations/running-belgi.md
 - belgi/canonicals/docs/operations/security.md
 - belgi/canonicals/docs/operations/waivers.md
-- belgi/canonicals/docs/research/README.md
-- belgi/canonicals/docs/research/experiment-design.md
-- belgi/canonicals/docs/research/metrics.md
 - belgi/anchor/v1/TrustAnchor.json
 - belgi/genesis/GenesisSealPayload.json
 - belgi/genesis/README.md
@@ -179,7 +176,7 @@ Canonical trigger:
 - invariant_id: CS-CAN-004
 - statement: There MUST be exactly one canonical copy of each gate/schema/tier spec file. Non-canonical duplicates under `belgi/gates/` and `belgi/schemas/` MUST NOT exist.
 - source-of-truth (file/section):
-  - Canonical tree decision (operator rule): repo-root `gates/`, `schemas/`, `tiers/`; under `belgi/` only `docs/operations/`, `belgi/templates/`, `docs/research/` are canonical.
+  - Canonical tree decision (operator rule): repo-root `gates/`, `schemas/`, `tiers/`; under `belgi/` only `docs/operations/` and `belgi/templates/` are canonical; `docs/research/` is repo-only documentation and is not mirrored under `belgi/canonicals/`.
 - check procedure (deterministic):
   1) FAIL if any file exists under `belgi/gates/`.
   2) FAIL if any file exists under `belgi/schemas/`.

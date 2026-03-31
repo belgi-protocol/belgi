@@ -23,7 +23,6 @@ FAMILY_PATH_PATTERNS: dict[str, tuple[str, ...]] = {
         "belgi/canonicals/terminology.md",
         "belgi/canonicals/trust-model.md",
         "belgi/canonicals/docs/operations/*.md",
-        "belgi/canonicals/docs/research/*.md",
     ),
     "gate_schema": (
         "schemas/GateVerdict.schema.json",

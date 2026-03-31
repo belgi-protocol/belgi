@@ -26,9 +26,6 @@ C3_CANONICAL_MIRROR_BINDINGS: tuple[tuple[str, str], ...] = (
     ("docs/operations/running-belgi.md", "belgi/canonicals/docs/operations/running-belgi.md"),
     ("docs/operations/security.md", "belgi/canonicals/docs/operations/security.md"),
     ("docs/operations/waivers.md", "belgi/canonicals/docs/operations/waivers.md"),
-    ("docs/research/README.md", "belgi/canonicals/docs/research/README.md"),
-    ("docs/research/experiment-design.md", "belgi/canonicals/docs/research/experiment-design.md"),
-    ("docs/research/metrics.md", "belgi/canonicals/docs/research/metrics.md"),
 )
 
 __all__ = [
