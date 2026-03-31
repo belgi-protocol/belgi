@@ -11,6 +11,8 @@ pytestmark = pytest.mark.repo_local
 
 def test_pack_surface_inventory_exports_current_protocol_owner_truth() -> None:
     assert inventory.MANIFEST_FILENAME == "ProtocolPackManifest.json"
+    assert inventory.PACK_SOURCE_BINDINGS == (("schemas", "schemas"), ("gates", "gates"), ("tiers", "tiers"))
+    assert inventory.iter_pack_source_bindings() == inventory.PACK_SOURCE_BINDINGS
     assert inventory.PACK_CONTENT_PREFIXES == ("schemas/", "gates/", "tiers/")
     assert inventory.iter_pack_content_prefixes() == ("schemas/", "gates/", "tiers/")
     assert inventory.PACK_ALLOWED_FOLDERS == frozenset({"schemas", "gates", "tiers"})
@@ -30,11 +32,13 @@ def test_pack_surface_inventory_propagates_directly_to_build_drift_sweep_and_liv
     assert pack.PACK_CONTENT_PREFIXES == inventory.PACK_CONTENT_PREFIXES
 
     assert build_builtin_pack.MANIFEST_FILENAME == inventory.MANIFEST_FILENAME
+    assert build_builtin_pack.PACK_SOURCE_BINDINGS == inventory.PACK_SOURCE_BINDINGS
     assert build_builtin_pack.PACK_ALLOWED_FOLDERS == inventory.PACK_ALLOWED_FOLDERS
     assert build_builtin_pack.PACK_ALLOWED_FILES == inventory.PACK_ALLOWED_FILES
     assert build_builtin_pack.C3_CANONICAL_MIRROR_BINDINGS == inventory.C3_CANONICAL_MIRROR_BINDINGS
 
     assert check_drift.MANIFEST_FILENAME == inventory.MANIFEST_FILENAME
+    assert check_drift.PACK_SOURCE_BINDINGS == inventory.PACK_SOURCE_BINDINGS
     assert check_drift.PACK_ALLOWED_FOLDERS == inventory.PACK_ALLOWED_FOLDERS
     assert check_drift.PACK_ALLOWED_FILES == inventory.PACK_ALLOWED_FILES
 

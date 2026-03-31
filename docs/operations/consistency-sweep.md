@@ -244,22 +244,10 @@ Canonical trigger:
   - tools/build_builtin_pack.py (canonical mirror sync implementation)
   - belgi/core/run_orchestrator.py (C3 staged canonicals load from package resources)
 - check procedure (deterministic):
-  1) For each required source→mirror pair in the shared mirror inventory, read bytes and compare exact equality:
-     - `CANONICALS.md` → `belgi/canonicals/CANONICALS.md`
-     - `terminology.md` → `belgi/canonicals/terminology.md`
-     - `trust-model.md` → `belgi/canonicals/trust-model.md`
-     - `docs/operations/consistency-sweep.md` → `belgi/canonicals/docs/operations/consistency-sweep.md`
-     - `docs/operations/cli.md` → `belgi/canonicals/docs/operations/cli.md`
-     - `docs/operations/evidence-bundles.md` → `belgi/canonicals/docs/operations/evidence-bundles.md`
-     - `docs/operations/evidence-ownership.md` → `belgi/canonicals/docs/operations/evidence-ownership.md`
-     - `docs/operations/running-belgi.md` → `belgi/canonicals/docs/operations/running-belgi.md`
-     - `docs/operations/security.md` → `belgi/canonicals/docs/operations/security.md`
-     - `docs/operations/waivers.md` → `belgi/canonicals/docs/operations/waivers.md`
-     - `docs/research/README.md` → `belgi/canonicals/docs/research/README.md`
-     - `docs/research/experiment-design.md` → `belgi/canonicals/docs/research/experiment-design.md`
-     - `docs/research/metrics.md` → `belgi/canonicals/docs/research/metrics.md`
-  2) FAIL if any source/mirror file is missing.
-  3) FAIL if any compared pair is byte-different.
+  1) Read the required source→mirror bindings from `belgi/protocol/pack_surface_inventory.py`.
+  2) For each binding in that owner inventory, read bytes and compare exact equality.
+  3) FAIL if any source/mirror file is missing.
+  4) FAIL if any compared pair is byte-different.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if every source/mirror pair exists and bytes match exactly.

@@ -21,7 +21,7 @@ from belgi.protocol.pack_surface_inventory import (
     MANIFEST_FILENAME,
     PACK_ALLOWED_FILES,
     PACK_ALLOWED_FOLDERS,
-    iter_pack_allowed_folders,
+    PACK_SOURCE_BINDINGS,
 )
 
 
@@ -96,8 +96,8 @@ def build_builtin_pack(*, repo_root: Path, pack_root: Path, pack_name: str) -> N
     pack_root.mkdir(parents=True, exist_ok=True)
 
     # Source-of-truth protocol folders (during development): repo root.
-    for folder in iter_pack_allowed_folders():
-        _copy_tree_bytes(src_root=repo_root / folder, dst_root=pack_root / folder)
+    for src_rel, dst_rel in PACK_SOURCE_BINDINGS:
+        _copy_tree_bytes(src_root=repo_root / src_rel, dst_root=pack_root / dst_rel)
 
     manifest_bytes = build_manifest_bytes(pack_root=pack_root, pack_name=pack_name)
     (pack_root / MANIFEST_FILENAME).write_bytes(manifest_bytes)
