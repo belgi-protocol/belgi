@@ -22,10 +22,21 @@ def _gate_schema_read_relpaths() -> tuple[str, ...]:
     return (
         "schemas/GateVerdict.schema.json",
         "schemas/LockedSpec.schema.json",
+        "schemas/ToolchainSet.schema.json",
+        "schemas/Tolerances.schema.json",
         "gates/GATE_Q.md",
         "gates/GATE_R.md",
         "gates/failure-taxonomy.md",
         "tiers/tier-packs.md",
+        "chain/compiler_c1_intent.py",
+        "chain/logic/locked_object_schema.py",
+        "chain/logic/toolchain_set.py",
+        "chain/logic/tolerances.py",
+        "chain/logic/q_checks/q4_constraints_present.py",
+        "chain/logic/q_checks/q5_environment_envelope.py",
+        "chain/logic/r_checks/r2_scope_budgets.py",
+        "docs/operations/cli.md",
+        "docs/operations/running-belgi.md",
     )
 
 

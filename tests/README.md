@@ -16,6 +16,8 @@ Lane owners:
 - `tests/tools/`: non-run BELGI tool surfaces
 - `tests/serial/`: explicit justified exceptions only
 
+`tests/tools/` proves tool/report contracts from owner-derived inventories or exact invariant read-sets. Shared broad family snapshot tables are not suite authority.
+
 Repo-wide static/generated/mirror/rendered parity is sweep-owned:
 - executable owner: `tools/sweep.py`
 - law/spec owner: `docs/operations/consistency-sweep.md`

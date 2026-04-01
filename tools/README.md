@@ -90,6 +90,7 @@ Purpose: produce the canonical **Consistency Sweep Report** at `policy/consisten
 Guarantees:
 - Deterministic, fail-closed, repo-root confined.
 - Spec is authoritative: the sweep refuses to run if the invariant catalog in `docs/operations/consistency-sweep.md` does not match the code registry 1:1.
+- `tools/sweep.py` is the CLI shell entrypoint only; sweep execution, report rendering, input assembly, managed-surface inventory, and invariant registration live under `tools/_sweep/`.
 
 ### consistency
 

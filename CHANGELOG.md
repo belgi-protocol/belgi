@@ -2,6 +2,23 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## 1.6.16 — 2026-04-01
+
+### Summary
+Separated the sweep shell from its internal owners, finished the tools/test control-plane owner moves, and made inventory-style sweep results carry checked-set witness details.
+
+### Changed
+- `tools/_sweep/` now owns sweep execution/report/input/registry internals while `tools/sweep.py` stays on CLI parse, command dispatch, the canonical output-path guard, and runner invocation only.
+- `belgi/protocol/pack_surface_inventory.py` remains the single owner for builtin pack inventory and canonical mirror bindings consumed by pack build/drift checks, the canonicals sweep invariant, and the direct pack contract tests.
+- `tools/_sweep/managed_surfaces.py` now owns the managed operational surface inventory separately from canonical input assembly, and the consistency-sweep spec mirrors that split.
+- `belgi/canonicals/docs/research/*` no longer ships as package canonical mirrors; the repo-root research docs remain repo-local inputs and shipped-surface tests now prove the package-resource absence directly.
+- `tests/tools/` now proves sweep invariant families from owner-derived inventories or exact invariant read-sets instead of broad shared family snapshot tables, while `tests/meta/` stays on suite-governance and sweep control-plane boundaries only.
+- Inventory-style sweep results for `CS-SWEEP-001`, `CS-SWEEP-002`, `CS-CAN-005`, and `CS-RENDER-001` now require deterministic witness details with checked-set coverage, and summary markdown projects those witness fields from the JSON artifact instead of inventing separate evidence.
+
+### Notes
+- The public `tools.sweep consistency` command shape is unchanged.
+- This release changes package canonical research mirrors and sweep/tooling proof surfaces; it does not change the BELGI run protocol semantics.
+
 ## 1.6.15 — 2026-03-31
 
 ### Summary

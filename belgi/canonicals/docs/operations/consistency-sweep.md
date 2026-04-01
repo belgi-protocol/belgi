@@ -78,7 +78,7 @@ Canonical trigger:
 - tools/_sweep/managed_surfaces.py
 - tools/_sweep/registry.py
 - tools/canonicals_report.py
-- tools/sweep.py
+- tools/sweep.py (CLI shell entrypoint; control-plane owners remain under `tools/_sweep/`)
 - tools/wheel_boundary.py
 - belgi/templates/IntentSpec.core.template.md
 - schemas/IntentSpec.schema.json
