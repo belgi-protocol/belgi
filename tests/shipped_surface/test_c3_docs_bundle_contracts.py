@@ -7,11 +7,13 @@ import stat
 import subprocess
 import sys
 import time
+from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from belgi.protocol import pack_surface_inventory as inventory
 from tests.helpers import builders
 
 pytestmark = pytest.mark.repo_local
@@ -186,6 +188,15 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
     ]:
         _copy_rel(rel)
     assert not (fake_root / ".belgi" / "engine" / "c3_canonicals").exists()
+
+    mirror_bindings = inventory.iter_c3_canonical_mirror_bindings()
+    assert all(not src.startswith("docs/research/") for src, _ in mirror_bindings)
+    assert all(not dst.startswith("belgi/canonicals/docs/research/") for _, dst in mirror_bindings)
+    canonical_research_root = resource_files("belgi").joinpath("canonicals", "docs", "research")
+    assert not canonical_research_root.is_dir()
+    assert not canonical_research_root.joinpath("README.md").is_file()
+    assert not canonical_research_root.joinpath("experiment-design.md").is_file()
+    assert not canonical_research_root.joinpath("metrics.md").is_file()
 
     synthetic_r = builders.build_r_repo(fake_root, rel_root=rel_root, run_id="c3-bundle")
     locked_rel = synthetic_r["locked"]
@@ -490,7 +501,9 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
     public_inputs = public_manifest.get("inputs")
     assert isinstance(public_inputs, list)
     assert all(not str(path).startswith("docs/research/") for path in public_inputs)
+    assert all(not str(path).startswith("belgi/canonicals/docs/research/") for path in public_inputs)
     assert not (bundle_dir1 / "docs" / "research").exists()
+    assert not (bundle_dir1 / "belgi" / "canonicals" / "docs" / "research").exists()
 
     r_snapshot_loaded = _read_json(fake_root / Path(*rsnap_rel.split("/")))
     final_loaded = _read_json(fake_root / Path(*outs1["out_final_rel"].split("/")))
@@ -578,12 +591,18 @@ def test_c3_docs_bundle_is_deterministic_and_profile_scoped(tmp_path: Path) -> N
     assert isinstance(internal_inputs, list)
     assert isinstance(internal_files, list)
     research_inputs = sorted(str(path) for path in internal_inputs if str(path).startswith("docs/research/"))
+    research_mirror_inputs = sorted(
+        str(path)
+        for path in internal_inputs
+        if str(path).startswith("belgi/canonicals/docs/research/")
+    )
     research_files = sorted(
         str(row.get("path"))
         for row in internal_files
         if isinstance(row, dict) and isinstance(row.get("path"), str) and str(row.get("path")).startswith("docs/research/")
     )
     assert research_inputs
+    assert not research_mirror_inputs
     assert research_files
     for rel in research_files:
         assert (bundle_dir3 / Path(*rel.split("/"))).is_file()

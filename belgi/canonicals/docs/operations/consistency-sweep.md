@@ -28,123 +28,33 @@ Canonical trigger:
 - CANONICALS.md#propagation-consistency-sweep: “Whenever canonicals, templates, or manuals change, a propagation/consistency sweep MUST be performed across all of them…”
 
 ### Inputs (authoritative, read-only)
-- CANONICALS.md
-- README.md
-- CHANGELOG.md
-- WHITEPAPER.md
-- TRADEMARK.md
-- VERSION
-- terminology.md
-- trust-model.md
-- gates/GATE_Q.md
-- gates/GATE_R.md
-- gates/GATE_S.md
-- gates/failure-taxonomy.md
-- .github/scripts/run_belgi_smoke.py
-- .github/scripts/check_external_action_pins.py
-- .github/scripts/resolve_belgi_workflow_inputs.py
-- .github/scripts/validate_belgi_ref_pin.py
-- .github/workflows/pinned-install-proof.yml
-- .github/workflows/pull-request-proof.yml
-- .github/workflows/repository-verification.yml
-- .github/CODEOWNERS
-- tiers/tier-packs.json
-- tiers/tier-packs.template.md
-- tiers/tier-packs.md (generated view, MUST match canonical)
-- wrapper/gate_Q.py
-- wrapper/gate_R.py
-- wrapper/comp_C1.py
-- wrapper/comp_C3.py
-- wrapper/seal_S.py
-- belgi/cli_app/parser/run.py
-- belgi/cli_app/commands/run.py
-- chain/gate_q_verify.py
-- chain/gate_r_verify.py
-- chain/gate_s_verify.py
-- chain/compiler_c1_intent.py
-- chain/seal_bundle.py
-- chain/compiler_c3_docs.py
-- chain/logic/locked_object_schema.py
-- chain/logic/q_checks/q_intent_003.py
-- chain/logic/toolchain_set.py
-- chain/logic/tolerances.py
-- chain/logic/q_checks/q4_constraints_present.py
-- chain/logic/q_checks/q5_environment_envelope.py
-- tools/normalize.py
-- tools/rehash.py
-- tools/render.py
-- tools/check_codeowners.py
-- tools/consistency/common.py
-- tools/consistency/inputs.py
-- tools/consistency/model.py
-- tools/consistency/registry.py
-- tools/consistency/report_writer.py
-- tools/consistency/runner.py
-- tools/consistency/invariants/canonicals.py
-- tools/consistency/invariants/evidence.py
-- tools/consistency/invariants/gate_schema.py
-- tools/consistency/invariants/intentspec.py
-- tools/consistency/invariants/orchestration.py
-- tools/consistency/invariants/render_views.py
-- tools/consistency/invariants/run_contract.py
-- tools/consistency/invariants/schema_catalog.py
-- tools/consistency/invariants/templates.py
-- tools/consistency/invariants/tiers.py
-- tools/consistency/invariants/verification_spine.py
-- tools/consistency/invariants/waivers.py
-- tools/canonicals_report.py
-- tools/sweep.py
-- tools/wheel_boundary.py
-- belgi/templates/IntentSpec.core.template.md
-- schemas/IntentSpec.schema.json
-- docs/research/experiment-design.md
-- docs/operations/cli.md
-- docs/operations/running-belgi.md
-- docs/operations/evidence-bundles.md
-- docs/operations/evidence-ownership.md
-- docs/operations/exit-codes.md
-- docs/operations/operator-anchors.md
-- docs/operations/waivers.md
-- docs/operations/security.md
-- docs/operations/workflows.md
-- docs/research/README.md
-- docs/research/metrics.md
-- belgi/canonicals/CANONICALS.md
-- belgi/canonicals/terminology.md
-- belgi/canonicals/trust-model.md
-- belgi/canonicals/docs/operations/consistency-sweep.md
-- belgi/canonicals/docs/operations/cli.md
-- belgi/canonicals/docs/operations/evidence-bundles.md
-- belgi/canonicals/docs/operations/evidence-ownership.md
-- belgi/canonicals/docs/operations/operator-anchors.md
-- belgi/canonicals/docs/operations/running-belgi.md
-- belgi/canonicals/docs/operations/security.md
-- belgi/canonicals/docs/operations/waivers.md
-- belgi/canonicals/docs/research/README.md
-- belgi/canonicals/docs/research/experiment-design.md
-- belgi/canonicals/docs/research/metrics.md
-- belgi/anchor/v1/TrustAnchor.json
-- belgi/genesis/GenesisSealPayload.json
-- belgi/genesis/README.md
-- belgi/trust_anchor.py
-- belgi/templates/PromptBundle.blocks.md
-- belgi/templates/DocsCompiler.template.md
-- scripts/belgi_latest_run.ps1
-- scripts/belgi_latest_run.py
-- scripts/belgi_latest_run.sh
-- scripts/belgi_wip_commit_run_reset.ps1
-- templates/ci/github/belgi-tier1.yml
-- schemas/*.schema.json
-- schemas/README.md
-- belgi/_protocol_packs/v1/schemas/README.md
-- tools/README.md
-- tools/report.py
-- chain/logic/r_checks/context.py
-- chain/logic/r_checks/registry.py
-- chain/logic/r_checks/r0_evidence_sufficiency.py
-- chain/logic/r_checks/r2_scope_budgets.py
-- chain/logic/r_checks/r_doc_001_doc_impact.py
-- chain/logic/r_checks/r4_schema_contract.py
+#### Fixed explicit owner families
+- `tools/_sweep/input_surface_spec.py::FIXED_PROTOCOL_SINGLETONS`
+- `tools/_sweep/input_surface_spec.py::GATE_AND_FAILURE_SURFACES`
+- `tools/_sweep/input_surface_spec.py::TIER_SURFACES`
+- `tools/_sweep/input_surface_spec.py::WRAPPER_ENTRYPOINT_SURFACES`
+- `tools/_sweep/input_surface_spec.py::RUN_SPINE_SURFACES`
+- `tools/_sweep/input_surface_spec.py::TEMPLATE_SURFACES`
+- `tools/_sweep/input_surface_spec.py::TRUST_ANCHOR_SURFACES`
+- `tools/_sweep/input_surface_spec.py::REPO_LOCAL_RESEARCH_INPUTS`
+- `tools/_sweep/input_surface_spec.py::TOOLING_SURFACES`
+- `tools/_sweep/input_surface_spec.py::R_CHECK_WIRING_SURFACES`
+- `tools/_sweep/input_surface_spec.py::TOOL_CONTROL_PLANE_OWNER_FILES`
+
+#### Managed operational surface family
+- `tools/_sweep/managed_surface_spec.py::MANAGED_SURFACE_INCLUDE_PATTERNS`
+- `tools/_sweep/managed_surface_spec.py::MANAGED_WORKFLOW_FILES`
+- `tools/_sweep/managed_surface_spec.py::MANAGED_SURFACE_EXCLUDE_PATTERNS`
+- `tools/_sweep/managed_surfaces.py::_sweep_managed_surface_files`
+
+#### Derived dynamic families
+- `tools/_sweep/inputs.py::_iter_schema_files`
+- `tools/_sweep/inputs.py::_iter_builtin_protocol_pack_files`
+
+#### Exact checked-set authority
+- `tools/_sweep/inputs.py::_canonical_inputs` composes the governed input set from the declared families above.
+- The exact concrete checked input ledger lives in generated `policy/consistency_sweep.json` `inputs[]`.
+- `CS-SWEEP-001` and `CS-SWEEP-002` MUST prove that exact artifact payload from the declared owners above.
 
 ### Output of the sweep
 - A completed **Sweep Report** (Section D) with:
@@ -194,7 +104,7 @@ Canonical trigger:
 - invariant_id: CS-CAN-004
 - statement: There MUST be exactly one canonical copy of each gate/schema/tier spec file. Non-canonical duplicates under `belgi/gates/` and `belgi/schemas/` MUST NOT exist.
 - source-of-truth (file/section):
-  - Canonical tree decision (operator rule): repo-root `gates/`, `schemas/`, `tiers/`; under `belgi/` only `docs/operations/`, `belgi/templates/`, `docs/research/` are canonical.
+  - Canonical tree decision (operator rule): repo-root `gates/`, `schemas/`, `tiers/`; under `belgi/` only `docs/operations/` and `belgi/templates/` are canonical; `docs/research/` is repo-only documentation and is not mirrored under `belgi/canonicals/`.
 - check procedure (deterministic):
   1) FAIL if any file exists under `belgi/gates/`.
   2) FAIL if any file exists under `belgi/schemas/`.
@@ -245,26 +155,15 @@ Canonical trigger:
   - tools/build_builtin_pack.py (canonical mirror sync implementation)
   - belgi/core/run_orchestrator.py (C3 staged canonicals load from package resources)
 - check procedure (deterministic):
-  1) For each required source→mirror pair in the shared mirror inventory, read bytes and compare exact equality:
-     - `CANONICALS.md` → `belgi/canonicals/CANONICALS.md`
-     - `terminology.md` → `belgi/canonicals/terminology.md`
-     - `trust-model.md` → `belgi/canonicals/trust-model.md`
-     - `docs/operations/consistency-sweep.md` → `belgi/canonicals/docs/operations/consistency-sweep.md`
-     - `docs/operations/cli.md` → `belgi/canonicals/docs/operations/cli.md`
-     - `docs/operations/evidence-bundles.md` → `belgi/canonicals/docs/operations/evidence-bundles.md`
-     - `docs/operations/evidence-ownership.md` → `belgi/canonicals/docs/operations/evidence-ownership.md`
-     - `docs/operations/running-belgi.md` → `belgi/canonicals/docs/operations/running-belgi.md`
-     - `docs/operations/security.md` → `belgi/canonicals/docs/operations/security.md`
-     - `docs/operations/waivers.md` → `belgi/canonicals/docs/operations/waivers.md`
-     - `docs/research/README.md` → `belgi/canonicals/docs/research/README.md`
-     - `docs/research/experiment-design.md` → `belgi/canonicals/docs/research/experiment-design.md`
-     - `docs/research/metrics.md` → `belgi/canonicals/docs/research/metrics.md`
-  2) FAIL if any source/mirror file is missing.
-  3) FAIL if any compared pair is byte-different.
+  1) Read the required source→mirror bindings from `belgi/protocol/pack_surface_inventory.py`.
+  2) For each binding in that owner inventory, read bytes and compare exact equality.
+  3) FAIL if any source/mirror file is missing.
+  4) FAIL if any compared pair is byte-different.
 - required evidence/artifacts (schema kinds): none (repo-doc sweep)
 - pass/fail criteria:
   - PASS if every source/mirror pair exists and bytes match exactly.
   - FAIL otherwise; remediation: run `python -m tools.build_builtin_pack` and rerun sweep.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 
 #### CS-TERM-001 — Terminology Drift Guard (Verification vs Validation)
 - invariant_id: CS-TERM-001
@@ -997,47 +896,42 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 
 ### CS-SWEEP-001 — Input Authority
 - invariant_id: CS-SWEEP-001
-- statement: The sweep report’s `inputs[]` list MUST reflect the authoritative current protocol surface, including the full current set of `schemas/*.schema.json` and the exact tooling owner files that materially affect sweep results and report bytes.
+- statement: The sweep report’s `inputs[]` list MUST equal the governed input set deterministically composed from the declared fixed explicit families, the managed operational surface resolver, the dynamic schema family, and the builtin protocol-pack family.
 - source-of-truth (file/section):
-  - This document’s Inputs list (Section A)
+  - `tools/_sweep/input_surface_spec.py` (`DECLARED_FIXED_INPUT_FAMILIES`)
+  - `tools/_sweep/managed_surface_spec.py` (`MANAGED_SURFACE_INCLUDE_PATTERNS`, `MANAGED_WORKFLOW_FILES`, `MANAGED_SURFACE_EXCLUDE_PATTERNS`)
+  - `tools/_sweep/managed_surfaces.py` (`_sweep_managed_surface_files`)
+  - tools/_sweep/inputs.py (`_canonical_inputs`)
+  - tools/_sweep/inputs.py (`_iter_schema_files`, `_iter_builtin_protocol_pack_files`)
 - check procedure (deterministic):
-  1) Enumerate all files matching `schemas/*.schema.json`.
-  2) Confirm the sweep report includes each schema file path in `inputs[].path`.
-  3) Confirm the sweep report includes tooling owner files `tools/normalize.py`, `tools/rehash.py`, `tools/canonicals_report.py`, `tools/consistency/common.py`, `tools/consistency/inputs.py`, `tools/consistency/model.py`, `tools/consistency/registry.py`, `tools/consistency/runner.py`, `tools/consistency/report_writer.py`, every semantic owner under `tools/consistency/invariants/*.py`, and `tools/sweep.py`.
+  1) Enumerate the fixed explicit input members from `tools/_sweep/input_surface_spec.py`.
+  2) Resolve the concrete managed operational surface from `tools/_sweep/managed_surface_spec.py` -> `tools/_sweep/managed_surfaces.py`.
+  3) Enumerate the dynamic schema family from `tools/_sweep/inputs.py::_iter_schema_files`.
+  4) Enumerate the builtin protocol-pack family from `tools/_sweep/inputs.py::_iter_builtin_protocol_pack_files`.
+  5) Confirm the composed set equals `tools/_sweep/inputs.py::_canonical_inputs`, and that generated sweep-report `inputs[]` reflects that exact composed set.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
 - pass/fail criteria:
-  - PASS if the dynamic schema surface and tooling owner files are included.
+  - PASS if the canonical input composer matches the declared family composition exactly.
   - FAIL otherwise.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 
 ### CS-SWEEP-002 — Managed Surface Coverage
 - invariant_id: CS-SWEEP-002
-- statement: Managed operational surfaces MUST be explicitly listed in sweep authority inputs to prevent silent scope drift.
+- statement: The concrete managed operational surface resolved from `tools/_sweep/managed_surface_spec.py` -> `tools/_sweep/managed_surfaces.py` MUST propagate unchanged into the final governed input set produced by `tools/_sweep/inputs.py`.
 - source-of-truth (file/section):
-  - This document’s Inputs list (Section A)
-  - tools/consistency/inputs.py (`_canonical_inputs`, `_sweep_managed_surface_files`)
+  - `tools/_sweep/managed_surface_spec.py` (`MANAGED_SURFACE_INCLUDE_PATTERNS`, `MANAGED_WORKFLOW_FILES`, `MANAGED_SURFACE_EXCLUDE_PATTERNS`) — declarative owner
+  - tools/_sweep/managed_surfaces.py (`_sweep_managed_surface_files`) — resolver
+  - tools/_sweep/inputs.py (`_canonical_inputs`) — consumer
 - check procedure (deterministic):
-  1) Enumerate tracked files in these managed surfaces:
-     - repo-root `*.md`
-     - `docs/operations/*.md`
-     - `.github/workflows/*.{yml,yaml}`
-     - `.github/scripts/*.py`
-     - `scripts/belgi_*.{py,sh,ps1}`
-     - `templates/ci/github/*.{yml,yaml}`
-     - `tools/README.md`
-     - `tools/canonicals_report.py`
-     - `tools/consistency/common.py`
-     - `tools/consistency/inputs.py`
-     - `tools/consistency/model.py`
-     - `tools/consistency/registry.py`
-     - `tools/consistency/invariants/*.py` (semantic owner files only; package markers excluded)
-     - `tools/consistency/runner.py`
-     - `tools/consistency/report_writer.py`
-  2) Confirm every enumerated path is explicitly present in sweep canonical inputs.
-  3) FAIL if any managed path is missing.
+  1) Resolve the concrete managed operational surface from the declarative include/exclude spec.
+  2) Enumerate the final governed input set from `tools/_sweep/inputs.py::_canonical_inputs`.
+  3) Confirm every resolved managed surface path is explicitly present in the governed input set.
+  4) FAIL if any managed path is missing from the derived consumer input set.
 - required evidence/artifacts (schema kinds): policy_report (policy.consistency_sweep)
 - pass/fail criteria:
   - PASS if every managed surface path is explicitly covered.
   - FAIL otherwise.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 
 ### CS-GV-001 — GateVerdict schema requires run_id
 - invariant_id: CS-GV-001
@@ -1144,6 +1038,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
   - PASS if all registered targets have no drift.
   - FAIL if any target's generated file differs from the canonical rendering.
 - remediation: `python -m tools.render <target_name> --repo .` for each drifted target.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 ---
 
 ## C) Checklist (operator-friendly)
@@ -1276,6 +1171,16 @@ Per-invariant result objects in `invariants` MUST have these REQUIRED fields:
 
 Per-invariant result objects MAY include this OPTIONAL field:
 - `details`: object (structured, machine-readable diagnostics; intended to be stable and deterministic).
+
+For inventory/parity/coverage invariants `CS-CAN-005`, `CS-SWEEP-001`, `CS-SWEEP-002`, and `CS-RENDER-001`, `details` is REQUIRED on PASS and FAIL and MUST include at least:
+- `checked_count`: integer
+- `checked_set` or `checked_set_sha256`
+- `missing`: array of strings
+- `unexpected`: array of strings
+- `mismatched`: array of strings
+- `derived_from`: array of strings
+
+If summary markdown renders any inventory witness fields, that markdown MUST be a deterministic projection of the JSON `details` object and MUST NOT introduce fields absent from the JSON artifact.
 
 **Determinism requirements**
 - `invariants[]` MUST be sorted by `invariant_id` ascending.

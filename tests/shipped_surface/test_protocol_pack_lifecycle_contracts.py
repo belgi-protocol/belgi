@@ -37,6 +37,7 @@ from belgi.protocol.pack import (
     scan_pack_dir,
     validate_manifest_bytes,
 )
+from belgi.protocol.pack_surface_inventory import PACK_CONTENT_PREFIXES
 
 
 @pytest.fixture
@@ -318,4 +319,4 @@ class TestComputePackId:
         assert "schemas/__init__.py" not in relpaths
 
         for rp in relpaths:
-            assert rp.startswith(("schemas/", "gates/", "tiers/"))
+            assert rp.startswith(PACK_CONTENT_PREFIXES)

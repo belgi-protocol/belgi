@@ -321,6 +321,7 @@ def _media_type_for_path(rel_bundle_path: str) -> str:
 
 def _build_docs_bundle_stage(
     *,
+    repo_root: Path,
     source_root: Path,
     profile: str,
     stage_dir: Path,
@@ -350,9 +351,10 @@ def _build_docs_bundle_stage(
     inputs.append("schemas/README.md")
     inputs.extend([p for p in _iter_scope_files(source_root, "schemas") if p.endswith(".schema.json")])
 
-    # Optional roots: docs/research/** only when profile == internal
+    # Optional roots: internal profile keeps repo-local research inputs even though
+    # the protocol-bound canonical source no longer mirrors docs/research.
     if profile == "internal":
-        inputs.extend([p for p in _iter_scope_files(source_root, "docs/research") if p.endswith(".md")])
+        inputs.extend([p for p in _iter_scope_files(repo_root, "docs/research") if p.endswith(".md")])
 
     # Normalize + stable order
     inputs = sorted({_validate_repo_rel(p) for p in inputs})
@@ -369,7 +371,8 @@ def _build_docs_bundle_stage(
 
     bundled: list[dict[str, Any]] = []
     for rel in inputs:
-        src = _resolve_repo_path(source_root, rel, must_exist=True, must_be_file=True)
+        src_root = repo_root if (profile == "internal" and rel.startswith("docs/research/")) else source_root
+        src = _resolve_repo_path(src_root, rel, must_exist=True, must_be_file=True)
         raw = src.read_bytes()
         out_bytes = _normalize_text_bytes(raw, source_label=rel)
 
@@ -945,6 +948,7 @@ def main() -> int:
             _rmtree_retry(stage_dir)
 
         source_inputs, bundled_files = _build_docs_bundle_stage(
+            repo_root=repo_root,
             source_root=source_root,
             profile=profile,
             stage_dir=stage_dir,
@@ -1099,7 +1103,8 @@ def main() -> int:
 
         # Also record source hashes for staged engine canonicals (audit/determinism).
         for rel in source_inputs:
-            src = _resolve_repo_path(source_root, rel, must_exist=True, must_be_file=True)
+            src_root = repo_root if (profile == "internal" and rel.startswith("docs/research/")) else source_root
+            src = _resolve_repo_path(src_root, rel, must_exist=True, must_be_file=True)
             payload["inputs"].append({"path": rel, "source_sha256": _sha256_file(src)})
 
         payload["inputs"].sort(key=lambda d: str(d.get("path", "")))

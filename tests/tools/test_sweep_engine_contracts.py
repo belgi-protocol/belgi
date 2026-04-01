@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from tools.consistency import inputs as inputs_owner
-from tools.consistency import registry as registry_owner
-from tools.consistency.model import InvariantResult
-from tools.consistency.runner import run_consistency_sweep
+from tools._sweep import inputs as inputs_owner
+from tools._sweep import registry as registry_owner
+from tools._sweep.model import InvariantResult
+from tools._sweep.runner import run_consistency_sweep
 
 pytestmark = pytest.mark.repo_local
 
@@ -182,37 +182,56 @@ def test_runner_writes_artifacts_and_primary_failure_without_repo_live_parity_ro
     assert "PRIMARY_CAUSE: CS-FAIL-001: Schema invalid for synthetic fixture" in streams.err
 
 
-def test_sweep_shell_keeps_registry_and_input_compatibility_shims(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sweep_shell_dispatches_via_owner_modules_without_reexport_shims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import tools.sweep as sweep
 
+    (tmp_path / "tracked.txt").write_text("hello\n", encoding="utf-8", errors="strict", newline="\n")
+
+    monkeypatch.setattr(sweep, "_extract_spec_invariant_ids", lambda _root: ["CS-PASS-001"])
+    monkeypatch.setattr(sweep, "_git_tree_sha_excluding", lambda _root, _exclude: "a" * 40)
     monkeypatch.setattr(
         registry_owner,
         "invariant_registry",
-        lambda: {"CS-SWEEP-001": lambda _root: InvariantResult("CS-SWEEP-001", "PASS", [], "")},
+        lambda: {"CS-PASS-001": lambda _root: InvariantResult("CS-PASS-001", "PASS", ["synthetic.md"], "")},
     )
     monkeypatch.setattr(inputs_owner, "_canonical_inputs", lambda _root: ["tracked.txt"])
-    monkeypatch.setattr(inputs_owner, "_sweep_managed_surface_files", lambda _root: ["README.md"])
 
-    assert list(sweep._invariant_registry().keys()) == ["CS-SWEEP-001"]
-    assert sweep._canonical_inputs(tmp_path) == ["tracked.txt"]
-    assert sweep._sweep_managed_surface_files(tmp_path) == ["README.md"]
-    assert sweep.InvariantResult is InvariantResult
+    rc = sweep.main(["consistency", "--repo", str(tmp_path)])
+
+    assert rc == 0
+    report = json.loads((tmp_path / "policy" / "consistency_sweep.json").read_text(encoding="utf-8", errors="strict"))
+    assert report["summary"] == {"total": 1, "passed": 1, "failed": 0}
+    assert report["invariants"] == [
+        {
+            "invariant_id": "CS-PASS-001",
+            "status": "PASS",
+            "evidence": ["synthetic.md"],
+            "remediation": "",
+        }
+    ]
 
 
-def test_sweep_shell_retires_moved_invariant_namespace() -> None:
+def test_sweep_shell_does_not_reexport_internal_owner_seams() -> None:
     import tools.sweep as sweep
 
     retired_symbols = [
+        "InvariantResult",
         "_C3_CANONICAL_MIRROR_BINDINGS",
         "_FIXTURE_ZERO_GOVERNED_PUBLIC_PATHS",
         "_PROTOCOL_IDENTITY_SOURCE_FORBIDDEN_PATTERNS",
         "_PROTOCOL_IDENTITY_SOURCE_GUARD_FILES",
+        "_canonical_inputs",
         "_extract_cs_can_001_definitional_subject",
         "_extract_cs_can_001_term_map_subjects",
+        "_invariant_registry",
         "_iter_builtin_protocol_pack_files",
         "_iter_schema_files",
         "_missing_needles",
         "_normalize_cs_can_001_subject",
+        "_sweep_managed_surface_files",
         "check_cs_byte_001",
         "check_cs_can_001",
         "check_cs_ev_001",

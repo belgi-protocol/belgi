@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Check for drift between root protocol mirrors and belgi/_protocol_packs/v1/.
 
-Canonical source: root {schemas, gates, tiers} folders.
-Runtime pack: belgi/_protocol_packs/v1/{schemas, gates, tiers}.
+Canonical source/pack bindings are owned by belgi.protocol.pack_surface_inventory.
 
 This script fails if:
   A) Any mirrored file differs between the two locations.
@@ -34,7 +33,7 @@ from belgi.protocol.pack_surface_inventory import (
     MANIFEST_FILENAME,
     PACK_ALLOWED_FILES,
     PACK_ALLOWED_FOLDERS,
-    iter_pack_allowed_folders,
+    PACK_SOURCE_BINDINGS,
 )
 
 
@@ -47,9 +46,9 @@ def check_drift(repo_root: Path) -> list[str]:
     pack_root = repo_root / "belgi" / "_protocol_packs" / "v1"
     drifted: list[str] = []
 
-    for folder in iter_pack_allowed_folders():
-        root_dir = repo_root / folder
-        pack_dir = pack_root / folder
+    for source_rel, pack_rel in PACK_SOURCE_BINDINGS:
+        root_dir = repo_root / source_rel
+        pack_dir = pack_root / pack_rel
 
         if not root_dir.exists():
             # Canonical folder missing but pack folder present => pack-only surface.
@@ -57,7 +56,7 @@ def check_drift(repo_root: Path) -> list[str]:
                 for pack_file in sorted(pack_dir.iterdir()):
                     if pack_file.is_file():
                         drifted.append(
-                            f"{folder}/{pack_file.name}: exists in pack but canonical folder missing"
+                            f"{pack_rel}/{pack_file.name}: exists in pack but canonical folder missing"
                         )
             continue
 
@@ -65,7 +64,7 @@ def check_drift(repo_root: Path) -> list[str]:
             # Canonical folder exists but pack folder missing.
             for root_file in sorted(root_dir.iterdir()):
                 if root_file.is_file():
-                    drifted.append(f"{folder}/{root_file.name}: missing in pack")
+                    drifted.append(f"{pack_rel}/{root_file.name}: missing in pack")
             continue
 
         for root_file in sorted(root_dir.iterdir()):
@@ -74,13 +73,13 @@ def check_drift(repo_root: Path) -> list[str]:
 
             pack_file = pack_dir / root_file.name
             if not pack_file.exists():
-                drifted.append(f"{folder}/{root_file.name}: missing in pack")
+                drifted.append(f"{pack_rel}/{root_file.name}: missing in pack")
                 continue
 
             h1 = _sha256_file(root_file)
             h2 = _sha256_file(pack_file)
             if h1 != h2:
-                drifted.append(f"{folder}/{root_file.name}: DRIFT (root != pack)")
+                drifted.append(f"{pack_rel}/{root_file.name}: DRIFT (root != pack)")
 
         # Detect pack-only additions (silent runtime surface expansion).
         for pack_file in sorted(pack_dir.iterdir()):
@@ -89,7 +88,7 @@ def check_drift(repo_root: Path) -> list[str]:
             root_file = root_dir / pack_file.name
             if not root_file.exists():
                 drifted.append(
-                    f"{folder}/{pack_file.name}: exists in pack but missing in canonical root"
+                    f"{pack_rel}/{pack_file.name}: exists in pack but missing in canonical root"
                 )
 
     return drifted

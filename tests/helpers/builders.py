@@ -17,11 +17,11 @@ from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Any
 
+from belgi.protocol.pack_surface_inventory import MANIFEST_FILENAME
 from tests.helpers import tier_fixtures
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILTIN_PACK_ROOT = REPO_ROOT / "belgi" / "_protocol_packs" / "v1"
-MANIFEST_FILENAME = "ProtocolPackManifest.json"
 
 __all__ = [
     "build_q_repo",
