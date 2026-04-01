@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import builders
+from tools._sweep.model import inventory_witness_details
 
 pytestmark = pytest.mark.repo_local
 
@@ -39,7 +40,10 @@ def _run_minimal_consistency_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPat
                 "PASS",
                 ["tools/sweep.py"],
                 "",
-                {"surface": "synthetic repo-revision contract"},
+                inventory_witness_details(
+                    checked_set=("a.txt",),
+                    derived_from=("tests/tools/test_sweep_repo_revision_contracts.py::_run_minimal_consistency_sweep",),
+                ),
             )
         },
     )

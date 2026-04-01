@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools._sweep.model import InvariantResult
+from tools._sweep.model import InvariantResult, inventory_witness_details
 from tools._sweep.report_writer import (
     render_consistency_report,
     write_consistency_artifacts,
@@ -124,6 +124,83 @@ def test_write_consistency_summary_md_renders_cs_byte_details_branch(tmp_path: P
         "- message: Run python -m tools.normalize --fix --tracked-only to eliminate CRLF drift, then rerun the sweep.\n"
         "- remediation: Open policy/consistency_sweep.json and fix the reported check; re-run tools.sweep consistency.\n"
         "- details: drift_files=2 examples=a.txt, b.txt\n"
+    )
+
+
+def test_render_consistency_report_rejects_inventory_pass_without_checked_set_truth() -> None:
+    with pytest.raises(ValueError, match="CS-SWEEP-001 requires structured inventory witness details"):
+        render_consistency_report(
+            _report_base(),
+            [InvariantResult("CS-SWEEP-001", "PASS", ["tools/_sweep/inputs.py"], "")],
+        )
+
+
+def test_render_consistency_report_rejects_inventory_fail_without_checked_set_truth() -> None:
+    with pytest.raises(ValueError, match="CS-RENDER-001 requires structured inventory witness details"):
+        render_consistency_report(
+            _report_base(),
+            [InvariantResult("CS-RENDER-001", "FAIL", ["tools/render.py"], "Render drift detected.")],
+        )
+
+
+def test_render_consistency_report_keeps_inventory_witness_details_in_json_payload() -> None:
+    result = InvariantResult(
+        "CS-SWEEP-001",
+        "PASS",
+        ["tools/_sweep/inputs.py"],
+        "",
+        inventory_witness_details(
+            checked_set=("CANONICALS.md", "schemas/IntentSpec.schema.json"),
+            derived_from=("tools/_sweep/inputs.py::_canonical_inputs",),
+        ),
+    )
+
+    rendered = render_consistency_report(_report_base(), [result])
+
+    assert rendered.payload["invariants"] == [
+        {
+            "invariant_id": "CS-SWEEP-001",
+            "status": "PASS",
+            "evidence": ["tools/_sweep/inputs.py"],
+            "remediation": "",
+            "details": result.details,
+        }
+    ]
+
+
+def test_write_consistency_summary_md_projects_inventory_witness_from_json_details(tmp_path: Path) -> None:
+    summary_path = tmp_path / "policy" / "consistency_sweep.summary.md"
+    details = inventory_witness_details(
+        checked_set=("docs/operations/cli.md -> belgi/canonicals/docs/operations/cli.md",),
+        missing=("belgi/canonicals/docs/operations/cli.md",),
+        derived_from=("belgi/protocol/pack_surface_inventory.py::C3_CANONICAL_MIRROR_BINDINGS",),
+    )
+    write_consistency_summary_md(
+        summary_path,
+        total=1,
+        passed=0,
+        failed=1,
+        results=[
+            InvariantResult(
+                "CS-CAN-005",
+                "FAIL",
+                ["docs/operations/consistency-sweep.md#cs-can-005--package-canonical-mirror-is-byte-identical-to-source-docs"],
+                "Missing canonical mirror source/target file(s): belgi/canonicals/docs/operations/cli.md.",
+                details,
+            )
+        ],
+    )
+
+    assert summary_path.read_text(encoding="utf-8", errors="strict") == (
+        "## Consistency sweep\n"
+        "- total: **1**  passed: **0**  failed: **1**\n"
+        "\n"
+        "### Failures\n"
+        "#### CS-CAN-005\n"
+        "- message: Missing canonical mirror source/target file(s): belgi/canonicals/docs/operations/cli.md.\n"
+        "- remediation: Open policy/consistency_sweep.json and fix the reported check; re-run tools.sweep consistency.\n"
+        f"- witness: checked_count=1 checked_set_sha256={details['checked_set_sha256']} missing=1 unexpected=0 mismatched=0\n"
+        "- missing: belgi/canonicals/docs/operations/cli.md\n"
     )
 
 

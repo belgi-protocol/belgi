@@ -235,6 +235,7 @@ Canonical trigger:
 - pass/fail criteria:
   - PASS if every source/mirror pair exists and bytes match exactly.
   - FAIL otherwise; remediation: run `python -m tools.build_builtin_pack` and rerun sweep.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 
 #### CS-TERM-001 — Terminology Drift Guard (Verification vs Validation)
 - invariant_id: CS-TERM-001
@@ -978,6 +979,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - pass/fail criteria:
   - PASS if the dynamic schema surface and tooling owner files are included.
   - FAIL otherwise.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 
 ### CS-SWEEP-002 — Managed Surface Coverage
 - invariant_id: CS-SWEEP-002
@@ -1004,6 +1006,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
 - pass/fail criteria:
   - PASS if every managed surface path is explicitly covered.
   - FAIL otherwise.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 
 ### CS-GV-001 — GateVerdict schema requires run_id
 - invariant_id: CS-GV-001
@@ -1110,6 +1113,7 @@ These invariants anchor the protocol’s "Mechanical Truth" posture in the orche
   - PASS if all registered targets have no drift.
   - FAIL if any target's generated file differs from the canonical rendering.
 - remediation: `python -m tools.render <target_name> --repo .` for each drifted target.
+  - PASS and FAIL results MUST carry deterministic inventory witness details with at least `checked_count`, `checked_set` or `checked_set_sha256`, `missing`, `unexpected`, `mismatched`, and `derived_from`.
 ---
 
 ## C) Checklist (operator-friendly)
@@ -1242,6 +1246,16 @@ Per-invariant result objects in `invariants` MUST have these REQUIRED fields:
 
 Per-invariant result objects MAY include this OPTIONAL field:
 - `details`: object (structured, machine-readable diagnostics; intended to be stable and deterministic).
+
+For inventory/parity/coverage invariants `CS-CAN-005`, `CS-SWEEP-001`, `CS-SWEEP-002`, and `CS-RENDER-001`, `details` is REQUIRED on PASS and FAIL and MUST include at least:
+- `checked_count`: integer
+- `checked_set` or `checked_set_sha256`
+- `missing`: array of strings
+- `unexpected`: array of strings
+- `mismatched`: array of strings
+- `derived_from`: array of strings
+
+If summary markdown renders any inventory witness fields, that markdown MUST be a deterministic projection of the JSON `details` object and MUST NOT introduce fields absent from the JSON artifact.
 
 **Determinism requirements**
 - `invariants[]` MUST be sorted by `invariant_id` ascending.

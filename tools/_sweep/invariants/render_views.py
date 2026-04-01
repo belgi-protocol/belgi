@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tools._shared import common as _common
-from tools._sweep.model import InvariantResult
+from tools._sweep.model import InvariantResult, inventory_witness_details
 
 
 def check_cs_render_001(root: _common.Path) -> InvariantResult:
@@ -10,6 +10,11 @@ def check_cs_render_001(root: _common.Path) -> InvariantResult:
     Verifies that all registered render targets (JSON canonical → MD generated view)
     have no drift. Uses tools/render.py check_target_drift() for comparison.
     """
+    derived_from = (
+        "tools/render.py::check_target_drift",
+        "tools/render.py::get_all_target_names",
+        "tools/render.py::get_target_evidence_files",
+    )
     # Import render module (fail-closed if unavailable)
     try:
         from tools.render import (
@@ -23,6 +28,11 @@ def check_cs_render_001(root: _common.Path) -> InvariantResult:
             "FAIL",
             [],
             f"Cannot import tools/render.py: {e}. Ensure render.py exists.",
+            inventory_witness_details(
+                checked_set=(),
+                mismatched=(f"import_error: {e}",),
+                derived_from=derived_from,
+            ),
         )
 
     target_names = get_all_target_names()
@@ -33,6 +43,10 @@ def check_cs_render_001(root: _common.Path) -> InvariantResult:
             "PASS",
             ["tools/render.py"],
             "",
+            inventory_witness_details(
+                checked_set=(),
+                derived_from=derived_from,
+            ),
         )
 
     drift_targets: list[str] = []
@@ -52,6 +66,11 @@ def check_cs_render_001(root: _common.Path) -> InvariantResult:
             "FAIL",
             sorted(evidence),
             f"Render drift detected for: {', '.join(drift_targets)}. Regenerate: {'; '.join(regen_cmds)}",
+            inventory_witness_details(
+                checked_set=target_names,
+                mismatched=drift_targets,
+                derived_from=derived_from,
+            ),
         )
 
     return InvariantResult(
@@ -59,4 +78,8 @@ def check_cs_render_001(root: _common.Path) -> InvariantResult:
         "PASS",
         sorted(evidence),
         "",
+        inventory_witness_details(
+            checked_set=target_names,
+            derived_from=derived_from,
+        ),
     )

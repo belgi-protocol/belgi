@@ -7,7 +7,7 @@ from tools._sweep.inputs import (
     _iter_schema_files,
 )
 from tools._sweep.managed_surfaces import _sweep_managed_surface_files
-from tools._sweep.model import InvariantResult
+from tools._sweep.model import InvariantResult, inventory_witness_details
 
 _PROTOCOL_IDENTITY_SOURCE_GUARD_FILES: tuple[str, ...] = (
     "CANONICALS.md",
@@ -176,45 +176,59 @@ def check_cs_sweep_001(
 ) -> InvariantResult:
     """CS-SWEEP-001 — Input Authority: canonical inputs reflect current schemas/tools."""
 
+    derived_from = (
+        "tools/_sweep/inputs.py::_canonical_inputs",
+        "tools/_sweep/inputs.py::_iter_builtin_protocol_pack_files",
+        "tools/_sweep/inputs.py::_iter_schema_files",
+    )
     try:
-        canon = canonical_inputs_fn(root)
+        canon = sorted(set(canonical_inputs_fn(root)))
+        schema_files = sorted(set(iter_schema_files_fn(root)))
     except Exception as e:
         return InvariantResult(
             "CS-SWEEP-001",
             "FAIL",
             ["schemas/README.md", "tools/_sweep/inputs.py"],
             f"Fix tools/_sweep/inputs.py canonical input enumeration error ({e}), then rerun sweep.",
+            inventory_witness_details(
+                checked_set=(),
+                mismatched=(f"enumeration_error: {e}",),
+                derived_from=derived_from,
+            ),
         )
 
-    # Ensure dynamic schema surface is included.
-    schema_files = set(iter_schema_files_fn(root))
-    if not schema_files.issubset(set(canon)):
-        return InvariantResult(
-            "CS-SWEEP-001",
-            "FAIL",
-            ["schemas/README.md", "tools/_sweep/inputs.py"],
-            "Ensure sweep inputs include all current schema files under schemas/, then rerun sweep.",
-        )
-
-    required = {
-        "tools/normalize.py",
-        "tools/rehash.py",
-        "tools/canonicals_report.py",
-        *_governed_sweep_owner_files(),
-    }
-    if not required.issubset(set(canon)):
+    required = sorted(
+        {
+            *schema_files,
+            "tools/normalize.py",
+            "tools/rehash.py",
+            "tools/canonicals_report.py",
+            *_governed_sweep_owner_files(),
+        }
+    )
+    missing = sorted(set(required) - set(canon))
+    details = inventory_witness_details(
+        checked_set=canon,
+        missing=missing,
+        derived_from=derived_from,
+    )
+    if missing:
+        joined = ", ".join(missing)
         return InvariantResult(
             "CS-SWEEP-001",
             "FAIL",
             [
+                "schemas/README.md",
                 "tools/_sweep/inputs.py",
                 "tools/_sweep/managed_surfaces.py",
                 "tools/_sweep/registry.py",
             ],
             (
-                "Ensure sweep inputs include the full sweep owner surface from tools/_sweep/inputs.py, "
-                "tools/_sweep/managed_surfaces.py, and tools/_sweep/registry.py, then rerun sweep."
+                "Ensure sweep inputs include the full schema/tooling owner surface from tools/_sweep/inputs.py, "
+                "tools/_sweep/managed_surfaces.py, and tools/_sweep/registry.py. Missing: "
+                f"{joined}."
             ),
+            details,
         )
 
     return InvariantResult(
@@ -227,6 +241,7 @@ def check_cs_sweep_001(
             "tools/_sweep/registry.py",
         ],
         "",
+        details,
     )
 
 def check_cs_sweep_002(
@@ -237,18 +252,32 @@ def check_cs_sweep_002(
 ) -> InvariantResult:
     """CS-SWEEP-002 — Managed surfaces are explicitly listed by the managed-surface owner and sweep inputs."""
 
+    derived_from = (
+        "tools/_sweep/inputs.py::_canonical_inputs",
+        "tools/_sweep/managed_surfaces.py::_sweep_managed_surface_files",
+    )
     try:
         canon = set(canonical_inputs_fn(root))
-        required = sweep_managed_surface_files_fn(root)
+        required = sorted(set(sweep_managed_surface_files_fn(root)))
     except Exception as e:
         return InvariantResult(
             "CS-SWEEP-002",
             "FAIL",
             [f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage"],
             f"Failed to enumerate managed sweep surfaces from tools/_sweep/managed_surfaces.py ({e}).",
+            inventory_witness_details(
+                checked_set=(),
+                mismatched=(f"enumeration_error: {e}",),
+                derived_from=derived_from,
+            ),
         )
 
     missing = sorted([rel for rel in required if rel not in canon])
+    details = inventory_witness_details(
+        checked_set=required,
+        missing=missing,
+        derived_from=derived_from,
+    )
     if missing:
         joined = ", ".join(missing)
         return InvariantResult(
@@ -266,6 +295,7 @@ def check_cs_sweep_002(
                 "and synchronize docs/operations/consistency-sweep.md Inputs list. Missing: "
                 f"{joined}."
             ),
+            details,
         )
 
     return InvariantResult(
@@ -277,6 +307,7 @@ def check_cs_sweep_002(
             "tools/_sweep/inputs.py",
         ],
         "",
+        details,
     )
 
 def check_cs_r0_enforcement_wired_001(root: _common.Path) -> InvariantResult:

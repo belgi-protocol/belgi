@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from belgi.protocol.pack_surface_inventory import C3_CANONICAL_MIRROR_BINDINGS
-from tools.canonicals_report import CanonicalsReportError, derive_canonicals_report
 from tools._shared import common as _common
-from tools._sweep.model import InvariantResult
+from tools._sweep.model import InvariantResult, inventory_witness_details
+from tools.canonicals_report import CanonicalsReportError, derive_canonicals_report
 
 _TERM_GUARD_FIXED_FILES: tuple[str, ...] = (
     "README.md",
@@ -258,6 +258,11 @@ def check_cs_can_005(
     missing: list[str] = []
     drifted: list[str] = []
     evidence: list[str] = []
+    checked_bindings = [f"{src_rel} -> {dst_rel}" for src_rel, dst_rel in mirror_bindings]
+    details_base = {
+        "checked_set": checked_bindings,
+        "derived_from": ("belgi/protocol/pack_surface_inventory.py::C3_CANONICAL_MIRROR_BINDINGS",),
+    }
 
     for src_rel, dst_rel in mirror_bindings:
         try:
@@ -282,6 +287,11 @@ def check_cs_can_005(
             "FAIL",
             [f"{_common.CONSISTENCY_SPEC_DOC}#cs-can-005--package-canonical-mirror-is-byte-identical-to-source-docs"],
             f"Missing canonical mirror source/target file(s): {joined}.",
+            inventory_witness_details(
+                checked_set=details_base["checked_set"],
+                missing=missing,
+                derived_from=details_base["derived_from"],
+            ),
         )
 
     if drifted:
@@ -297,6 +307,11 @@ def check_cs_can_005(
                 "Run `python -m tools.build_builtin_pack` and rerun sweep. Drift: "
                 f"{sample}{suffix}."
             ),
+            inventory_witness_details(
+                checked_set=details_base["checked_set"],
+                mismatched=drifted,
+                derived_from=details_base["derived_from"],
+            ),
         )
 
     return InvariantResult(
@@ -304,6 +319,10 @@ def check_cs_can_005(
         "PASS",
         sorted(set(evidence)),
         "",
+        inventory_witness_details(
+            checked_set=details_base["checked_set"],
+            derived_from=details_base["derived_from"],
+        ),
     )
 
 def _term_guard_scan_files(root: _common.Path) -> list[str]:

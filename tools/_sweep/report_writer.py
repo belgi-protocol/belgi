@@ -6,7 +6,11 @@ import os
 from pathlib import Path
 from typing import Any, Sequence
 
-from .model import InvariantResult, RenderedConsistencyReport
+from .model import (
+    InvariantResult,
+    RenderedConsistencyReport,
+    validate_inventory_witness_details,
+)
 
 
 def _atomic_write_bytes(path: Path, data: bytes) -> None:
@@ -43,11 +47,51 @@ def _remediation_for_message(msg: str) -> str:
     return "Open policy/consistency_sweep.json and fix the reported check; re-run tools.sweep consistency."
 
 
+def _validate_results_for_render(results: Sequence[InvariantResult]) -> None:
+    for result in results:
+        validate_inventory_witness_details(result.invariant_id, result.details)
+
+
+def _inventory_witness_summary_lines(details: dict[str, Any]) -> list[str]:
+    checked_count = details.get("checked_count")
+    checked_set_sha256 = details.get("checked_set_sha256")
+    missing = details.get("missing")
+    unexpected = details.get("unexpected")
+    mismatched = details.get("mismatched")
+    if not (
+        isinstance(checked_count, int)
+        and isinstance(checked_set_sha256, str)
+        and isinstance(missing, list)
+        and isinstance(unexpected, list)
+        and isinstance(mismatched, list)
+    ):
+        return []
+
+    lines = [
+        (
+            "- witness: "
+            f"checked_count={checked_count} "
+            f"checked_set_sha256={checked_set_sha256} "
+            f"missing={len(missing)} "
+            f"unexpected={len(unexpected)} "
+            f"mismatched={len(mismatched)}"
+        )
+    ]
+    if missing:
+        lines.append(f"- missing: {', '.join(missing[:5])}")
+    if unexpected:
+        lines.append(f"- unexpected: {', '.join(unexpected[:5])}")
+    if mismatched:
+        lines.append(f"- mismatched: {', '.join(mismatched[:5])}")
+    return lines
+
+
 def render_consistency_report(
     report_base: dict[str, Any],
     result_set: Sequence[InvariantResult],
 ) -> RenderedConsistencyReport:
     ordered = sorted(result_set, key=lambda result: result.invariant_id)
+    _validate_results_for_render(ordered)
     passed_count = sum(1 for result in ordered if result.status == "PASS")
     failed_count = sum(1 for result in ordered if result.status == "FAIL")
 
@@ -91,6 +135,9 @@ def write_consistency_summary_md(
     failed: int,
     results: Sequence[InvariantResult],
 ) -> None:
+    ordered_results = sorted(results, key=lambda result: result.invariant_id)
+    _validate_results_for_render(ordered_results)
+
     lines: list[str] = []
     lines.append("## Consistency sweep")
     lines.append(f"- total: **{total}**  passed: **{passed}**  failed: **{failed}**")
@@ -101,7 +148,7 @@ def write_consistency_summary_md(
     else:
         lines.append("### Failures")
         failures = sorted(
-            [result for result in results if result.status == "FAIL"],
+            [result for result in ordered_results if result.status == "FAIL"],
             key=lambda result: result.invariant_id,
         )
         for result in failures:
@@ -119,6 +166,9 @@ def write_consistency_summary_md(
                 lines.append(
                     f"- details: drift_files={counts.get('drift_files')} examples={examples if examples else '<none>'}"
                 )
+
+            if isinstance(result.details, dict):
+                lines.extend(_inventory_witness_summary_lines(result.details))
 
     _atomic_write_text(path, "\n".join(lines) + "\n")
 
