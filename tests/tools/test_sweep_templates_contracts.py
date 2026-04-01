@@ -7,7 +7,7 @@ import pytest
 from tests.helpers.consistency_owner_fixtures import (
     assert_invariant_fails,
     assert_invariants_pass,
-    build_owner_family_repo,
+    build_repo_fixture,
     mutate_json,
     replace_text,
     replace_text_in_markdown_section,
@@ -16,9 +16,26 @@ from tools._sweep.invariants import templates as owner
 
 pytestmark = pytest.mark.repo_local
 
+def _templates_read_relpaths() -> tuple[str, ...]:
+    """Exact union of files read by CS-TPL-001..005."""
+
+    return (
+        "CANONICALS.md",
+        "schemas/EvidenceManifest.schema.json",
+        "schemas/LockedSpec.schema.json",
+        "gates/GATE_R.md",
+        "tiers/tier-packs.md",
+        "belgi/templates/PromptBundle.blocks.md",
+        "belgi/templates/DocsCompiler.template.md",
+    )
+
+
+def build_templates_repo(tmp_path: Path) -> Path:
+    return build_repo_fixture(tmp_path, "templates", patterns=_templates_read_relpaths())
+
 
 def test_templates_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -> None:
-    root = build_owner_family_repo(tmp_path, "templates")
+    root = build_templates_repo(tmp_path)
     assert_invariants_pass(
         root,
         [
@@ -89,6 +106,6 @@ def test_templates_owner_invariants_fail_closed_on_owner_derived_mutations(
     check,
     expected_fragment: str,
 ) -> None:
-    root = build_owner_family_repo(tmp_path, "templates")
+    root = build_templates_repo(tmp_path)
     mutate(root)
     assert_invariant_fails(root, invariant_id, check, expected_fragment)

@@ -7,7 +7,7 @@ import pytest
 from tests.helpers.consistency_owner_fixtures import (
     assert_invariant_fails,
     assert_invariants_pass,
-    build_owner_family_repo,
+    build_repo_fixture,
     mutate_json,
     replace_text,
 )
@@ -15,9 +15,30 @@ from tools._sweep.invariants import waivers as owner
 
 pytestmark = pytest.mark.repo_local
 
+def _waivers_read_relpaths() -> tuple[str, ...]:
+    """Exact union of files read by CS-WVR-001..005."""
+
+    return (
+        "CANONICALS.md",
+        "schemas/Waiver.schema.json",
+        "schemas/SealManifest.schema.json",
+        "schemas/README.md",
+        "tiers/tier-packs.json",
+        "tiers/tier-packs.md",
+        "gates/GATE_Q.md",
+        "gates/GATE_R.md",
+        "docs/operations/evidence-bundles.md",
+        "docs/operations/waivers.md",
+        "belgi/canonicals/docs/operations/waivers.md",
+    )
+
+
+def build_waivers_repo(tmp_path: Path) -> Path:
+    return build_repo_fixture(tmp_path, "waivers", patterns=_waivers_read_relpaths())
+
 
 def test_waivers_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -> None:
-    root = build_owner_family_repo(tmp_path, "waivers")
+    root = build_waivers_repo(tmp_path)
     assert_invariants_pass(
         root,
         [
@@ -90,6 +111,6 @@ def test_waivers_owner_invariants_fail_closed_on_owner_derived_mutations(
     check,
     expected_fragment: str,
 ) -> None:
-    root = build_owner_family_repo(tmp_path, "waivers")
+    root = build_waivers_repo(tmp_path)
     mutate(root)
     assert_invariant_fails(root, invariant_id, check, expected_fragment)

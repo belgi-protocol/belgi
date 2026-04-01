@@ -7,7 +7,7 @@ import pytest
 from tests.helpers.consistency_owner_fixtures import (
     assert_invariant_fails,
     assert_invariants_pass,
-    build_owner_family_repo,
+    build_repo_fixture,
     mutate_json,
     replace_regex,
     replace_text,
@@ -16,9 +16,25 @@ from tools._sweep.invariants import gate_schema as owner
 
 pytestmark = pytest.mark.repo_local
 
+def _gate_schema_read_relpaths() -> tuple[str, ...]:
+    """Exact union of files read by CS-GS-001..005, CS-GV-001, and CS-LS-001/002."""
+
+    return (
+        "schemas/GateVerdict.schema.json",
+        "schemas/LockedSpec.schema.json",
+        "gates/GATE_Q.md",
+        "gates/GATE_R.md",
+        "gates/failure-taxonomy.md",
+        "tiers/tier-packs.md",
+    )
+
+
+def build_gate_schema_repo(tmp_path: Path) -> Path:
+    return build_repo_fixture(tmp_path, "gate_schema", patterns=_gate_schema_read_relpaths())
+
 
 def test_gate_schema_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -> None:
-    root = build_owner_family_repo(tmp_path, "gate_schema")
+    root = build_gate_schema_repo(tmp_path)
     assert_invariants_pass(
         root,
         [
@@ -128,6 +144,6 @@ def test_gate_schema_owner_invariants_fail_closed_on_owner_derived_mutations(
     check,
     expected_fragment: str,
 ) -> None:
-    root = build_owner_family_repo(tmp_path, "gate_schema")
+    root = build_gate_schema_repo(tmp_path)
     mutate(root)
     assert_invariant_fails(root, invariant_id, check, expected_fragment)

@@ -8,7 +8,7 @@ from tests.helpers.consistency_owner_fixtures import (
     append_text,
     assert_invariant_fails,
     assert_invariants_pass,
-    build_owner_family_repo,
+    build_repo_fixture,
     mutate_json,
     replace_text,
     replace_text_in_markdown_section,
@@ -18,9 +18,26 @@ from tools._sweep.invariants import tiers as owner
 
 pytestmark = pytest.mark.repo_local
 
+def _tiers_read_relpaths() -> tuple[str, ...]:
+    """Exact union of files read by CS-TIER-001..005."""
+
+    return (
+        "schemas/EvidenceManifest.schema.json",
+        "gates/GATE_Q.md",
+        "gates/GATE_R.md",
+        "tiers/tier-packs.md",
+        "docs/operations/evidence-bundles.md",
+        "docs/operations/running-belgi.md",
+        "belgi/templates/PromptBundle.blocks.md",
+    )
+
+
+def build_tiers_repo(tmp_path: Path) -> Path:
+    return build_repo_fixture(tmp_path, "tiers", patterns=_tiers_read_relpaths())
+
 
 def test_tiers_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -> None:
-    root = build_owner_family_repo(tmp_path, "tiers")
+    root = build_tiers_repo(tmp_path)
     assert_invariants_pass(
         root,
         [
@@ -92,6 +109,6 @@ def test_tiers_owner_invariants_fail_closed_on_owner_derived_mutations(
     check,
     expected_fragment: str,
 ) -> None:
-    root = build_owner_family_repo(tmp_path, "tiers")
+    root = build_tiers_repo(tmp_path)
     mutate(root)
     assert_invariant_fails(root, invariant_id, check, expected_fragment)

@@ -7,7 +7,7 @@ import pytest
 from tests.helpers.consistency_owner_fixtures import (
     assert_invariant_fails,
     assert_invariants_pass,
-    build_owner_family_repo,
+    build_repo_fixture,
     mutate_json,
     remove_file,
     replace_text_in_markdown_section,
@@ -16,9 +16,26 @@ from tools._sweep.invariants import verification_spine as owner
 
 pytestmark = pytest.mark.repo_local
 
+def _verification_spine_read_relpaths() -> tuple[str, ...]:
+    """Exact union of files read by CS-VERIFY_BUNDLE-001, CS-GATE_R-MANDATES-VERIFY_BUNDLE-001, CS-VERIFY_BUNDLE-GATEVERDICT-BINDING-001, and CS-REF-001."""
+
+    return (
+        "schemas/LockedSpec.schema.json",
+        "schemas/EvidenceManifest.schema.json",
+        "schemas/GateVerdict.schema.json",
+        "schemas/SealManifest.schema.json",
+        "schemas/Waiver.schema.json",
+        "gates/GATE_R.md",
+        "chain/gate_r_verify.py",
+    )
+
+
+def build_verification_spine_repo(tmp_path: Path) -> Path:
+    return build_repo_fixture(tmp_path, "verification_spine", patterns=_verification_spine_read_relpaths())
+
 
 def test_verification_spine_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -> None:
-    root = build_owner_family_repo(tmp_path, "verification_spine")
+    root = build_verification_spine_repo(tmp_path)
     assert_invariants_pass(
         root,
         [
@@ -85,6 +102,6 @@ def test_verification_spine_owner_invariants_fail_closed_on_owner_derived_mutati
     check,
     expected_fragment: str,
 ) -> None:
-    root = build_owner_family_repo(tmp_path, "verification_spine")
+    root = build_verification_spine_repo(tmp_path)
     mutate(root)
     assert_invariant_fails(root, invariant_id, check, expected_fragment)
