@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import builders
-from tools._sweep.model import inventory_witness_details
+from tools._sweep import inputs as inputs_owner
+from tools._sweep import registry as registry_owner
+from tools._sweep.model import InvariantResult, inventory_witness_details
 
 pytestmark = pytest.mark.repo_local
 
@@ -32,10 +34,10 @@ def _run_minimal_consistency_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(sweep, "_extract_spec_invariant_ids", lambda root: ["CS-SWEEP-001"])
     monkeypatch.setattr(
-        sweep,
-        "_invariant_registry",
+        registry_owner,
+        "invariant_registry",
         lambda: {
-            "CS-SWEEP-001": lambda root: sweep.InvariantResult(
+            "CS-SWEEP-001": lambda root: InvariantResult(
                 "CS-SWEEP-001",
                 "PASS",
                 ["tools/sweep.py"],
@@ -47,7 +49,7 @@ def _run_minimal_consistency_sweep(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             )
         },
     )
-    monkeypatch.setattr(sweep, "_canonical_inputs", lambda root: ["a.txt"])
+    monkeypatch.setattr(inputs_owner, "_canonical_inputs", lambda root: ["a.txt"])
 
     rc = sweep.main(["consistency", "--repo", str(tmp_path)])
     assert rc == 0

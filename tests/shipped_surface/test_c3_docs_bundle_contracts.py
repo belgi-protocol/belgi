@@ -7,9 +7,9 @@ import stat
 import subprocess
 import sys
 import time
+from importlib.resources import files as resource_files
 from pathlib import Path
 from typing import Any
-from importlib.resources import files as resource_files
 
 import pytest
 

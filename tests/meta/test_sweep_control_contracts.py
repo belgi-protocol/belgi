@@ -49,3 +49,19 @@ def test_abuse_no_boolean_truthiness_of_seal_payload_list_helpers() -> None:
     for name in helpers:
         assert f"if not {name}(" not in txt
         assert re.search(rf"\bif\s+{re.escape(name)}\(", txt) is None
+
+
+def test_sweep_shell_source_does_not_define_legacy_internal_alias_shims() -> None:
+    txt = (REPO_ROOT / "tools" / "sweep.py").read_text(encoding="utf-8", errors="strict")
+
+    forbidden_defs = [
+        "def _canonical_inputs(",
+        "def _sweep_managed_surface_files(",
+        "def _invariant_registry(",
+    ]
+    forbidden_imports = [
+        "from tools._sweep.model import InvariantResult",
+    ]
+
+    for needle in [*forbidden_defs, *forbidden_imports]:
+        assert needle not in txt
