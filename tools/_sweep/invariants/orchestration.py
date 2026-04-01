@@ -3,7 +3,8 @@ from __future__ import annotations
 from tools._shared import common as _common
 from tools._sweep.inputs import (
     _canonical_inputs,
-    _governed_sweep_owner_files,
+    _iter_builtin_protocol_pack_files,
+    _iter_declared_fixed_input_files,
     _iter_schema_files,
 )
 from tools._sweep.managed_surfaces import _sweep_managed_surface_files
@@ -172,24 +173,41 @@ def check_cs_sweep_001(
     root: _common.Path,
     *,
     canonical_inputs_fn: _common.Callable[[_common.Path], list[str]] = _canonical_inputs,
+    iter_declared_fixed_input_files_fn: _common.Callable[[], list[str]] = _iter_declared_fixed_input_files,
+    sweep_managed_surface_files_fn: _common.Callable[[_common.Path], list[str]] = _sweep_managed_surface_files,
     iter_schema_files_fn: _common.Callable[[_common.Path], list[str]] = _iter_schema_files,
+    iter_builtin_protocol_pack_files_fn: _common.Callable[[_common.Path], list[str]] = _iter_builtin_protocol_pack_files,
 ) -> InvariantResult:
-    """CS-SWEEP-001 — Input Authority: canonical inputs reflect current schemas/tools."""
+    """CS-SWEEP-001 — Input Authority: canonical inputs equal the declared owner composition."""
 
     derived_from = (
-        "tools/_sweep/inputs.py::_canonical_inputs",
+        "tools/_sweep/input_surface_spec.py::DECLARED_FIXED_INPUT_FAMILIES",
+        "tools/_sweep/managed_surface_spec.py::MANAGED_SURFACE_INCLUDE_PATTERNS",
+        "tools/_sweep/managed_surface_spec.py::MANAGED_WORKFLOW_FILES",
+        "tools/_sweep/managed_surface_spec.py::MANAGED_SURFACE_EXCLUDE_PATTERNS",
+        "tools/_sweep/inputs.py::_iter_declared_fixed_input_files",
+        "tools/_sweep/managed_surfaces.py::_sweep_managed_surface_files",
         "tools/_sweep/inputs.py::_iter_builtin_protocol_pack_files",
         "tools/_sweep/inputs.py::_iter_schema_files",
+        "tools/_sweep/inputs.py::_canonical_inputs",
     )
     try:
         canon = sorted(set(canonical_inputs_fn(root)))
+        fixed_files = sorted(set(iter_declared_fixed_input_files_fn()))
+        managed_files = sorted(set(sweep_managed_surface_files_fn(root)))
         schema_files = sorted(set(iter_schema_files_fn(root)))
+        builtin_pack_files = sorted(set(iter_builtin_protocol_pack_files_fn(root)))
     except Exception as e:
         return InvariantResult(
             "CS-SWEEP-001",
             "FAIL",
-            ["schemas/README.md", "tools/_sweep/inputs.py"],
-            f"Fix tools/_sweep/inputs.py canonical input enumeration error ({e}), then rerun sweep.",
+            [
+                f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-001--input-authority",
+                "tools/_sweep/input_surface_spec.py",
+                "tools/_sweep/managed_surface_spec.py",
+                "tools/_sweep/inputs.py",
+            ],
+            f"Fix the sweep input owner composition error ({e}), then rerun sweep.",
             inventory_witness_details(
                 checked_set=(),
                 mismatched=(f"enumeration_error: {e}",),
@@ -197,36 +215,32 @@ def check_cs_sweep_001(
             ),
         )
 
-    required = sorted(
-        {
-            *schema_files,
-            "tools/normalize.py",
-            "tools/rehash.py",
-            "tools/canonicals_report.py",
-            *_governed_sweep_owner_files(),
-        }
-    )
+    required = sorted({*fixed_files, *managed_files, *schema_files, *builtin_pack_files})
     missing = sorted(set(required) - set(canon))
+    unexpected = sorted(set(canon) - set(required))
     details = inventory_witness_details(
         checked_set=canon,
         missing=missing,
+        unexpected=unexpected,
         derived_from=derived_from,
     )
-    if missing:
-        joined = ", ".join(missing)
+    if missing or unexpected:
+        missing_joined = ", ".join(missing) if missing else "<none>"
+        unexpected_joined = ", ".join(unexpected) if unexpected else "<none>"
         return InvariantResult(
             "CS-SWEEP-001",
             "FAIL",
             [
-                "schemas/README.md",
+                f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-001--input-authority",
+                "tools/_sweep/input_surface_spec.py",
+                "tools/_sweep/managed_surface_spec.py",
                 "tools/_sweep/inputs.py",
                 "tools/_sweep/managed_surfaces.py",
-                "tools/_sweep/registry.py",
             ],
             (
-                "Ensure sweep inputs include the full schema/tooling owner surface from tools/_sweep/inputs.py, "
-                "tools/_sweep/managed_surfaces.py, and tools/_sweep/registry.py. Missing: "
-                f"{joined}."
+                "Make tools/_sweep/inputs.py compose the governed input set exactly from the declared fixed families, "
+                "the managed surface resolver, dynamic schemas, and builtin protocol-pack files. "
+                f"Missing: {missing_joined}. Unexpected: {unexpected_joined}."
             ),
             details,
         )
@@ -235,10 +249,10 @@ def check_cs_sweep_001(
         "CS-SWEEP-001",
         "PASS",
         [
-            "schemas/README.md",
+            f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-001--input-authority",
+            "tools/_sweep/input_surface_spec.py",
+            "tools/_sweep/managed_surface_spec.py",
             "tools/_sweep/inputs.py",
-            "tools/_sweep/managed_surfaces.py",
-            "tools/_sweep/registry.py",
         ],
         "",
         details,
@@ -250,11 +264,14 @@ def check_cs_sweep_002(
     canonical_inputs_fn: _common.Callable[[_common.Path], list[str]] = _canonical_inputs,
     sweep_managed_surface_files_fn: _common.Callable[[_common.Path], list[str]] = _sweep_managed_surface_files,
 ) -> InvariantResult:
-    """CS-SWEEP-002 — Managed surfaces are explicitly listed by the managed-surface owner and sweep inputs."""
+    """CS-SWEEP-002 — Managed surface resolver output propagates into canonical inputs."""
 
     derived_from = (
-        "tools/_sweep/inputs.py::_canonical_inputs",
+        "tools/_sweep/managed_surface_spec.py::MANAGED_SURFACE_INCLUDE_PATTERNS",
+        "tools/_sweep/managed_surface_spec.py::MANAGED_WORKFLOW_FILES",
+        "tools/_sweep/managed_surface_spec.py::MANAGED_SURFACE_EXCLUDE_PATTERNS",
         "tools/_sweep/managed_surfaces.py::_sweep_managed_surface_files",
+        "tools/_sweep/inputs.py::_canonical_inputs",
     )
     try:
         canon = set(canonical_inputs_fn(root))
@@ -264,7 +281,11 @@ def check_cs_sweep_002(
             "CS-SWEEP-002",
             "FAIL",
             [f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage"],
-            f"Failed to enumerate managed sweep surfaces from tools/_sweep/managed_surfaces.py ({e}).",
+            (
+                "Failed to resolve the managed operational surface from "
+                "tools/_sweep/managed_surface_spec.py -> tools/_sweep/managed_surfaces.py "
+                f"({e})."
+            ),
             inventory_witness_details(
                 checked_set=(),
                 mismatched=(f"enumeration_error: {e}",),
@@ -285,14 +306,13 @@ def check_cs_sweep_002(
             "FAIL",
             [
                 f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage",
+                "tools/_sweep/managed_surface_spec.py",
                 "tools/_sweep/inputs.py",
                 "tools/_sweep/managed_surfaces.py",
-                "tools/_sweep/registry.py",
             ],
             (
-                "Add missing managed surface path(s) to tools/_sweep/managed_surfaces.py and "
-                "tools/_sweep/inputs.py canonical inputs "
-                "and synchronize docs/operations/consistency-sweep.md Inputs list. Missing: "
+                "Make tools/_sweep/inputs.py consume the full managed surface resolved from "
+                "tools/_sweep/managed_surface_spec.py -> tools/_sweep/managed_surfaces.py. Missing: "
                 f"{joined}."
             ),
             details,
@@ -303,6 +323,7 @@ def check_cs_sweep_002(
         "PASS",
         [
             f"{_common.CONSISTENCY_SPEC_DOC}#cs-sweep-002--managed-surface-coverage",
+            "tools/_sweep/managed_surface_spec.py",
             "tools/_sweep/managed_surfaces.py",
             "tools/_sweep/inputs.py",
         ],

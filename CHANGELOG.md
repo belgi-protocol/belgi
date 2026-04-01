@@ -5,14 +5,16 @@ It does not contain experimental results or performance claims.
 ## 1.6.16 — 2026-04-01
 
 ### Summary
-Separated the sweep shell from its internal owners, finished the tools/test control-plane owner moves, and made inventory-style sweep results carry checked-set witness details.
+Moved consistency-sweep input authority onto declarative owner specs, finished the tools/test control-plane owner moves, and kept inventory-style sweep results on explicit checked-set witness truth.
 
 ### Changed
 - `tools/_sweep/` now owns sweep execution/report/input/registry internals while `tools/sweep.py` stays on CLI parse, command dispatch, the canonical output-path guard, and runner invocation only.
+- `tools/_sweep/managed_surface_spec.py` now owns the managed operational surface family law, while `tools/_sweep/managed_surfaces.py` only resolves the tracked concrete set from that declarative spec.
+- `tools/_sweep/input_surface_spec.py` now owns the fixed explicit sweep input families, and `tools/_sweep/inputs.py` composes those declared families with the managed resolver output, dynamic schemas, and builtin protocol-pack files into the governed input set.
 - `belgi/protocol/pack_surface_inventory.py` remains the single owner for builtin pack inventory and canonical mirror bindings consumed by pack build/drift checks, the canonicals sweep invariant, and the direct pack contract tests.
-- `tools/_sweep/managed_surfaces.py` is now the single owner for the managed operational surface family, `tools/_sweep/inputs.py` derives that owner set into canonical inputs, and the sweep/tests now describe and prove that owner-to-consumer propagation directly.
 - `belgi/canonicals/docs/research/*` no longer ships as package canonical mirrors; the repo-root research docs remain repo-local inputs and shipped-surface tests now prove the package-resource absence directly.
-- `tests/tools/` now proves sweep invariant families from owner-derived inventories or exact invariant read-sets instead of broad shared family snapshot tables, while `tests/meta/` stays on suite-governance and sweep control-plane boundaries only.
+- `docs/operations/consistency-sweep.md` now treats Section A as family-law only and points exact checked-input truth to generated `policy/consistency_sweep.json` `inputs[]` instead of keeping a manual input ledger.
+- `tests/tools/` now proves managed-surface spec -> resolver -> consumer propagation directly and keeps the remaining sweep-family tests on owner-derived inventories or exact invariant read-sets, while `tests/meta/` stays on suite-governance and sweep control-plane boundaries only.
 - Inventory-style sweep results for `CS-SWEEP-001`, `CS-SWEEP-002`, `CS-CAN-005`, and `CS-RENDER-001` now require deterministic witness details with checked-set coverage, and summary markdown projects those witness fields from the JSON artifact instead of inventing separate evidence.
 
 ### Notes

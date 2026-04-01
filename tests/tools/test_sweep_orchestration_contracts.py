@@ -8,7 +8,7 @@ from tests.helpers.consistency_owner_fixtures import (
     build_repo_fixture,
     replace_text,
 )
-from tests.tools.managed_surface_contract import expected_managed_surface_relpaths
+from tools._sweep import managed_surfaces as managed_surfaces_owner
 from tools._sweep.invariants import orchestration as owner
 
 pytestmark = pytest.mark.repo_local
@@ -20,6 +20,8 @@ def test_cs_sweep_001_passes_on_repo_root_and_stays_on_governed_control_plane_in
 
     assert result.invariant_id == "CS-SWEEP-001"
     assert result.status == "PASS", result.remediation
+    assert "tools/_sweep/input_surface_spec.py" in canonical_inputs
+    assert "tools/_sweep/managed_surface_spec.py" in canonical_inputs
     assert "tools/_sweep/inputs.py" in canonical_inputs
     assert "tools/_sweep/managed_surfaces.py" in canonical_inputs
     assert "tools/_sweep/registry.py" in canonical_inputs
@@ -39,7 +41,7 @@ def test_cs_sweep_001_passes_on_repo_root_and_stays_on_governed_control_plane_in
 def test_cs_sweep_002_passes_on_repo_root_and_propagates_managed_surface_owner_set() -> None:
     result = owner.check_cs_sweep_002(REPO_ROOT)
     canonical_inputs = set(owner._canonical_inputs(REPO_ROOT))
-    expected_managed = expected_managed_surface_relpaths()
+    expected_managed = set(managed_surfaces_owner._sweep_managed_surface_files(REPO_ROOT))
 
     assert result.invariant_id == "CS-SWEEP-002"
     assert result.status == "PASS", result.remediation

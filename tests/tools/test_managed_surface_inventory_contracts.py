@@ -4,28 +4,23 @@ from pathlib import Path
 
 import pytest
 
-from tests.tools.managed_surface_contract import expected_managed_surface_relpaths
+from tests.helpers.consistency_owner_fixtures import resolve_repo_patterns
 from tools._sweep import managed_surfaces as owner
+from tools._sweep.managed_surface_spec import (
+    MANAGED_SURFACE_EXCLUDE_PATTERNS,
+    MANAGED_SURFACE_INCLUDE_PATTERNS,
+    MANAGED_WORKFLOW_FILES,
+)
 
 pytestmark = pytest.mark.repo_local
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-MANAGED_SURFACE_EXCLUSION_PATTERNS = (
-    "docs/research/*.md",
-    "tools/_shared/common.py",
-    "tools/_sweep/inputs.py",
-    "tools/_sweep/managed_surfaces.py",
-    "tools/_sweep/model.py",
-    "tools/_sweep/registry.py",
-    "tools/_sweep/report_writer.py",
-    "tools/_sweep/runner.py",
-    "tools/_sweep/invariants/orchestration.py",
-    "tools/_sweep/invariants/tiers.py",
-)
-
 def test_managed_surface_inventory_owner_matches_explicit_operational_contract() -> None:
     managed = set(owner._sweep_managed_surface_files(REPO_ROOT))
-    expected = expected_managed_surface_relpaths()
+    included = set(resolve_repo_patterns(MANAGED_SURFACE_INCLUDE_PATTERNS))
+    included.update(MANAGED_WORKFLOW_FILES)
+    excluded = set(resolve_repo_patterns(MANAGED_SURFACE_EXCLUDE_PATTERNS))
+    expected = included - excluded
 
     assert managed == expected
     assert "README.md" in managed
@@ -36,6 +31,9 @@ def test_managed_surface_inventory_owner_matches_explicit_operational_contract()
     assert "belgi/canonicals/terminology.md" in managed
     assert "belgi/canonicals/trust-model.md" in managed
     assert "belgi/canonicals/docs/operations/consistency-sweep.md" in managed
+    assert ".github/workflows/pinned-install-proof.yml" in managed
+    assert ".github/workflows/pull-request-proof.yml" in managed
+    assert ".github/workflows/repository-verification.yml" in managed
     assert "tools/README.md" in managed
     assert "tools/canonicals_report.py" in managed
 
@@ -45,6 +43,8 @@ def test_managed_surface_inventory_excludes_repo_local_research_and_internal_imp
 
     assert (REPO_ROOT / "docs" / "research" / "README.md").is_file()
     assert (REPO_ROOT / "tools" / "_shared" / "common.py").is_file()
+    assert (REPO_ROOT / "tools" / "_sweep" / "input_surface_spec.py").is_file()
+    assert (REPO_ROOT / "tools" / "_sweep" / "managed_surface_spec.py").is_file()
     assert (REPO_ROOT / "tools" / "_sweep" / "inputs.py").is_file()
     assert (REPO_ROOT / "tools" / "_sweep" / "managed_surfaces.py").is_file()
     assert (REPO_ROOT / "tools" / "_sweep" / "model.py").is_file()
@@ -56,5 +56,14 @@ def test_managed_surface_inventory_excludes_repo_local_research_and_internal_imp
 
     assert not any(rel.startswith("docs/research/") for rel in managed)
     assert not any(rel.startswith("belgi/canonicals/docs/research/") for rel in managed)
-    for rel in MANAGED_SURFACE_EXCLUSION_PATTERNS:
-        assert rel not in managed
+    assert "tools/_shared/common.py" not in managed
+    assert "tools/_sweep/input_surface_spec.py" not in managed
+    assert "tools/_sweep/managed_surface_spec.py" not in managed
+    assert "tools/_sweep/inputs.py" not in managed
+    assert "tools/_sweep/managed_surfaces.py" not in managed
+    assert "tools/_sweep/model.py" not in managed
+    assert "tools/_sweep/registry.py" not in managed
+    assert "tools/_sweep/report_writer.py" not in managed
+    assert "tools/_sweep/runner.py" not in managed
+    assert "tools/_sweep/invariants/orchestration.py" not in managed
+    assert "tools/_sweep/invariants/tiers.py" not in managed
