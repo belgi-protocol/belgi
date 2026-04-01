@@ -31,7 +31,7 @@ SYSPATH_MUTATION_ALLOWLIST = {
     "tests/conftest.py",
     "tests/helpers/repo_imports.py",
     "tests/helpers/subprocess_cli.py",
-    "tests/meta/test_sweep_semantics.py",
+    "tests/meta/test_sweep_control_contracts.py",
     "tests/tools/test_github_vars_sanitize_contracts.py",
 }
 SKIP_PATH_PARTS = {

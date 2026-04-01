@@ -5,7 +5,7 @@ Current repo truth is physically lane-owned: tracked `test_*.py` modules live un
 Lane owners:
 
 - `tests/meta/`: suite governance only
-- `tests/meta/` owns lane classification, cross-lane guardrails, duplicate-guard prevention, serial discipline, shared helper seam contracts, sweep implementation/helper semantics, and bounded xdist-determinism guards
+- `tests/meta/` owns lane classification, cross-lane guardrails, duplicate-guard prevention, serial discipline, shared helper seam contracts, sweep control-plane guardrails, and bounded xdist-determinism guards
 - `tests/meta/` does not own repo-live static parity, mirror/generated/rendered parity, or runtime owner behavior
 - `tests/docs_authority/`: owner-doc claims and thin-entrypoint structural checks only
 - `tests/run_cli/`: subprocess black-box shipped CLI contracts and runtime-owned generated workspace/run guidance
@@ -19,8 +19,8 @@ Lane owners:
 Repo-wide static/generated/mirror/rendered parity is sweep-owned:
 - executable owner: `tools/sweep.py`
 - law/spec owner: `docs/operations/consistency-sweep.md`
-- `tests/meta/test_sweep_semantics.py` exists only to prove sweep helper and implementation semantics on synthetic inputs, not to re-own live repo parity
-- only `tests/tools/` and `tests/meta/test_sweep_semantics.py` may target packaged parity roots as part of tool-surface or sweep-helper semantics
+- `tests/meta/test_sweep_control_contracts.py` exists only to prove sweep helper return shape and control-plane guard semantics, not to re-own live repo parity
+- only `tests/tools/` may target packaged parity roots as part of tool-surface semantics
 - `tests/docs_authority/` may prove owner-doc claim shape and public entrypoint structure, but it must not own or read packaged parity roots / mirror roots
 
 This root README is the single lane-owner summary for `tests/`.

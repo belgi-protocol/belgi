@@ -36,7 +36,7 @@ META_ALLOWED_PRODUCT_IMPORTS = {
         "belgi.protocol.pack",
         "chain.logic.base",
     },
-    "tests/meta/test_sweep_semantics.py": {
+    "tests/meta/test_sweep_control_contracts.py": {
         "belgi.cli_app.commands.run",
         "tools.sweep",
     },
@@ -683,9 +683,6 @@ def _iter_repo_relative_targets(tree: ast.Module) -> list[tuple[str, int]]:
 
 
 def _lane_may_target_sweep_owned_parity(path: Path) -> bool:
-    rel = path.relative_to(REPO_ROOT).as_posix()
-    if rel == "tests/meta/test_sweep_semantics.py":
-        return True
     return _classify_test_module(path) == "tools"
 
 
@@ -794,7 +791,7 @@ def test_pack_and_drift_owner_imports_stay_in_tools_or_exact_shipped_exceptions(
     assert offenders == [], "\n".join(offenders)
 
 
-def test_only_sweep_semantics_and_tools_lanes_may_target_sweep_owned_parity_roots() -> None:
+def test_only_tools_lane_may_target_sweep_owned_parity_roots() -> None:
     offenders: list[str] = []
 
     for path in _iter_test_modules():
@@ -810,7 +807,7 @@ def test_only_sweep_semantics_and_tools_lanes_may_target_sweep_owned_parity_root
         )
         if parity_hits and not _lane_may_target_sweep_owned_parity(path):
             offenders.append(
-                f"{rel} targets sweep-owned parity roots {parity_hits} and re-owns sweep parity surface outside tools or tests/meta/test_sweep_semantics.py"
+                f"{rel} targets sweep-owned parity roots {parity_hits} and re-owns sweep parity surface outside tools lane"
             )
 
     assert offenders == [], "\n".join(offenders)

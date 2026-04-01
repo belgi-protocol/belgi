@@ -1,7 +1,7 @@
-"""Regression tests for sweep helper semantics.
+"""Regression tests for sweep helper and control-plane contracts.
 
 Direct invariant-family semantics live in tests/tools after the family split.
-This file stays on sweep helper and control-plane guard coverage only.
+This file stays on helper return shape and control-plane guard coverage only.
 """
 
 from __future__ import annotations
