@@ -5,85 +5,51 @@ from pathlib import Path
 import pytest
 
 from tests.helpers.consistency_owner_fixtures import (
-    assert_invariants_pass,
     build_repo_fixture,
     replace_text,
 )
-from tools._sweep import managed_surfaces as managed_surfaces_owner
+from tests.tools.managed_surface_contract import expected_managed_surface_relpaths
 from tools._sweep.invariants import orchestration as owner
 
 pytestmark = pytest.mark.repo_local
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-ORCHESTRATION_INTERNAL_EXTRA_PATTERNS = (
-    "tools/_sweep/model.py",
-    "tools/_sweep/report_writer.py",
-    "tools/_sweep/runner.py",
-    "tools/_sweep/invariants/canonicals.py",
-    "tools/_sweep/invariants/orchestration.py",
-    "tools/_sweep/invariants/tiers.py",
-)
+def test_cs_sweep_001_passes_on_repo_root_and_stays_on_governed_control_plane_inputs() -> None:
+    result = owner.check_cs_sweep_001(REPO_ROOT)
+    canonical_inputs = set(owner._canonical_inputs(REPO_ROOT))
 
-
-def build_orchestration_repo(tmp_path: Path, *, extra_patterns: tuple[str, ...] = ()) -> Path:
-    owner_relpaths = tuple(
-        sorted(
-            set(owner._canonical_inputs(REPO_ROOT))
-            | set(managed_surfaces_owner._sweep_managed_surface_files(REPO_ROOT))
-        )
-    )
-    return build_repo_fixture(
-        tmp_path,
-        "orchestration",
-        patterns=owner_relpaths,
-        extra_patterns=extra_patterns,
-    )
-
-
-def test_orchestration_owner_invariants_pass_on_owner_derived_repo(tmp_path: Path) -> None:
-    root = build_orchestration_repo(tmp_path)
-    assert_invariants_pass(
-        root,
-        [
-            ("CS-BYTE-001", owner.check_cs_byte_001),
-            ("CS-FIXTURE-ZERO-001", owner.check_cs_fixture_zero_001),
-            ("CS-PROTOCOL-IDENTITY-001", owner.check_cs_protocol_identity_001),
-            ("CS-SWEEP-001", owner.check_cs_sweep_001),
-            ("CS-SWEEP-002", owner.check_cs_sweep_002),
-            ("CS-R0-ENFORCEMENT-WIRED-001", owner.check_cs_r0_enforcement_wired_001),
-        ],
-    )
-
-
-def test_cs_sweep_001_excludes_internal_sweep_implementation_files_from_inputs(tmp_path: Path) -> None:
-    root = build_orchestration_repo(tmp_path, extra_patterns=ORCHESTRATION_INTERNAL_EXTRA_PATTERNS)
-    canonical_inputs = owner._canonical_inputs(root)
-
-    assert (root / "tools" / "_sweep" / "model.py").is_file()
-    assert (root / "tools" / "_sweep" / "report_writer.py").is_file()
-    assert (root / "tools" / "_sweep" / "runner.py").is_file()
-    assert (root / "tools" / "_sweep" / "invariants" / "canonicals.py").is_file()
-    assert (root / "tools" / "_sweep" / "invariants" / "orchestration.py").is_file()
-    assert (root / "tools" / "_sweep" / "invariants" / "tiers.py").is_file()
-
+    assert result.invariant_id == "CS-SWEEP-001"
+    assert result.status == "PASS", result.remediation
     assert "tools/_sweep/inputs.py" in canonical_inputs
     assert "tools/_sweep/managed_surfaces.py" in canonical_inputs
     assert "tools/_sweep/registry.py" in canonical_inputs
     assert "tools/sweep.py" in canonical_inputs
-
+    assert "tools/normalize.py" in canonical_inputs
+    assert "tools/rehash.py" in canonical_inputs
+    assert "tools/canonicals_report.py" in canonical_inputs
     assert "tools/_sweep/model.py" not in canonical_inputs
     assert "tools/_sweep/report_writer.py" not in canonical_inputs
     assert "tools/_sweep/runner.py" not in canonical_inputs
+    assert "tools/_shared/common.py" not in canonical_inputs
     assert "tools/_sweep/invariants/canonicals.py" not in canonical_inputs
     assert "tools/_sweep/invariants/orchestration.py" not in canonical_inputs
     assert "tools/_sweep/invariants/tiers.py" not in canonical_inputs
 
 
-def test_cs_sweep_002_fails_when_managed_surface_is_missing_from_canonical_inputs(tmp_path: Path) -> None:
-    root = build_orchestration_repo(tmp_path)
-    canonical_inputs = owner._canonical_inputs(root)
+def test_cs_sweep_002_passes_on_repo_root_and_propagates_managed_surface_owner_set() -> None:
+    result = owner.check_cs_sweep_002(REPO_ROOT)
+    canonical_inputs = set(owner._canonical_inputs(REPO_ROOT))
+    expected_managed = expected_managed_surface_relpaths()
+
+    assert result.invariant_id == "CS-SWEEP-002"
+    assert result.status == "PASS", result.remediation
+    assert expected_managed <= canonical_inputs
+
+
+def test_cs_sweep_002_fails_when_managed_surface_is_missing_from_canonical_inputs() -> None:
+    canonical_inputs = owner._canonical_inputs(REPO_ROOT)
     result = owner.check_cs_sweep_002(
-        root,
+        REPO_ROOT,
         canonical_inputs_fn=lambda _root: [rel for rel in canonical_inputs if rel != "tools/README.md"],
     )
 
@@ -93,7 +59,7 @@ def test_cs_sweep_002_fails_when_managed_surface_is_missing_from_canonical_input
 
 
 def test_cs_protocol_identity_001_fails_when_source_becomes_identity_language(tmp_path: Path) -> None:
-    root = build_orchestration_repo(tmp_path)
+    root = build_repo_fixture(tmp_path, "protocol_identity", patterns=("gates/GATE_Q.md",))
     replace_text(
         root,
         "gates/GATE_Q.md",

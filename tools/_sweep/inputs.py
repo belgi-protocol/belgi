@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tools._shared import common as _common
-from tools._sweep.managed_surfaces import _sweep_managed_surface_files  # noqa: F401
+from tools._sweep.managed_surfaces import _sweep_managed_surface_files
 
 _SWEEP_CONTROL_PLANE_OWNER_FILES: tuple[str, ...] = (
     "tools/_sweep/inputs.py",
@@ -56,25 +56,11 @@ def _iter_builtin_protocol_pack_files(repo_root: _common.Path) -> list[str]:
 def _canonical_inputs(repo_root: _common.Path) -> list[str]:
     # Core, explicitly governed files.
     base = [
-        "CANONICALS.md",
-        "README.md",
-        "CHANGELOG.md",
-        "WHITEPAPER.md",
-        "TRADEMARK.md",
         "VERSION",
-        "terminology.md",
-        "trust-model.md",
         "gates/GATE_Q.md",
         "gates/GATE_R.md",
         "gates/GATE_S.md",
         "gates/failure-taxonomy.md",
-        ".github/scripts/check_external_action_pins.py",
-        ".github/scripts/resolve_belgi_workflow_inputs.py",
-        ".github/scripts/run_belgi_smoke.py",
-        ".github/scripts/validate_belgi_ref_pin.py",
-        ".github/workflows/pinned-install-proof.yml",
-        ".github/workflows/pull-request-proof.yml",
-        ".github/workflows/repository-verification.yml",
         ".github/CODEOWNERS",
         "tiers/tier-packs.md",
         "tiers/tier-packs.json",
@@ -89,44 +75,17 @@ def _canonical_inputs(repo_root: _common.Path) -> list[str]:
         "belgi/templates/IntentSpec.core.template.md",
         "belgi/templates/PromptBundle.blocks.md",
         "belgi/templates/DocsCompiler.template.md",
-        "docs/operations/cli.md",
-        "docs/operations/evidence-bundles.md",
-        "docs/operations/evidence-ownership.md",
-        "docs/operations/exit-codes.md",
-        "docs/operations/operator-anchors.md",
-        "docs/operations/running-belgi.md",
-        "docs/operations/security.md",
-        "docs/operations/consistency-sweep.md",
-        "docs/operations/waivers.md",
-        "docs/operations/workflows.md",
+        # Repo-local research docs remain explicit protocol inputs but are not
+        # part of the managed operational surface owner.
         "docs/research/README.md",
         "docs/research/experiment-design.md",
         "docs/research/metrics.md",
         "belgi/_protocol_packs/v1/schemas/README.md",
-        # Package canonical mirror (must stay byte-identical to source docs)
-        "belgi/canonicals/CANONICALS.md",
-        "belgi/canonicals/terminology.md",
-        "belgi/canonicals/trust-model.md",
-        "belgi/canonicals/docs/operations/consistency-sweep.md",
-        "belgi/canonicals/docs/operations/cli.md",
-        "belgi/canonicals/docs/operations/evidence-bundles.md",
-        "belgi/canonicals/docs/operations/evidence-ownership.md",
-        "belgi/canonicals/docs/operations/operator-anchors.md",
-        "belgi/canonicals/docs/operations/running-belgi.md",
-        "belgi/canonicals/docs/operations/security.md",
-        "belgi/canonicals/docs/operations/waivers.md",
         # Tier-3 canonical authority surfaces
         "belgi/anchor/v1/TrustAnchor.json",
         "belgi/genesis/GenesisSealPayload.json",
         "belgi/genesis/README.md",
         "belgi/trust_anchor.py",
-        # Operator convenience scripts (public ergonomics surface)
-        "scripts/belgi_latest_run.ps1",
-        "scripts/belgi_latest_run.py",
-        "scripts/belgi_latest_run.sh",
-        "scripts/belgi_wip_commit_run_reset.ps1",
-        # CI template surface
-        "templates/ci/github/belgi-tier1.yml",
         # Canonical deterministic verifier entrypoints
         "belgi/cli_app/parser/run.py",
         "belgi/cli_app/commands/run.py",
@@ -162,6 +121,9 @@ def _canonical_inputs(repo_root: _common.Path) -> list[str]:
         "schemas/README.md",
     ]
 
+    # managed_surfaces.py owns the managed operational slice; canonical inputs
+    # compose that owner set into the broader governed authority input surface.
+    base.extend(_sweep_managed_surface_files(repo_root))
     base.extend(_governed_sweep_owner_files())
 
     # Dynamic, authoritative schema surface.
