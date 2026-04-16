@@ -1,147 +1,119 @@
-# BELGI
+# BELGI (Archived Pre-Reset Line)
 
-<p align="center">
-  <img alt="BELGI" src="assets/brand/logo-primary.svg#gh-light-mode-only" width="420" />
-  <img alt="BELGI" src="assets/brand/logo-reverse.svg#gh-dark-mode-only" width="420" />
-</p>
+This repository is BELGI's archived pre-reset implementation line.
 
-<div align="center">
-  <a href="https://github.com/belgi-protocol/belgi/actions/workflows/repository-verification.yml">
-  <img src="https://img.shields.io/github/actions/workflow/status/belgi-protocol/belgi/repository-verification.yml?branch=main&label=Repository%20Verification&style=flat-square&logo=github" alt="Repository Verification" />
-</a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square&logo=apache" alt="License" />
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/Python-3.10_%7C_3.11_%7C_3.12_%7C_3.13-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python Versions" />
-  </a>
-  <a href="TRADEMARK.md">
-    <img src="https://img.shields.io/badge/Trademark-Policy-0A2A66.svg?style=flat-square" alt="Branding" />
-  </a>
-</div>
+It is kept for provenance, migration reference, and historical comparison. It
+is not the active normative implementation line.
 
-<br />
+## Repository Position
 
-A control protocol for shipping software under probabilistic cognition (LLMs, tired humans, distributed teams).
+- archived pre-reset implementation history
+- retained for provenance, migration reference, and comparison
+- not authoritative for current BELGI semantics, conformance, or product
+  guidance
+- not the recommended starting point for new adoption
 
-BELGI does not promise deterministic thinking. It promises deterministic *verification* and a reproducible audit trail: you can point at bytes, hashes, and a declared environment envelope and say: “this is what happened.”
+See [CHANGELOG.md](CHANGELOG.md) for the factual history of this line.
 
-Read the whitepaper: [WHITEPAPER.md](WHITEPAPER.md)
+## Why This Repository Was Archived
 
-Branding and trademark policy: [TRADEMARK.md](TRADEMARK.md)
+Much of this repository accumulated before the BELGI specification family,
+semantic contracts, and owner boundaries were fully locked. The result was not
+just normal technical debt. The seams were blurred, large monolithic modules
+accumulated, and ownership drifted across surfaces that now need hard
+separation.
 
-## The Mechanical Truth
+In practical terms, this line mixed concerns that now need separate owners:
 
-If your process can’t be checked deterministically, you don’t have a process — you have a story.
+- substrate and infrastructure
+- core semantic-kernel logic
+- profile governance and vocabulary
+- preserved-carrier and replay-package construction
+- replay lifting, procedure, and reporting
+- product CLI, orchestration, and research/runtime surfaces
 
-BELGI is the boring part done correctly: strict schemas, deterministic gates, byte-level hashes, and evidence you can seal.
-No vibes. No “trust me.” Just artifacts.
+It also produced structural problems that were not honest to treat as a
+cosmetic refactor:
 
-## Features
+- semantic and runtime concerns sharing the same modules
+- owner boundaries scattered across broad operational monoliths
+- profile and governance meaning leaking into product and workflow code
+- preserved-carrier and replay concerns shaped by producer-side history
+- local convenience seams competing with the actual semantic owners
 
-- **Deterministic gates**: fail-closed checks for intent, evidence, and verifier obligations.
-- **Evidence by bytes**: artifacts are indexed by `sha256(bytes)` — newline drift is a real failure mode, treated as such.
-- **Schema-first contracts**: `LockedSpec`, `GateVerdict`, `EvidenceManifest`, `SealManifest`, `Waiver` are strict JSON schema artifacts.
-- **Two-gate verification posture**: Gate Q (lock & verify) and Gate R (verify bundle) separate “spec correctness” from “execution correctness.”
-- **Tier packs**: parameterized tolerances and required evidence sets (no hidden bypasses).
-- **Repro + audit trail**: deterministic reports and a stable failure taxonomy to prevent expectation-gaming.
+Once the repository reached that shape, incremental cleanup stopped being the
+truthful path. It would have kept old seams alive under new names.
 
-Example run stamp used in docs: `bk_ycanary_7f3a9c2d`
+Continuing to patch this repository in place would preserve the wrong
+inheritance:
 
-## Quick Start
+- historical module ownership from before the BELGI contracts were locked
+- compatibility shims and aliases whose main purpose would be to protect old
+  layout rather than current meaning
+- accidental runtime contracts stronger than the specification
+- product and workflow assumptions leaking into semantic owners
+- producer-side history shaping preserved-carrier and replay logic
 
-This README is the overview and entrypoint. Exact shipped CLI syntax, operator quickstart, and NO-GO triage are owned by [docs/operations/cli.md](docs/operations/cli.md).
+For BELGI, that is the higher-risk path. A clean spec-first rebuild from the
+stabilized contracts is the more honest engineering decision and the more
+verifiable, lower-risk, and conformant implementation path.
 
-BELGI requires full verification coverage for public release. See [CANONICALS.md](CANONICALS.md), [gates/GATE_Q.md](gates/GATE_Q.md), and [gates/GATE_R.md](gates/GATE_R.md) for the verification architecture and contracts.
+## Successor Direction
 
-### Install From Source
+Active BELGI implementation work is being rebuilt around the locked owner
+families:
 
-```bash
-pip install .
+1. `substrate/` - infrastructure only
+2. `core/` - semantic kernel
+3. `profile/` - governance and vocabulary
+4. `carrier/` - preserved-carrier and replay-package construction
+5. `replay/` - lifting, replay procedure, and replay report
+6. `product/` - CLI, orchestration, and research runner
 
-# or, for local development
-pip install -e .
-```
+This split is the point of the reset. It gives each layer a narrow
+responsibility, restores semantic authority to the correct owners, and makes
+conformance claims easier to audit.
 
-Until BELGI is published on PyPI, treat the source checkout as the supported install path for this README.
+## Migration Posture
 
-### Operator Quickstart
+This archive does not define an in-place upgrade path.
 
-```bash
-# Inspect the installed package and builtin protocol pack
-belgi about
+As of April 16, 2026, this repository has zero users at archive time.
+Accordingly:
 
-# Seed repo-local BELGI surfaces
-belgi init --repo .
+- no deprecation window is being maintained
+- no backward-compatibility shims are being added for this archived line
+- no attempt is being made to preserve old module paths as the new normative
+  shape
+- migration use is conceptual and forensic, not drop-in
 
-# Read the generated local guide, then create a deterministic run workspace
-belgi run new --repo . --run-id run-001
+If you need BELGI going forward, start from the successor implementation line
+and the stabilized BELGI specification family. Use this archive only to inspect
+prior decisions, compare ownership shapes, or recover historical implementation
+detail.
 
-# Edit the run intent
-# .belgi/runs/run-001/inputs/intent/IntentSpec.core.md
+## What This Repository Is Still For
 
-# Bind a stable base revision and execute the canonical operator spine
-BASE_SHA40="$(git rev-parse HEAD)"
-belgi run \
-  --repo . \
-  --tier tier-1 \
-  --intent-spec .belgi/runs/run-001/inputs/intent/IntentSpec.core.md \
-  --base-revision "${BASE_SHA40}"
+- provenance of earlier BELGI implementation work
+- historical comparison against the successor layered architecture
+- migration reference when tracing old names, flows, or artifacts
+- preservation of pre-reset design and implementation history
 
-# Replay the stored run outputs
-belgi verify --repo .
-```
+## What This Repository Is Not For
 
-`belgi init` points humans to `.belgi/README.md`, and `belgi run new` seeds a run-local `RUN.md` with the next operator steps.
+- new production adoption
+- current conformance claims
+- normative BELGI architecture
+- authoritative CLI or runtime guidance
+- treating old runtime behavior as the specification
 
-### What BELGI Creates
+## Archive Rationale In One Sentence
 
-- `.belgi/README.md`: managed local quickstart generated by `belgi init`
-- `.belgi/templates/IntentSpec.core.template.md`: template seed copied by `belgi run new`
-- `.belgi/runs/<run_id>/RUN.md`: run-local guide for that workspace
-- `.belgi/runs/<run_id>/inputs/...`: human-operated run inputs and pointers
-- `.belgi/store/runs/<run_key>/<attempt_id>/`: authoritative stored artifacts and summaries
-- `belgi_pack/DomainPackManifest.json`: repo-local overlay pack bootstrap
-
-### Command Surfaces
-
-The shipped CLI currently has three layers:
-
-- Tier A, operator-critical: `about`, `init`, `run`, `waiver`, `verify`
-- Tier B, operator-support: `policy`, `bundle`, `pack`
-- Tier C, expert-only: `manifest`, `stage`, `supplychain-scan`, `adversarial-scan`
-
-Use [docs/operations/cli.md](docs/operations/cli.md) for exact command syntax and examples. Use `belgi --help` for the current shipped command tree. `belgi stage` remains a thin forwarder to repo-local `python -m chain.*` entrypoints.
-
-### Where To Go Next
-
-- Operator CLI quickstart and NO-GO triage: [docs/operations/cli.md](docs/operations/cli.md)
-- Tier-2 / Tier-3 Operator Anchors and workspace boundaries: [docs/operations/operator-anchors.md](docs/operations/operator-anchors.md)
-- Manual chain-module reference (`python -m chain.*`): [docs/operations/running-belgi.md](docs/operations/running-belgi.md)
-- Hosted proof surfaces and workflow governance: [docs/operations/workflows.md](docs/operations/workflows.md)
-- Repo-local maintenance commands and tool contracts: [tools/README.md](tools/README.md)
-- Wheel vs repo-local publication boundary: [CANONICALS.md#wheel-vs-repo-local](CANONICALS.md#wheel-vs-repo-local)
-
-### Repo-local Development
-
-BELGI is verifier-first. CI validates committed repo truth and must not repair tracked artifacts for you.
-
-For BELGI repo development, local repair of governed reports or protocol-pack mirrors is allowed when you intentionally changed tracked inputs. The common repo-local repair entrypoint is:
-
-```bash
-./scripts/dev_sync.ps1
-```
-
-If CI reports consistency or pack drift, refresh the tracked outputs locally and commit the resulting files. Use [tools/README.md](tools/README.md) for the exact repo-local maintenance surfaces and [CANONICALS.md#publication-posture](CANONICALS.md#publication-posture) for publication posture.
-
-### Commit Metadata Privacy
-
-If you do not want your personal email in public commit metadata, use your GitHub noreply address and update git config:
-
-```bash
-git config --global user.email "123456+username@users.noreply.github.com"
-git config --global user.name "Your Name"
-```
+This repository is archived because a clean rebuild from stabilized BELGI
+contracts is more honest, lower-risk, more verifiable, and more conformant
+than continuing to retrofit formal BELGI semantics onto a codebase whose
+blurred seams, monolithic modules, and scattered owners were shaped before
+those semantics were locked.
 
 ## License
 
@@ -149,5 +121,8 @@ Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Trademark Notice
 
-BELGI™ is a trademark of the BELGI Protocol Founding Maintainer.
-The BELGI code is available under the Apache 2.0 License. However, this license does not grant permission to use the 'BELGI' trade name, trademarks, service marks, or product names, except as required for reasonable and customary use in describing the origin of the Work.
+BELGI is a trademark of the BELGI Protocol Founding Maintainer. The code is
+available under the Apache 2.0 License, but that license does not grant
+permission to use the BELGI name, trademarks, service marks, or product names
+except as required for reasonable and customary use in describing the origin of
+the work.
