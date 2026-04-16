@@ -2,6 +2,33 @@
 This changelog is a factual record of protocol mechanics, documentation, and enforcement changes in this repository.
 It does not contain experimental results or performance claims.
 
+## Archive Status
+
+As of April 16, 2026, this repository is archived as BELGI's pre-reset
+implementation line.
+
+This changelog remains useful as a factual record of that line's evolution, but
+it is not the active normative BELGI implementation history.
+
+Use this file for:
+
+- provenance
+- migration reference
+- historical comparison
+
+Do not use this file as authority for:
+
+- current BELGI semantics
+- current conformance posture
+- current CLI or runtime guidance
+- successor implementation architecture
+
+The archive decision reflects an engineering reset: this repository accumulated
+while BELGI semantics and owner boundaries were still settling, and the result
+was blurred seams, broad monoliths, and scattered owners across surfaces that
+now require hard separation. A clean spec-first rebuild is the more honest path
+than continuing to retrofit locked BELGI semantics onto that shape.
+
 ## 1.6.16 — 2026-04-01
 
 ### Summary
